@@ -142,34 +142,75 @@ export class SupabaseAdapter {
       return;
     }
 
-    // Timer state changes
+    // Timer state changes - only trigger on actual play/pause/stop actions
     if (key === 'timer' && value?.playback) {
+      // Skip timer_roll and roll (setting timer to start) - not a real state change
+      if (value.playback === 'timer_roll' || value.playback === 'roll') {
+        this.lastTimerState = 'roll';
+        
+        // Check if timer is in roll state but actually playing
+        if (value.startedAt && value.current > 0) {
+          // Only send once per roll session
+          if (this.lastTimerState !== 'roll_playing') {
+            logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer iniciado`);
+            this.lastTimerState = 'roll_playing';
+            this.handleTimerStateChange('play', currentData);
+          }
+        }
+        return;
+      }
+      
       if (this.lastTimerState !== value.playback) {
-        this.lastTimerState = value.playback;
-        this.handleTimerStateChange(value.playback, currentData);
+        // Special case: if timer was in roll state and now changed to play, this is a real state change
+        if (this.lastTimerState === 'roll' && value.playback === 'play') {
+          logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer iniciado`);
+          this.lastTimerState = value.playback;
+          this.handleTimerStateChange(value.playback, currentData);
+          return;
+        }
+        
+        // Also check for other valid transitions from roll state
+        if (this.lastTimerState === 'roll' && (value.playback === 'pause' || value.playback === 'stop')) {
+          logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer ${value.playback}`);
+          this.lastTimerState = value.playback;
+          this.handleTimerStateChange(value.playback, currentData);
+          return;
+        }
+        
+        // Check if this is a real timer state change (not just setting a timer)
+        const isRealStateChange = this.isRealTimerStateChange(value, currentData);
+        
+        if (isRealStateChange) {
+          logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer ${value.playback}`);
+          this.lastTimerState = value.playback;
+          this.handleTimerStateChange(value.playback, currentData);
+        }
       }
     }
 
     // Event changes (when a new event is loaded during playback)
     if (key === 'eventNow' && value) {
-      logger.info(LogOrigin.Server, `Supabase: Event changed to ${value.title || value.id}`);
+      logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Evento mudou para ${value.title || value.id}`);
       
       // If we were in delay mode, send accumulated delay now
       if (this.isInDelayMode) {
-        logger.info(LogOrigin.Server, `Supabase: Event ended - sending accumulated delay: ${this.accumulatedDelay}`);
         this.handleDelayChange(currentData);
         this.isInDelayMode = false;
         this.accumulatedDelay = 0;
       }
       
-      this.handleTimerStateChange(currentData.timer?.playback || 'stop', currentData);
+      // Only send timer state change if it's not roll/timer_roll
+      const timerPlayback = currentData.timer?.playback || 'stop';
+      if (timerPlayback !== 'roll' && (timerPlayback as string) !== 'timer_roll') {
+        this.handleTimerStateChange(timerPlayback, currentData);
+      }
     }
 
     // Rundown changes (events modified) - check DataProvider directly since eventStore doesn't contain rundown
     const rundownHash = this.calculateRundownHash(rundown);
     if (this.lastRundownHash !== rundownHash) {
       this.lastRundownHash = rundownHash;
-      logger.info(LogOrigin.Server, `Supabase: Rundown changed - sending updated events`);
+      logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Rundown atualizado`);
       this.handleRundownChange(currentData);
     }
 
@@ -186,7 +227,7 @@ export class SupabaseAdapter {
       
       if (isCompensation) {
         // User compensated - reset delay mode and send immediately
-        logger.info(LogOrigin.Server, `Supabase: Delay compensated - resetting delay mode. New offset: ${currentOffset}`);
+        logger.info(LogOrigin.Server, `Supabase: Detectou delay - Usuário compensou delay, offset: ${currentOffset}`);
         this.isInDelayMode = false;
         this.accumulatedDelay = 0;
         this.lastSentOffset = currentOffset;
@@ -196,7 +237,7 @@ export class SupabaseAdapter {
       
       if (isSignificantDelay && !this.isInDelayMode) {
         // First significant delay detected - enter delay mode and send immediately
-        logger.info(LogOrigin.Server, `Supabase: Delay started - entering delay mode. Offset: ${currentOffset}`);
+        logger.info(LogOrigin.Server, `Supabase: Detectou delay - Delay significativo iniciado, offset: ${currentOffset}`);
         this.isInDelayMode = true;
         this.accumulatedDelay = currentOffset;
         this.lastSentOffset = currentOffset;
@@ -211,8 +252,31 @@ export class SupabaseAdapter {
       }
       
       // Small delays - just log, don't send to Supabase
-      logger.info(LogOrigin.Server, `Supabase: Small delay change - offset: ${currentOffset} (not sending to Supabase)`);
+      logger.info(LogOrigin.Server, `Supabase: Detectou delay - Delay pequeno, offset: ${currentOffset} (não enviando para Supabase)`);
     }
+  }
+
+  /**
+   * Check if this is a real timer state change (not just setting a timer)
+   */
+  private isRealTimerStateChange(timerValue: any, currentData: any): boolean {
+    // If timer is being set to play but there's no current event, it's likely just setting a timer
+    if (timerValue.playback === 'play' && !currentData.eventNow) {
+      return false;
+    }
+    
+    // If timer is being set to play but the timer value is 0 or very small, it's likely just setting a timer
+    if (timerValue.playback === 'play' && (!timerValue.current || timerValue.current < 1000)) {
+      return false;
+    }
+    
+    // If timer is being set to play but there's no startedAt timestamp, it's likely just setting a timer
+    if (timerValue.playback === 'play' && !timerValue.startedAt) {
+      return false;
+    }
+    
+    // All other cases are real state changes
+    return true;
   }
 
   /**
@@ -229,8 +293,6 @@ export class SupabaseAdapter {
       if (playback === 'play' && this.isInDelayMode) {
         const currentOffset = updatedData.runtime?.offset || 0;
         
-        logger.info(LogOrigin.Server, `Supabase: Play detected - resetting delay mode. Current: ${currentOffset}, Accumulated: ${this.accumulatedDelay}`);
-        
         // Always reset delay mode when timer starts playing
         // This ensures delay stops growing when play is pressed
         this.isInDelayMode = false;
@@ -238,10 +300,6 @@ export class SupabaseAdapter {
         this.lastSentOffset = currentOffset;
       }
       
-      // Debug: Log current and next events
-      const currentEvent = this.getCurrentEvent(updatedData);
-      const nextEvent = this.getNextEvent(updatedData);
-      logger.info(LogOrigin.Server, `Supabase: Current event: ${currentEvent?.title || 'none'}, Next event: ${nextEvent?.title || 'none'}`);
       
       const payload = this.buildTimerPayload(updatedData, playback);
       await this.sendOptimizedData(payload);
@@ -416,7 +474,7 @@ export class SupabaseAdapter {
     const customFields = getDataProvider().getCustomFields();
     const timer = data.timer || {};
     const runtime = data.runtime || {};
-    
+
     // Send ALL data since Supabase upsert replaces the entire row
     return {
       projectCode,
