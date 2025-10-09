@@ -1,5 +1,5 @@
 import { DatabaseModel, LogOrigin, ProjectData, ProjectFileListResponse } from 'ontime-types';
-import { getErrorMessage } from 'ontime-utils';
+import { getErrorMessage, generateProjectCode } from 'ontime-utils';
 
 import { join } from 'path';
 import { copyFile } from 'fs/promises';
@@ -64,7 +64,20 @@ export async function getCurrentProject() {
  */
 export async function loadDemoProject(): Promise<string> {
   const pathToNewFile = generateUniqueFileName(publicDir.projectsDir, config.demoProject);
-  await initPersistence(getPathToProject(pathToNewFile), demoDb);
+  
+  // Generate a projectCode for demo project
+  const demoProjectCode = generateProjectCode();
+  const demoProjectData = {
+    ...demoDb,
+    project: {
+      ...demoDb.project,
+      projectCode: demoProjectCode,
+    },
+  };
+  
+  logger.info(LogOrigin.Server, `Generated demo project code: ${demoProjectCode}`);
+  
+  await initPersistence(getPathToProject(pathToNewFile), demoProjectData);
   const newName = getFileNameFromPath(pathToNewFile);
   await setLastLoadedProject(newName);
   return newName;
@@ -76,7 +89,21 @@ export async function loadDemoProject(): Promise<string> {
  */
 async function loadNewProject(): Promise<string> {
   const pathToNewFile = generateUniqueFileName(publicDir.projectsDir, config.newProject);
-  await initPersistence(getPathToProject(pathToNewFile), dbModel);
+  
+  // Generate a projectCode for new projects
+  const newProjectCode = generateProjectCode();
+  const newProjectData = {
+    ...dbModel,
+    project: {
+      ...dbModel.project,
+      projectCode: newProjectCode,
+    },
+  };
+  
+  logger.info(LogOrigin.Server, `Generated new project code: ${newProjectCode} for new project`);
+  
+  // Save the new project with projectCode to file
+  await initPersistence(getPathToProject(pathToNewFile), newProjectData);
   const newName = getFileNameFromPath(pathToNewFile);
   await setLastLoadedProject(newName);
   return newName;
@@ -130,7 +157,17 @@ export async function initialiseProject(): Promise<string> {
       parsedFilePath = getPathToProject(parsedFileName);
     }
 
-    await initPersistence(parsedFilePath, result.data);
+    // Ensure projectCode exists for loaded projects - generate only if missing
+    if (result.data.project && !result.data.project.projectCode) {
+      const newProjectCode = generateProjectCode();
+      result.data.project.projectCode = newProjectCode;
+      logger.info(LogOrigin.Server, `Generated new project code: ${newProjectCode} for project ${parsedFileName}`);
+      // Save the projectCode to the file immediately
+      await initPersistence(parsedFilePath, result.data);
+    } else {
+      logger.info(LogOrigin.Server, `Loaded existing project code: ${result.data.project.projectCode} for project ${parsedFileName}`);
+      await initPersistence(parsedFilePath, result.data);
+    }
     await setLastLoadedProject(parsedFileName);
     return parsedFileName;
   } catch (error) {
@@ -154,7 +191,9 @@ export async function loadProjectFile(name: string) {
 
   // when loading a project file, we allow parsing to fail and interrupt the process
   const fileData = await parseJsonFile(filePath);
+  console.log(`[DEBUG] loadProjectFile - fileData.project.projectCode: ${fileData.project?.projectCode}`);
   const result = parseDatabaseModel(fileData);
+  console.log(`[DEBUG] loadProjectFile - result.data.project.projectCode: ${result.data.project?.projectCode}`);
   let parsedFileName = name;
   let parsedFilePath = filePath;
 
@@ -164,8 +203,18 @@ export async function loadProjectFile(name: string) {
     parsedFilePath = getPathToProject(parsedFileName);
   }
 
-  // change LowDB to point to new file
-  await initPersistence(parsedFilePath, result.data);
+  // Ensure projectCode exists for loaded projects - generate only if missing
+  if (result.data.project && !result.data.project.projectCode) {
+    const newProjectCode = generateProjectCode();
+    result.data.project.projectCode = newProjectCode;
+    logger.info(LogOrigin.Server, `Generated new project code: ${newProjectCode} for project ${parsedFileName}`);
+    // Save the projectCode to the file immediately
+    await initPersistence(parsedFilePath, result.data);
+  } else {
+    logger.info(LogOrigin.Server, `Loaded existing project code: ${result.data.project.projectCode} for project ${parsedFileName}`);
+    // change LowDB to point to new file
+    await initPersistence(parsedFilePath, result.data);
+  }
   logger.info(LogOrigin.Server, `Loaded project ${parsedFileName}`);
 
   // persist the project selection
@@ -257,6 +306,11 @@ export async function renameProjectFile(originalFile: string, newFilename: strin
  * Creates a new project file and applies its result
  */
 export async function createProject(filename: string, initialData: Partial<DatabaseModel>) {
+  // Generate projectCode if not provided
+  if (initialData.project && !initialData.project.projectCode) {
+    initialData.project.projectCode = generateProjectCode();
+  }
+  
   const data = safeMerge(dbModel, initialData);
 
   const fileNameWithExtension = ensureJsonExtension(filename);
@@ -316,9 +370,31 @@ export async function patchCurrentProject(data: Partial<DatabaseModel>) {
 /**
  * Patches the current project data
  * Handles deleting the local logo if the logo has been removed
+ * Handles cleaning up old Supabase records when projectCode changes
  */
 export async function editCurrentProjectData(newData: Partial<ProjectData>) {
   const currentProjectData = getDataProvider().getProjectData();
+  
+  logger.info(LogOrigin.Server, `editCurrentProjectData called with: ${JSON.stringify(newData)}`);
+  logger.info(LogOrigin.Server, `Current project data: ${JSON.stringify(currentProjectData)}`);
+  
+  // Check if projectCode is being changed
+  const isProjectCodeChanging = newData.projectCode && 
+    newData.projectCode !== currentProjectData.projectCode;
+  
+  logger.info(LogOrigin.Server, `Project code changing: ${isProjectCodeChanging}, new: ${newData.projectCode}, current: ${currentProjectData.projectCode}`);
+  
+  // If projectCode is changing, clean up old Supabase record
+  if (isProjectCodeChanging && currentProjectData.projectCode) {
+    try {
+      const { supabaseAdapter } = await import('../../adapters/SupabaseAdapter.js');
+      await supabaseAdapter.deleteProjectRecord(currentProjectData.projectCode);
+      logger.info(LogOrigin.Server, `Deleted old Supabase record for project code: ${currentProjectData.projectCode}`);
+    } catch (error) {
+      logger.warning(LogOrigin.Server, `Failed to delete old Supabase record: ${getErrorMessage(error)}`);
+    }
+  }
+  
   const updatedProjectData = await getDataProvider().setProjectData(newData);
 
   // Delete the old logo if the logo has been removed

@@ -8,5 +8,6 @@ export const projectDataPlaceholder: ProjectData = {
   backstageUrl: '',
   backstageInfo: '',
   projectLogo: null,
+  projectCode: '',
   custom: [],
 };

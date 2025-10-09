@@ -62,14 +62,14 @@ export default function Welcome(props: WelcomeProps) {
         <ModalBody>
           <div className={style.sections}>
             <div className={style.column}>
-              <img src='ontime-logo.png' alt='ontime' className={style.logo} />
-              <div>Ontime v{appVersion}</div>
+              <img src='ontime-logo.png' alt='HouseriaAPP' className={style.logo} />
+              <div>HouseriaAPP v{appVersion}</div>
               <ExternalLink href={websiteUrl}>Website</ExternalLink>
               <ExternalLink href={documentationUrl}>Read the docs</ExternalLink>
               <ExternalLink href={discordUrl}>Discord server</ExternalLink>
             </div>
             <div className={style.column}>
-              <div className={style.header}>Welcome to Ontime</div>
+              <div className={style.header}>Welcome to HouseriaAPP</div>
               <Editor.Title>Select project</Editor.Title>
               <div className={style.tableContainer}>
                 <table className={style.table}>

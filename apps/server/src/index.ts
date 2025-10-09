@@ -2,7 +2,7 @@
 import { consoleHighlight, consoleError } from './utils/console.js';
 import { initAssets, startIntegrations, startServer } from './app.js';
 
-async function startOntime() {
+async function startHouseriaAPP() {
   try {
     console.log('\n');
     consoleHighlight('Request: Initialise assets...');
@@ -20,4 +20,4 @@ async function startOntime() {
   }
 }
 
-startOntime();
+startHouseriaAPP();

@@ -1,18 +1,18 @@
 {
-    "name": "@getontime/cli",
+    "name": "@gethouseriaapp/cli",
     "version": "3.16.0",
     "author": "Carlos Valente",
     "description": "Time keeping for live events",
     "repository": "https://github.com/cpvalente/ontime",
     "keywords": [
         "lighdev",
-        "ontime",
+        "houseriaapp",
         "timer"
     ],
     "license": "AGPL-3.0-only",
     "main": "main.js",
     "bin": {
-        "ontime": "main.js"
+        "houseriaapp": "main.js"
     },
     "files": [
         "client",

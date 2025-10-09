@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste API - Dados do Projeto</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .event-item {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 5px 0;
+        }
+        .event-color {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .project-info {
+            background-color: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .timer-info {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Teste da API - Dados do Projeto</h1>
+        <p>Esta página permite testar a nova API que busca dados específicos de um projeto, incluindo o nome do projeto e as cores dos eventos.</p>
+        
+        <div class="input-group">
+            <label for="projectCode">Código do Projeto:</label>
+            <input type="text" id="projectCode" placeholder="Digite o código do projeto (ex: ABC123)" value="">
+        </div>
+        
+        <div class="input-group">
+            <label for="apiUrl">URL da API:</label>
+            <input type="text" id="apiUrl" placeholder="http://localhost:3001/api/supabase/project" value="http://localhost:3001/api/supabase/project">
+        </div>
+        
+        <button onclick="buscarDados()" id="buscarBtn">Buscar Dados do Projeto</button>
+        
+        <div id="resultado"></div>
+    </div>
+
+    <script>
+        async function buscarDados() {
+            const projectCode = document.getElementById('projectCode').value.trim();
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            const resultado = document.getElementById('resultado');
+            const buscarBtn = document.getElementById('buscarBtn');
+            
+            if (!projectCode) {
+                resultado.innerHTML = '<div class="result error">❌ Por favor, digite o código do projeto.</div>';
+                return;
+            }
+            
+            if (!apiUrl) {
+                resultado.innerHTML = '<div class="result error">❌ Por favor, digite a URL da API.</div>';
+                return;
+            }
+            
+            // Mostrar loading
+            buscarBtn.disabled = true;
+            buscarBtn.textContent = 'Buscando...';
+            resultado.innerHTML = '<div class="result loading">🔄 Buscando dados do projeto...</div>';
+            
+            try {
+                const response = await fetch(`${apiUrl}/${projectCode}`);
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error(`Projeto não encontrado: ${projectCode}`);
+                    } else {
+                        throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
+                    }
+                }
+                
+                const data = await response.json();
+                exibirResultado(data.project);
+                
+            } catch (error) {
+                resultado.innerHTML = `<div class="result error">❌ Erro: ${error.message}</div>`;
+            } finally {
+                buscarBtn.disabled = false;
+                buscarBtn.textContent = 'Buscar Dados do Projeto';
+            }
+        }
+        
+        function exibirResultado(project) {
+            let html = '<div class="result success">';
+            html += '✅ <strong>Dados carregados com sucesso!</strong>\n\n';
+            
+            // Informações do projeto
+            html += '<div class="project-info">';
+            html += '<h3>📋 Informações do Projeto</h3>';
+            html += `<strong>Código:</strong> ${project.projectCode}<br>`;
+            html += `<strong>Nome:</strong> ${project.projectName}<br>`;
+            html += `<strong>Última Atualização:</strong> ${new Date(project.lastUpdated).toLocaleString('pt-BR')}<br>`;
+            html += `<strong>No Ar:</strong> ${project.onAir ? '🟢 Sim' : '🔴 Não'}`;
+            html += '</div>';
+            
+            // Timer
+            if (project.timer) {
+                html += '<div class="timer-info">';
+                html += '<h3>⏱️ Timer</h3>';
+                html += `<strong>Playback:</strong> ${project.timer.playback}<br>`;
+                html += `<strong>Fase:</strong> ${project.timer.phase}<br>`;
+                if (project.timer.current !== null) {
+                    html += `<strong>Tempo Atual:</strong> ${project.timer.current}s<br>`;
+                }
+                if (project.timer.duration !== null) {
+                    html += `<strong>Duração:</strong> ${project.timer.duration}s<br>`;
+                }
+                html += '</div>';
+            }
+            
+            // Evento atual
+            if (project.currentEvent) {
+                html += '<div class="project-info">';
+                html += '<h3>🎬 Evento Atual</h3>';
+                html += `<div class="event-color" style="background-color: ${project.currentEvent.colour}"></div>`;
+                html += `<strong>Cue:</strong> ${project.currentEvent.cue}<br>`;
+                html += `<strong>Título:</strong> ${project.currentEvent.title}<br>`;
+                html += `<strong>Cor:</strong> ${project.currentEvent.colour}<br>`;
+                html += `<strong>Duração:</strong> ${project.currentEvent.duration}s<br>`;
+                html += `<strong>Público:</strong> ${project.currentEvent.isPublic ? 'Sim' : 'Não'}`;
+                if (project.currentEvent.note) {
+                    html += `<br><strong>Nota:</strong> ${project.currentEvent.note}`;
+                }
+                html += '</div>';
+            }
+            
+            // Próximo evento
+            if (project.nextEvent) {
+                html += '<div class="project-info">';
+                html += '<h3>⏭️ Próximo Evento</h3>';
+                html += `<div class="event-color" style="background-color: ${project.nextEvent.colour}"></div>`;
+                html += `<strong>Cue:</strong> ${project.nextEvent.cue}<br>`;
+                html += `<strong>Título:</strong> ${project.nextEvent.title}<br>`;
+                html += `<strong>Cor:</strong> ${project.nextEvent.colour}<br>`;
+                html += `<strong>Duração:</strong> ${project.nextEvent.duration}s<br>`;
+                html += `<strong>Público:</strong> ${project.nextEvent.isPublic ? 'Sim' : 'Não'}`;
+                if (project.nextEvent.note) {
+                    html += `<br><strong>Nota:</strong> ${project.nextEvent.note}`;
+                }
+                html += '</div>';
+            }
+            
+            // Cuesheet
+            html += '<div class="project-info">';
+            html += '<h3>📝 Cuesheet Completo</h3>';
+            html += `<strong>Total de Eventos:</strong> ${project.cuesheet.totalEvents}<br>`;
+            html += `<strong>Duração Total:</strong> ${project.cuesheet.totalDuration}s<br><br>`;
+            
+            if (project.cuesheet.events && project.cuesheet.events.length > 0) {
+                html += '<h4>🎭 Lista de Eventos com Cores:</h4>';
+                
+                // Agrupar por cor
+                const eventosPorCor = {};
+                project.cuesheet.events.forEach(event => {
+                    if (!eventosPorCor[event.colour]) {
+                        eventosPorCor[event.colour] = [];
+                    }
+                    eventosPorCor[event.colour].push(event);
+                });
+                
+                Object.keys(eventosPorCor).forEach(cor => {
+                    html += `<h5 style="color: ${cor};">● ${cor} (${eventosPorCor[cor].length} eventos)</h5>`;
+                    eventosPorCor[cor].forEach((event, index) => {
+                        html += '<div class="event-item">';
+                        html += `<div class="event-color" style="background-color: ${event.colour}"></div>`;
+                        html += `<strong>${index + 1}. [${event.cue}] ${event.title}</strong><br>`;
+                        html += `Duração: ${event.duration}s | Tipo: ${event.type} | Público: ${event.isPublic ? 'Sim' : 'Não'}`;
+                        if (event.note) {
+                            html += `<br>Nota: ${event.note}`;
+                        }
+                        html += '</div>';
+                    });
+                });
+                
+                // Cores únicas
+                const coresUnicas = [...new Set(project.cuesheet.events.map(event => event.colour))];
+                html += `<br><strong>Cores únicas encontradas:</strong> ${coresUnicas.length}<br>`;
+                coresUnicas.forEach(cor => {
+                    html += `<span class="event-color" style="background-color: ${cor}" title="${cor}"></span>`;
+                });
+            } else {
+                html += '<em>Nenhum evento encontrado no cuesheet.</em>';
+            }
+            
+            html += '</div>';
+            html += '</div>';
+            
+            resultado.innerHTML = html;
+        }
+        
+        // Permitir busca com Enter
+        document.getElementById('projectCode').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                buscarDados();
+            }
+        });
+        
+        document.getElementById('apiUrl').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                buscarDados();
+            }
+        });
+    </script>
+</body>
+</html>
+
+

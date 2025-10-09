@@ -11,6 +11,7 @@ export const dbModel: DatabaseModel = {
     backstageUrl: '',
     backstageInfo: '',
     projectLogo: null,
+    projectCode: '',
     custom: [],
   },
   settings: {

@@ -1,9 +1,9 @@
 {
-  "name": "ontime",
+  "name": "houseriaapp",
   "version": "3.16.0",
   "description": "Time keeping for live events",
   "keywords": [
-    "ontime",
+    "houseriaapp",
     "timer",
     "rundown"
   ],
@@ -22,8 +22,8 @@
   "type": "module",
   "scripts": {
     "dev": "turbo run dev",
-    "dev:electron": "turbo run dev --filter=ontime",
-    "dev:server": "turbo run dev --filter=ontime-server",
+    "dev:electron": "turbo run dev --filter=houseriaapp",
+    "dev:server": "turbo run dev --filter=houseriaapp-server",
     "lint": "turbo run lint",
     "build": "turbo run build",
     "build:local": "turbo run build:local",

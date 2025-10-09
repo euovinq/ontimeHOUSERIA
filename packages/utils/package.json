@@ -1,9 +1,9 @@
 {
-  "name": "ontime-utils",
+  "name": "houseriaapp-utils",
   "type": "module",
   "exports": "./index.ts",
   "private": true,
-  "description": "shared logic for ontime",
+  "description": "shared logic for houseriaapp",
   "scripts": {
     "lint": "eslint . --quiet",
     "test": "vitest",
@@ -21,7 +21,7 @@
     "eslint-config-prettier": "catalog:",
     "eslint-plugin-prettier": "catalog:",
     "eslint-plugin-simple-import-sort": "^8.0.0",
-    "ontime-types": "workspace:*",
+    "houseriaapp-types": "workspace:*",
     "prettier": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

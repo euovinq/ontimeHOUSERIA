@@ -1,5 +1,5 @@
 {
-  "name": "ontime-ui",
+  "name": "houseriaapp-ui",
   "version": "3.16.0",
   "private": true,
   "type": "module",
@@ -81,8 +81,8 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-simple-import-sort": "^8.0.0",
     "happy-dom": "^16.7.2",
-    "ontime-types": "workspace:*",
-    "ontime-utils": "workspace:*",
+    "houseriaapp-types": "workspace:*",
+    "houseriaapp-utils": "workspace:*",
     "prettier": "catalog:",
     "sass": "^1.57.1",
     "typescript": "catalog:",

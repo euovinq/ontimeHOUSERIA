@@ -7,6 +7,7 @@ export { calculateDuration, getLinkedTimes, validateTimes } from './src/validate
 export { sanitiseCue } from './src/cue-utils/cueUtils.js';
 export { getCueCandidate } from './src/cue-utils/cueUtils.js';
 export { generateId } from './src/generate-id/generateId.js';
+export { generateProjectCode } from './src/generate-id/generateProjectCode.js';
 export {
   filterPlayable,
   filterTimedEvents,

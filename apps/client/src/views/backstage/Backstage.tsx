@@ -17,6 +17,7 @@ import SuperscriptTime from '../../features/viewers/common/superscript-time/Supe
 import { useTranslation } from '../../translation/TranslationProvider';
 import ScheduleExport from '../common/schedule/ScheduleExport';
 
+
 import { getBackstageOptions, useBackstageOptions } from './backstage.options';
 import { getCardData, getIsPendingStart, getShowProgressBar, isOvertime } from './backstage.utils';
 
@@ -109,6 +110,7 @@ export default function Backstage(props: BackstageProps) {
 
   return (
     <div className={`backstage ${isMirrored ? 'mirror' : ''}`} data-testid='backstage-view'>
+      
       <ViewParamsEditor viewOptions={backstageOptions} />
       <div className='project-header'>
         {general?.projectLogo ? <ViewLogo name={general.projectLogo} className='logo' /> : <div className='logo' />}
@@ -122,7 +124,7 @@ export default function Backstage(props: BackstageProps) {
       {showProgress && <ProgressBar className='progress-container' current={time.current} duration={time.duration} />}
 
       {!hasEvents && <Empty text={getLocalizedString('common.no_data')} className='empty-container' />}
-
+      
       <div className='card-container'>
         {showNow && (
           <div className={cx(['event', 'now', blinkClass && 'blink'])}>
