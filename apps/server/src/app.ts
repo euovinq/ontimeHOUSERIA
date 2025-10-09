@@ -47,6 +47,8 @@ import { generateCrashReport } from './utils/generateCrashReport.js';
 import { timerConfig } from './config/config.js';
 import { serverTryDesiredPort, getNetworkInterfaces } from './utils/network.js';
 
+import {reenviarRundown} from './scripts/dataSupabase.js';
+
 console.log('\n');
 consoleHighlight(`Starting Ontime version ${ONTIME_VERSION}`);
 
@@ -290,3 +292,7 @@ process.on('uncaughtException', async (error) => {
 process.once('SIGHUP', async () => shutdown(0));
 process.once('SIGINT', async () => shutdown(0));
 process.once('SIGTERM', async () => shutdown(0));
+
+
+
+reenviarRundown();

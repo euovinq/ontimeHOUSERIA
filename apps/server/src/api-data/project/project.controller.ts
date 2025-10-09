@@ -27,6 +27,7 @@ export async function postProjectData(req: Request, res: Response<ProjectData | 
       backstageInfo: req.body?.backstageInfo,
       endMessage: req.body?.endMessage,
       projectLogo: req.body?.projectLogo,
+      projectCode: req.body?.projectCode,
       custom: req.body?.custom,
     });
 

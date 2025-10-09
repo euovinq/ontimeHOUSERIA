@@ -15,6 +15,7 @@ export const validateNewProject = [
   body('backstageUrl').optional().isString().trim(),
   body('backstageInfo').optional().isString().trim(),
   body('projectLogo').optional().isString().trim(),
+  body('projectCode').optional().isString().trim(),
   body('endMessage').optional().isString().trim(),
   body('custom').optional().isArray(),
 

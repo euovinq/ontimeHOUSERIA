@@ -51,7 +51,7 @@ function NavigationMenu(props: NavigationMenuProps) {
         <DrawerContent maxWidth='22rem'>
           <DrawerHeader>
             <DrawerCloseButton size='lg' />
-            Ontime
+            HouseriaAPP
           </DrawerHeader>
           <DrawerBody padding={0}>
             <div className={style.buttonsContainer}>

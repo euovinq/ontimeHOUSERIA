@@ -1,12 +1,12 @@
 {
-  "name": "ontime-electron",
+  "name": "houseriaapp-electron",
   "version": "3.16.0",
   "author": "Carlos Valente",
   "description": "Time keeping for live events",
   "repository": "https://github.com/cpvalente/ontime",
   "keywords": [
     "lighdev",
-    "ontime",
+    "houseriaapp",
     "timer"
   ],
   "license": "AGPL-3.0-only",
@@ -30,11 +30,11 @@
     "cleanup": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
   },
   "build": {
-    "productName": "ontime",
-    "appId": "no.lightdev.ontime",
+    "productName": "HouseriaAPP",
+    "appId": "no.lightdev.houseriaapp",
     "asar": true,
     "dmg": {
-      "artifactName": "ontime-macOS-${arch}.dmg",
+      "artifactName": "houseriaapp-macOS-${arch}.dmg",
       "icon": "icon.icns"
     },
     "mac": {
@@ -57,7 +57,7 @@
       "target": "nsis"
     },
     "nsis": {
-      "artifactName": "ontime-win64.exe",
+      "artifactName": "houseriaapp-win64.exe",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true,
@@ -71,7 +71,7 @@
     },
     "linux": {
       "target": "AppImage",
-      "artifactName": "ontime-linux.AppImage"
+      "artifactName": "houseriaapp-linux.AppImage"
     },
     "files": [
       "**/*",

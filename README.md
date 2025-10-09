@@ -9,10 +9,10 @@
 ## Download the latest release
 <a href="https://www.buymeacoffee.com/cpvalente" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="32"></a>
 
-- Download for <a href="https://github.com/cpvalente/ontime/releases/latest/download/ontime-win64.exe">Windows</a>
-- Download for <a href="https://github.com/cpvalente/ontime/releases/latest/download/ontime-macOS-arm64.dmg">MacOS Arm</a>
-- Download for <a href="https://github.com/cpvalente/ontime/releases/latest/download/ontime-macOS-x64.dmg">MacOS Intel</a>
-- Download AppImage for <a href="https://github.com/cpvalente/ontime/releases/latest/download/ontime-linux.AppImage">Linux</a>
+- Download for <a href="https://github.com/cpvalente/ontime/releases/latest/download/houseriaapp-win64.exe">Windows</a>
+- Download for <a href="https://github.com/cpvalente/ontime/releases/latest/download/houseriaapp-macOS-arm64.dmg">MacOS Arm</a>
+- Download for <a href="https://github.com/cpvalente/ontime/releases/latest/download/houseriaapp-macOS-x64.dmg">MacOS Intel</a>
+- Download AppImage for <a href="https://github.com/cpvalente/ontime/releases/latest/download/houseriaapp-linux.AppImage">Linux</a>
 
 ... or
 - Get from <a href="https://hub.docker.com/r/getontime/ontime">Docker hub</a>
@@ -28,13 +28,13 @@ Ontime improves from the collaboration with its users. We would like to understa
 
 We would also like to include a testimonials section in our ✨new website✨. It would be great to showcase the diversity of users running Ontime.
 
-# Ontime
+# HouseriaAPP
 
-Ontime is a browser-based application that manages event rundowns, scheduling, and cueing.
+HouseriaAPP is a browser-based application that manages event rundowns, scheduling, and cueing.
 
-With Ontime, you can plan, track your schedule, manage automation and cross-department show information all in one place.
+With HouseriaAPP, you can plan, track your schedule, manage automation and cross-department show information all in one place.
 
-Ontime is made by entertainment and broadcast engineers and used by
+HouseriaAPP is made by entertainment and broadcast engineers and used by
 
 - Conference organisers
 - Touring shows and receiving venues

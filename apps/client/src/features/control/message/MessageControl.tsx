@@ -6,6 +6,7 @@ import { tooltipDelayMid } from '../../../ontimeConfig';
 
 import InputRow from './InputRow';
 import TimerControlsPreview from './TimerViewControl';
+import ProjectCodeInput from './ProjectCodeInput';
 
 export default function MessageControl() {
   return (
@@ -13,6 +14,7 @@ export default function MessageControl() {
       <TimerControlsPreview />
       <TimerMessageInput />
       <ExternalInput />
+      <ProjectCodeInput />
     </>
   );
 }

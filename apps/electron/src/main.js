@@ -18,12 +18,12 @@ const {
 
 if (!isProduction) {
   console.log(`Electron running in ${env} environment`);
-  console.log(`Ontime server at ${nodePath}`);
+  console.log(`HouseriaAPP server at ${nodePath}`);
   process.traceProcessWarnings = true;
 }
 
 /** Flag holds server loading state */
-let loaded = 'Ontime starting';
+let loaded = 'HouseriaAPP starting';
 
 /**
  * Flag whether user has requested a quit
