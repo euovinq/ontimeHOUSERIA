@@ -614,6 +614,8 @@ export function roll(rundown: OntimeRundown, offset = 0): { eventId: MaybeString
     const isNow = checkIsNow(runtimeState.eventNow.timeStart, runtimeState.eventNow.timeEnd, offsetClock);
     if (isNow) {
       runtimeState.timer.startedAt = runtimeState.clock;
+      // NÃO mudar playback para Play - manter Roll para continuar automático
+      // Apenas marcar que o evento iniciou para notificar Supabase
 
       // update runtime
       if (runtimeState.currentBlock.startedAt === null) {
