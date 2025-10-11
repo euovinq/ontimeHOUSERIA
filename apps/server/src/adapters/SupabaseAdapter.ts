@@ -31,6 +31,15 @@ export class SupabaseAdapter {
   private isInDelayMode: boolean = false;
   private accumulatedDelay: number = 0;
   private lastSentOffset: number = 0;
+  
+  // Debouncing variables to prevent duplicate sends
+  private lastTimerSendTime: number = 0;
+  private lastDelaySendTime: number = 0;
+  private lastDelayOffset: number = 0;
+  private lastRollPlayEventId: string | null = null; // Track which event already sent timer_play during roll
+  private lastPlayEventId: string | null = null; // Track which event already sent timer_play manually
+  private lastAddedTime: number = 0;
+  private lastAddedTimeSendTime: number = 0;
 
   constructor() {
     // Listen to eventStore changes with specific triggers
@@ -142,55 +151,70 @@ export class SupabaseAdapter {
       return;
     }
 
-    // Timer state changes - only trigger on actual play/pause/stop actions
-    if (key === 'timer' && value?.playback) {
-      // Skip timer_roll and roll (setting timer to start) - not a real state change
-      if (value.playback === 'timer_roll' || value.playback === 'roll') {
-        this.lastTimerState = 'roll';
+    // Timer addedTime changes (add/remove time buttons) - WITH DEBOUNCING
+    if (key === 'timer' && value?.addedTime !== undefined) {
+      const currentAddedTime = value.addedTime;
+      const now = Date.now();
+      
+      // Debouncing: only send if addedTime actually changed and enough time passed
+      if (currentAddedTime !== this.lastAddedTime && now - this.lastAddedTimeSendTime > 100) {
+        const currentPlayback = currentData.timer?.playback || 'stop';
+        logger.info(LogOrigin.Server, `Supabase: Detectou mudança no addedTime - enviando timer atualizado (addedTime: ${currentAddedTime}, playback: ${currentPlayback})`);
+        this.handleTimerStateChange(currentPlayback, currentData, { force: true });
         
-        // Check if timer is in roll state but actually playing
-        if (value.startedAt && value.current > 0) {
-          // Only send once per roll session
-          if (this.lastTimerState !== 'roll_playing') {
-            logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer iniciado`);
-            this.lastTimerState = 'roll_playing';
-            this.handleTimerStateChange('play', currentData);
+        this.lastAddedTime = currentAddedTime;
+        this.lastAddedTimeSendTime = now;
+      }
+    }
+
+    // Timer state changes - SIMPLIFIED APPROACH
+    if (key === 'timer' && value?.playback) {
+      // Special handling for roll state - check if event is actually playing
+      if (value.playback === 'roll' || value.playback === 'timer_roll') {
+        // Check if event is actually playing during roll (startedAt exists and timer is counting)
+        if (this.isEventActuallyPlaying(currentData)) {
+          const currentEventId = currentData.eventNow?.id;
+          
+          // Only send timer_play once per event during roll
+          if (currentEventId && this.lastRollPlayEventId !== currentEventId) {
+            logger.info(LogOrigin.Server, `Supabase: Evento ${currentEventId} tocando durante roll - enviando timer_play`);
+            this.handleTimerStateChange('play', currentData, { force: true });
+            this.lastRollPlayEventId = currentEventId;
           }
         }
-        return;
+        return; // Don't process roll state normally
       }
       
-      if (this.lastTimerState !== value.playback) {
-        // Special case: if timer was in roll state and now changed to play, this is a real state change
-        if (this.lastTimerState === 'roll' && value.playback === 'play') {
-          logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer iniciado`);
-          this.lastTimerState = value.playback;
-          this.handleTimerStateChange(value.playback, currentData);
-          return;
+      // Always send timer state changes, but with smart detection
+      const shouldSend = this.shouldSendTimerState(value.playback, currentData);
+      
+      if (shouldSend) {
+        // Special handling for play state - avoid spam
+        if (value.playback === 'play') {
+          const currentEventId = currentData.eventNow?.id;
+          
+          // Only send play once per event
+          if (currentEventId && this.lastPlayEventId === currentEventId) {
+            return; // Already sent for this event
+          }
+          
+          this.lastPlayEventId = currentEventId;
+          this.lastRollPlayEventId = null; // Reset roll tracking when manually playing
         }
         
-        // Also check for other valid transitions from roll state
-        if (this.lastTimerState === 'roll' && (value.playback === 'pause' || value.playback === 'stop')) {
-          logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer ${value.playback}`);
-          this.lastTimerState = value.playback;
-          this.handleTimerStateChange(value.playback, currentData);
-          return;
-        }
-        
-        // Check if this is a real timer state change (not just setting a timer)
-        const isRealStateChange = this.isRealTimerStateChange(value, currentData);
-        
-        if (isRealStateChange) {
-          logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer ${value.playback}`);
-          this.lastTimerState = value.playback;
-          this.handleTimerStateChange(value.playback, currentData);
-        }
+        logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer ${value.playback}`);
+        this.handleTimerStateChange(value.playback, currentData, { force: true });
+        this.lastTimerState = value.playback;
       }
     }
 
     // Event changes (when a new event is loaded during playback)
     if (key === 'eventNow' && value) {
       logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Evento mudou para ${value.title || value.id}`);
+      
+      // Reset play tracking when event changes
+      this.lastPlayEventId = null;
+      this.lastRollPlayEventId = null;
       
       // If we were in delay mode, send accumulated delay now
       if (this.isInDelayMode) {
@@ -199,10 +223,14 @@ export class SupabaseAdapter {
         this.accumulatedDelay = 0;
       }
       
-      // Only send timer state change if it's not roll/timer_roll
+      // Send timer state when event changes (simplified)
       const timerPlayback = currentData.timer?.playback || 'stop';
-      if (timerPlayback !== 'roll' && (timerPlayback as string) !== 'timer_roll') {
-        this.handleTimerStateChange(timerPlayback, currentData);
+      const shouldSend = this.shouldSendTimerState(timerPlayback, currentData);
+      
+      if (shouldSend) {
+        logger.info(LogOrigin.Server, `Supabase: Evento mudou - enviando timer ${timerPlayback}`);
+        this.handleTimerStateChange(timerPlayback, currentData, { force: true });
+        this.lastTimerState = timerPlayback;
       }
     }
 
@@ -217,13 +245,20 @@ export class SupabaseAdapter {
     // Delay changes (offset/relativeOffset) - simple delay management
     if (key === 'runtime' && (value?.offset !== undefined || value?.relativeOffset !== undefined)) {
       const currentOffset = value?.offset || 0;
+      const now = Date.now();
+      
+      
+      // Debouncing: prevent processing same offset within 1000ms and threshold of 100ms
+      if (Math.abs(currentOffset - this.lastDelayOffset) < 100 && now - this.lastDelaySendTime < 1000) {
+        return;
+      }
       
       // Check if this is a significant delay (more than 5 seconds)
       const isSignificantDelay = Math.abs(currentOffset) > 5000;
       
-      // Check if user compensated (offset went back towards zero)
-      const isCompensation = Math.abs(currentOffset) < Math.abs(this.lastSentOffset) && 
-                            Math.abs(currentOffset) < Math.abs(this.accumulatedDelay);
+      // Check if user compensated (offset went back towards zero) - more strict
+      const isCompensation = Math.abs(currentOffset) < Math.abs(this.lastSentOffset) - 2000 && 
+                            Math.abs(currentOffset) < Math.abs(this.accumulatedDelay) - 2000;
       
       if (isCompensation) {
         // User compensated - reset delay mode and send immediately
@@ -231,16 +266,20 @@ export class SupabaseAdapter {
         this.isInDelayMode = false;
         this.accumulatedDelay = 0;
         this.lastSentOffset = currentOffset;
+        this.lastDelayOffset = currentOffset;
+        this.lastDelaySendTime = now;
         this.handleDelayChange(currentData);
         return;
       }
       
       if (isSignificantDelay && !this.isInDelayMode) {
-        // First significant delay detected - enter delay mode and send immediately
+        // First significant delay detected - enter delay mode and send immediately with delay_subindo status
         logger.info(LogOrigin.Server, `Supabase: Detectou delay - Delay significativo iniciado, offset: ${currentOffset}`);
         this.isInDelayMode = true;
         this.accumulatedDelay = currentOffset;
         this.lastSentOffset = currentOffset;
+        this.lastDelayOffset = currentOffset;
+        this.lastDelaySendTime = now;
         this.handleDelayChange(currentData);
         return;
       }
@@ -248,12 +287,74 @@ export class SupabaseAdapter {
       if (this.isInDelayMode) {
         // In delay mode - just accumulate silently, don't send until event ends
         this.accumulatedDelay = currentOffset;
-        return;
+        // Don't return - continue to send timer updates
       }
       
-      // Small delays - just log, don't send to Supabase
-      logger.info(LogOrigin.Server, `Supabase: Detectou delay - Delay pequeno, offset: ${currentOffset} (não enviando para Supabase)`);
+      // Small delays - don't send to Supabase
     }
+    
+    // lastTimerState is now updated manually in the functions above
+  }
+
+  /**
+   * Simple logic to determine if we should send timer state to Supabase
+   */
+  private shouldSendTimerState(playback: string, currentData: any): boolean {
+    // Always send if state changed
+    if (this.lastTimerState !== playback) {
+      return true;
+    }
+    
+    // For roll state, only send once
+    if (playback === 'roll' || playback === 'timer_roll') {
+      return false; // Already sent
+    }
+    
+    // For other states, send if event is actually playing
+    if (playback === 'play' && this.isEventActuallyPlaying(currentData)) {
+      return true;
+    }
+    
+    // For pause/stop, always send
+    if (playback === 'pause' || playback === 'stop') {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check if the event is actually playing (timer counting down/up)
+   */
+  private isEventActuallyPlaying(currentData: any): boolean {
+    const timer = currentData.timer || {};
+    const eventNow = currentData.eventNow;
+    
+    // If no current event, not playing
+    if (!eventNow) {
+      return false;
+    }
+    
+    // If timer has startedAt, it's playing
+    if (timer.startedAt) {
+      return true;
+    }
+    
+    // If timer current is changing (not static), it's playing
+    // Check if timer value is different from duration (indicating it's counting)
+    if (timer.current !== undefined && timer.duration !== undefined) {
+      // If current is different from duration, it's counting
+      if (timer.current !== timer.duration) {
+        return true;
+      }
+    }
+    
+    // If timer has a current value and it's not the initial duration, it's playing
+    if (timer.current !== undefined && timer.current !== timer.duration) {
+      return true;
+    }
+    
+    return false;
   }
 
   /**
@@ -265,8 +366,8 @@ export class SupabaseAdapter {
       return false;
     }
     
-    // If timer is being set to play but the timer value is 0 or very small, it's likely just setting a timer
-    if (timerValue.playback === 'play' && (!timerValue.current || timerValue.current < 1000)) {
+    // If timer is being set to play but the timer value is 0 or very small (and positive), it's likely just setting a timer
+    if (timerValue.playback === 'play' && (!timerValue.current || (timerValue.current > 0 && timerValue.current < 1000))) {
       return false;
     }
     
@@ -282,7 +383,22 @@ export class SupabaseAdapter {
   /**
    * Handle timer state changes (start/pause/stop)
    */
-  private async handleTimerStateChange(playback: string, currentData: any) {
+  private async handleTimerStateChange(playback: string, currentData: any, options?: { force?: boolean }) {
+    const now = Date.now();
+    
+    // Debouncing: prevent duplicate sends within 500ms
+    if (!options?.force && now - this.lastTimerSendTime < 500) {
+      return;
+    }
+    
+    // Extra check: if timer is paused, only send once every 5 seconds
+    if (!options?.force && playback === 'pause' && now - this.lastTimerSendTime < 5000) {
+      return;
+    }
+    
+    this.lastTimerSendTime = now;
+    // this.lastTimerState = playback; // Moved to checkForTriggers
+    
     logger.info(LogOrigin.Server, `Supabase: Timer state changed to ${playback}`);
     
     // Add a delay to ensure eventNow and eventNext are updated
@@ -305,6 +421,8 @@ export class SupabaseAdapter {
       await this.sendOptimizedData(payload);
     }, 200); // Increased delay to 200ms to allow eventStore to be fully updated
   }
+
+
 
   /**
    * Handle project changes (load/save)
@@ -330,6 +448,13 @@ export class SupabaseAdapter {
    * Handle delay changes
    */
   private async handleDelayChange(currentData: any) {
+    const now = Date.now();
+    const currentOffset = currentData.runtime?.offset || 0;
+    
+    // No debouncing - send immediately when called
+    this.lastDelaySendTime = now;
+    this.lastDelayOffset = currentOffset;
+    
     logger.info(LogOrigin.Server, 'Supabase: Delay changed');
     
     const payload = this.buildDelayPayload(currentData);
@@ -356,14 +481,15 @@ export class SupabaseAdapter {
     return JSON.stringify(hashData);
   }
 
+
   /**
    * Build timer-specific payload (COMPLETE - all data since Supabase doesn't support partial JSON updates)
    */
   private buildTimerPayload(data: any, playback: string) {
     const projectData = getDataProvider().getProjectData();
     const projectCode = projectData?.projectCode || '';
-    const rundown = getDataProvider().getRundown();
-    const customFields = getDataProvider().getCustomFields();
+    const rundown = getDataProvider().getRundown() || [];
+    const customFields = getDataProvider().getCustomFields() || {};
     const timer = data.timer || {};
     const runtime = data.runtime || {};
 
@@ -388,21 +514,21 @@ export class SupabaseAdapter {
         }, 0) : 0
       },
       timer: {
-        startedAt: timer.startedAt || null, // Absolute timestamp when timer started (from HouseriaAPP)
+        startedAt: (timer.playback || 'stop') === 'stop' ? null : (timer.startedAt || null), // Only null when stopped
         expectedFinish: timer.expectedFinish || null,
         duration: timer.duration || null,
         addedTime: timer.addedTime || 0,
-        value: timer.current || timer.duration || 0,
+        value: (timer.playback || 'stop') === 'pause' ? (isNaN(timer.current) || timer.current === null || timer.current === undefined ? (timer.duration || 0) : timer.current) : (timer.playback || 'stop') === 'stop' ? 'STOP' : (isNaN(timer.current) || timer.current === null || timer.current === undefined ? (timer.duration || 0) : timer.current),
         playback: playback,
         phase: timer.phase || 'none',
         // Timer is based on the current event's timeStart/timeEnd, not the old clock
         // The frontend calculates current time based on startedAt + elapsed time
-        timestamp: Date.now() // When this timer value was calculated
+        timestamp: Date.now() // Always current timestamp
       },
       delay: {
-        offset: runtime.offset || 0,
+        offset: (runtime.offset || 0) - 1000, // Apply -1000ms compensation
         expectedEnd: runtime.expectedEnd || null,
-        relativeOffset: runtime.relativeOffset || 0,
+        relativeOffset: (runtime.relativeOffset || 0) - 1000, // Apply -1000ms compensation
         status: this.isInDelayMode ? 'delay_subindo' : 'delay_parado'
       },
       currentEvent: this.getCurrentEvent(data),
@@ -442,21 +568,21 @@ export class SupabaseAdapter {
       },
       // Include ALL fields for proper incremental updates
       timer: {
-        startedAt: timer.startedAt ? Date.now() - (timer.current || 0) : null, // Absolute timestamp when timer started
+        startedAt: (timer.playback || 'stop') === 'stop' ? null : (timer.startedAt || null), // Only null when stopped
         expectedFinish: timer.expectedFinish || null,
         duration: timer.duration || null,
         addedTime: timer.addedTime || 0,
-        value: timer.current || timer.duration || 0,
+        value: (timer.playback || 'stop') === 'pause' ? (isNaN(timer.current) || timer.current === null || timer.current === undefined ? (timer.duration || 0) : timer.current) : (timer.playback || 'stop') === 'stop' ? 'STOP' : (isNaN(timer.current) || timer.current === null || timer.current === undefined ? (timer.duration || 0) : timer.current),
         playback: timer.playback || 'stop',
         phase: timer.phase || 'none',
         // Timer is based on the current event's timeStart/timeEnd, not the old clock
         // The frontend calculates current time based on startedAt + elapsed time
-        timestamp: Date.now() // When this timer value was calculated
+        timestamp: Date.now() // Always current timestamp
       },
       delay: {
-        offset: runtime.offset || 0,
+        offset: (runtime.offset || 0) - 1000, // Apply -1000ms compensation
         expectedEnd: runtime.expectedEnd || null,
-        relativeOffset: runtime.relativeOffset || 0,
+        relativeOffset: (runtime.relativeOffset || 0) - 1000, // Apply -1000ms compensation
         status: this.isInDelayMode ? 'delay_subindo' : 'delay_parado'
       },
       currentEvent: this.getCurrentEvent(data),
@@ -496,21 +622,21 @@ export class SupabaseAdapter {
         }, 0) : 0
       },
       timer: {
-        startedAt: timer.startedAt ? Date.now() - (timer.current || 0) : null, // Absolute timestamp when timer started
+        startedAt: (timer.playback || 'stop') === 'stop' ? null : (timer.startedAt || null), // Only null when stopped
         expectedFinish: timer.expectedFinish || null,
         duration: timer.duration || null,
         addedTime: timer.addedTime || 0,
-        value: timer.current || timer.duration || 0,
+        value: (timer.playback || 'stop') === 'pause' ? (isNaN(timer.current) || timer.current === null || timer.current === undefined ? (timer.duration || 0) : timer.current) : (timer.playback || 'stop') === 'stop' ? 'STOP' : (isNaN(timer.current) || timer.current === null || timer.current === undefined ? (timer.duration || 0) : timer.current),
         playback: timer.playback || 'stop',
         phase: timer.phase || 'none',
         // Timer is based on the current event's timeStart/timeEnd, not the old clock
         // The frontend calculates current time based on startedAt + elapsed time
-        timestamp: Date.now() // When this timer value was calculated
+        timestamp: Date.now() // Always current timestamp
       },
       delay: {
-        offset: runtime.offset || 0,
+        offset: (runtime.offset || 0) - 1000, // Apply -1000ms compensation
         expectedEnd: runtime.expectedEnd || null,
-        relativeOffset: runtime.relativeOffset || 0,
+        relativeOffset: (runtime.relativeOffset || 0) - 1000, // Apply -1000ms compensation
         status: this.isInDelayMode ? 'delay_subindo' : 'delay_parado'
       },
       currentEvent: this.getCurrentEvent(data),
@@ -535,8 +661,9 @@ export class SupabaseAdapter {
     }
     
     // Use accumulated delay if in delay mode, otherwise use current offset
-    const delayOffset = this.isInDelayMode ? this.accumulatedDelay : (runtime.offset || 0);
-    const delayRelativeOffset = this.isInDelayMode ? this.accumulatedDelay : (runtime.relativeOffset || 0);
+    // Apply -1000ms compensation to delay offset (1 second)
+    const delayOffset = (this.isInDelayMode ? this.accumulatedDelay : (runtime.offset || 0)) - 1000;
+    const delayRelativeOffset = (this.isInDelayMode ? this.accumulatedDelay : (runtime.relativeOffset || 0)) - 1000;
     
     // Send ALL data since Supabase upsert replaces the entire row
     return {
@@ -559,16 +686,16 @@ export class SupabaseAdapter {
         }, 0) : 0
       },
       timer: {
-        startedAt: timer.startedAt ? Date.now() - (timer.current || 0) : null, // Absolute timestamp when timer started
+        startedAt: (timer.playback || 'stop') === 'stop' ? null : (timer.startedAt || null), // Only null when stopped
         expectedFinish: timer.expectedFinish || null,
         duration: timer.duration || null,
         addedTime: timer.addedTime || 0,
-        value: timer.current || timer.duration || 0,
+        value: (timer.playback || 'stop') === 'pause' ? (isNaN(timer.current) || timer.current === null || timer.current === undefined ? (timer.duration || 0) : timer.current) : (timer.playback || 'stop') === 'stop' ? 'STOP' : (isNaN(timer.current) || timer.current === null || timer.current === undefined ? (timer.duration || 0) : timer.current),
         playback: timer.playback || 'stop',
         phase: timer.phase || 'none',
         // Timer is based on the current event's timeStart/timeEnd, not the old clock
         // The frontend calculates current time based on startedAt + elapsed time
-        timestamp: Date.now() // When this timer value was calculated
+        timestamp: Date.now() // Always current timestamp
       },
       delay: {
         offset: delayOffset,
@@ -594,7 +721,7 @@ export class SupabaseAdapter {
       title: currentEvent.title,
       note: currentEvent.note,
       timeStart: currentEvent.timeStart,
-      timeEnd: currentEvent.timeEnd,
+      timeEnd: currentEvent.timeEnd ? currentEvent.timeEnd + 2000 : null, // Apply +2000ms compensation
       duration: currentEvent.duration,
       isPublic: currentEvent.isPublic,
       colour: currentEvent.colour,

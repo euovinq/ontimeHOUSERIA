@@ -69,6 +69,7 @@ class RuntimeService {
     RuntimeService.previousState = {} as RuntimeState;
   }
 
+
   @broadcastResult
   setOffsetMode(mode: OffsetMode) {
     runtimeState.setOffsetMode(mode);
@@ -617,6 +618,7 @@ class RuntimeService {
       }
 
       if (result.didStart) {
+        // Evento iniciou automaticamente durante o roll
         process.nextTick(() => {
           triggerReportEntry(TimerLifeCycle.onStart, newState);
           triggerAutomations(TimerLifeCycle.onStart, newState);
