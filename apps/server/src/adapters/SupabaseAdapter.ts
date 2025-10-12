@@ -6,7 +6,6 @@ import { getDataProvider } from '../classes/data-provider/DataProvider.js';
 import { writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { publicDir } from '../setup/index.js';
-import { config } from 'dotenv';
 
 export interface SupabaseConfig {
   url: string;
@@ -48,26 +47,37 @@ export class SupabaseAdapter {
     // Set config file path
     this.configFilePath = join(publicDir.root, 'supabase-config.json');
     
-    // Load environment variables
-    config({ path: join(process.cwd(), 'supabase.env') });
-    
-    // Try to load config from environment or saved file
+    // Load hardcoded configuration
     this.loadConfigFromEnv();
   }
 
   /**
-   * Load configuration from environment variables
+   * Load configuration from hardcoded values (fallback to env if needed)
    */
   private loadConfigFromEnv() {
-    const envConfig: SupabaseConfig = {
-      url: process.env.SUPABASE_URL || '',
-      anonKey: process.env.SUPABASE_ANON_KEY || '',
-      tableName: process.env.SUPABASE_TABLE_NAME || 'ontime_realtime',
-      enabled: process.env.SUPABASE_ENABLED === 'true'
+    // Hardcoded Supabase configuration
+    const hardcodedConfig: SupabaseConfig = {
+      url: 'https://gxcgwhscnroiizjwswqv.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4Y2d3aHNjbnJvaWl6andzd3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDMwNjMsImV4cCI6MjA3NTM3OTA2M30.suNBGtPXUr0YY8BaJEHcSja2m-vdxuCrA2CdOPip5fg',
+      tableName: 'ontime_realtime',
+      enabled: true
     };
 
+    // Fallback to environment variables if hardcoded values are empty
+    const envConfig: SupabaseConfig = {
+      url: hardcodedConfig.url || process.env.SUPABASE_URL || '',
+      anonKey: hardcodedConfig.anonKey || process.env.SUPABASE_ANON_KEY || '',
+      tableName: hardcodedConfig.tableName || process.env.SUPABASE_TABLE_NAME || 'ontime_realtime',
+      enabled: hardcodedConfig.enabled !== undefined ? hardcodedConfig.enabled : (process.env.SUPABASE_ENABLED === 'true')
+    };
+
+    logger.info(LogOrigin.Server, `Supabase config - URL: ${envConfig.url ? 'SET' : 'NOT SET'}, Key: ${envConfig.anonKey ? 'SET' : 'NOT SET'}, Enabled: ${envConfig.enabled}`);
+
     if (envConfig.url && envConfig.anonKey) {
+      logger.info(LogOrigin.Server, 'Supabase configuration loaded');
       this.init(envConfig);
+    } else {
+      logger.warn(LogOrigin.Server, 'Supabase configuration not found');
     }
   }
 

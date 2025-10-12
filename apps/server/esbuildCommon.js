@@ -4,7 +4,7 @@ export const esbuildCommon = {
   target: ['node20'],
   format: 'cjs',
   bundle: true,
-  minify: true,
+  minify: false,
   legalComments: 'external',
   dropLabels: ['DEV'],
 };

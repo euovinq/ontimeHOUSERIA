@@ -41,21 +41,29 @@ let tray = null;
  * @returns {number} server port - the port at which the backend has been started at
  */
 async function startBackend() {
+  console.log('startBackend called, isProduction:', isProduction);
   // in dev mode, we expect both UI and server to be running
   if (!isProduction) {
-    return;
+    console.log('Dev mode - returning port 3000');
+    return 3000; // Return dev port
   }
 
+  console.log('Production mode - loading server from:', nodePath);
   const ontimeServer = require(nodePath);
   const { initAssets, startServer, startIntegrations } = ontimeServer;
 
+  console.log('Initializing assets...');
   await initAssets();
 
+  console.log('Starting server...');
   const result = await startServer(escalateError);
   loaded = result.message;
+  console.log('Server started, message:', loaded, 'port:', result.serverPort);
 
+  console.log('Starting integrations...');
   await startIntegrations();
 
+  console.log('Backend initialization complete, returning port:', result.serverPort);
   return result.serverPort;
 }
 
@@ -199,18 +207,25 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+  console.log('Starting backend...');
   startBackend()
     .then((port) => {
+      console.log('Backend started on port:', port);
       const clientUrl = getClientUrl(port);
       const serverUrl = getServerUrl(port);
+      console.log('Client URL:', clientUrl);
+      console.log('Server URL:', serverUrl);
+      
       const menu = getApplicationMenu(askToQuit, clientUrl, serverUrl, redirectWindow, showDialog, (url) =>
         win.webContents.downloadURL(url),
       );
       Menu.setApplicationMenu(menu);
 
+      console.log('Loading URL:', `${clientUrl}/editor`);
       win
         .loadURL(`${clientUrl}/editor`)
         .then(() => {
+          console.log('URL loaded successfully');
           win.webContents.setBackgroundThrottling(false);
 
           win.show();
