@@ -75,11 +75,16 @@ export function createBlob(fileContent: string, type: string): Blob {
 export function downloadBlob(blob: Blob, fileName: string) {
   const downloadUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.setAttribute('href', downloadUrl);
-  link.setAttribute('download', fileName);
+  link.href = downloadUrl;
+  link.download = fileName;
+  link.style.display = 'none';
+  
   document.body.appendChild(link);
   link.click();
+  document.body.removeChild(link);
 
-  // Clean up the URL.createObjectURL to release resources
-  URL.revokeObjectURL(downloadUrl);
+  // Clean up the URL.createObjectURL to release resources after a short delay
+  setTimeout(() => {
+    URL.revokeObjectURL(downloadUrl);
+  }, 100);
 }

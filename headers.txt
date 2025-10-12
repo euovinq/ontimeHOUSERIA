@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: *
+Content-Disposition: attachment; filename="new project.json"
+Accept-Ranges: bytes
+Cache-Control: public, max-age=0
+Last-Modified: Fri, 10 Oct 2025 04:01:08 GMT
+ETag: W/"325-199cc4797aa"
+Content-Type: application/json; charset=UTF-8
+Content-Length: 805
+Server-Timing: total; dur=1.8768749999999998; desc="Total Response Time"
+Date: Sat, 11 Oct 2025 05:34:16 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+

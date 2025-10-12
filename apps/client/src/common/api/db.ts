@@ -27,7 +27,9 @@ export async function downloadProject(fileName: string) {
     const fileContent = JSON.stringify(data, null, 2);
 
     const blob = createBlob(fileContent, 'application/json;charset=utf-8;');
-    downloadBlob(blob, `${name}.json`);
+    // Ensure filename has .json extension but don't duplicate it
+    const fileName = name.endsWith('.json') ? name : `${name}.json`;
+    downloadBlob(blob, fileName);
   } catch (error) {
     console.error(error);
   }
@@ -168,9 +170,12 @@ async function fileDownload(fileName: string): Promise<{ data: DatabaseModel; na
   // try and get the filename from the response
   let name = fileName;
   if (headerLine != null) {
-    const startFileNameIndex = headerLine.indexOf('"') + 1;
-    const endFileNameIndex = headerLine.lastIndexOf('"');
-    name = headerLine.substring(startFileNameIndex, endFileNameIndex);
+    // Extract filename from Content-Disposition header
+    // Format: attachment; filename="filename.json"
+    const filenameMatch = headerLine.match(/filename="([^"]+)"/);
+    if (filenameMatch && filenameMatch[1]) {
+      name = filenameMatch[1];
+    }
   }
 
   return { data: response.data, name };
