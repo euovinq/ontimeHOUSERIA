@@ -98,7 +98,7 @@ function appShutdown() {
 }
 
 /**
- * Sets Ontime window in focus
+ * Sets Houseria window in focus
  */
 function bringToFront() {
   win.show();
@@ -236,15 +236,15 @@ app.whenReady().then(() => {
           if (typeof loaded === 'string') {
             tray.setToolTip(loaded);
           } else {
-            tray.setToolTip('Initialising error: please restart Ontime');
+            tray.setToolTip('Initialising error: please restart Houseria');
           }
         })
         .catch((error) => {
-          console.log('ERROR: Ontime failed to reach server', error);
+          console.log('ERROR: Houseria failed to reach server', error);
         });
     })
     .catch((error) => {
-      console.log('ERROR: Ontime failed to start', error);
+      console.log('ERROR: Houseria failed to start', error);
     });
 
   /**

@@ -7,12 +7,12 @@
     "timer",
     "rundown"
   ],
-  "author": "Carlos Valente",
-  "homepage": "https://www.getontime.no/",
+  "author": "Vini Queirozz",
+  "homepage": "https://houseria.com.br",
   "repository": "https://github.com/cpvalente/ontime",
   "bugs": {
     "url": "https://github.com/cpvalente/ontime/issues",
-    "email": "mail@getontime.no"
+    "email": "euovinq@gmail.com"
   },
   "license": "AGPL-3.0-only",
   "engines": {

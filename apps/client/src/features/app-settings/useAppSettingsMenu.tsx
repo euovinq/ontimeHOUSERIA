@@ -76,11 +76,6 @@ const staticOptions = [
     ],
   },
   {
-    id: 'about',
-    label: 'About',
-    split: true,
-  },
-  {
     id: 'shutdown',
     label: 'Shutdown',
     split: true,
