@@ -252,19 +252,24 @@ export class SupabaseAdapter {
       this.handleRundownChange(currentData);
     }
 
-    // Delay changes (offset/relativeOffset) - simple delay management
+    // Delay changes (offset/relativeOffset) - detect rising delay
     if (key === 'runtime' && (value?.offset !== undefined || value?.relativeOffset !== undefined)) {
       const currentOffset = value?.offset || 0;
       const now = Date.now();
-      
       
       // Debouncing: prevent processing same offset within 1000ms and threshold of 100ms
       if (Math.abs(currentOffset - this.lastDelayOffset) < 100 && now - this.lastDelaySendTime < 1000) {
         return;
       }
       
-      // Check if this is a significant delay (more than 5 seconds)
-      const isSignificantDelay = Math.abs(currentOffset) > 5000;
+      // Detectar se o offset está subindo (aumentando o atraso)
+      const isOffsetRising = currentOffset < this.lastDelayOffset && currentOffset < -1000;
+      
+      // Detectar se está subindo significativamente (mais de 2 segundos)
+      const isSignificantlyRising = currentOffset < this.lastDelayOffset - 2000 && currentOffset < -2000;
+      
+      // Detectar se parou de subir (offset melhorou ou estabilizou)
+      const isDelayStopped = this.isInDelayMode && (currentOffset >= this.lastDelayOffset || currentOffset > -1000);
       
       // Check if user compensated (offset went back towards zero) - more strict
       const isCompensation = Math.abs(currentOffset) < Math.abs(this.lastSentOffset) - 2000 && 
@@ -282,9 +287,9 @@ export class SupabaseAdapter {
         return;
       }
       
-      if (isSignificantDelay && !this.isInDelayMode) {
-        // First significant delay detected - enter delay mode and send immediately with delay_subindo status
-        logger.info(LogOrigin.Server, `Supabase: Detectou delay - Delay significativo iniciado, offset: ${currentOffset}`);
+      if (isSignificantlyRising && !this.isInDelayMode) {
+        // Delay está subindo significativamente - entrar em modo delay e enviar UMA VEZ
+        logger.info(LogOrigin.Server, `Supabase: Delay subindo detectado - offset: ${currentOffset} (era: ${this.lastDelayOffset})`);
         this.isInDelayMode = true;
         this.accumulatedDelay = currentOffset;
         this.lastSentOffset = currentOffset;
@@ -294,13 +299,26 @@ export class SupabaseAdapter {
         return;
       }
       
+      if (isDelayStopped) {
+        // Delay parou de subir - sair do modo delay e enviar UMA VEZ
+        logger.info(LogOrigin.Server, `Supabase: Delay parou de subir - offset: ${currentOffset} (era: ${this.lastDelayOffset})`);
+        this.isInDelayMode = false;
+        this.accumulatedDelay = 0;
+        this.lastSentOffset = currentOffset;
+        this.lastDelayOffset = currentOffset;
+        this.lastDelaySendTime = now;
+        this.handleDelayChange(currentData);
+        return;
+      }
+      
       if (this.isInDelayMode) {
-        // In delay mode - just accumulate silently, don't send until event ends
+        // In delay mode - just accumulate silently, don't send until delay stops
         this.accumulatedDelay = currentOffset;
         // Don't return - continue to send timer updates
       }
       
-      // Small delays - don't send to Supabase
+      // Atualizar último offset processado
+      this.lastDelayOffset = currentOffset;
     }
     
     // lastTimerState is now updated manually in the functions above
