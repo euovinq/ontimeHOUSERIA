@@ -45,11 +45,10 @@ function getApplicationMenu(askToQuit, clientUrl, serverUrl, redirectWindow, sho
  */
 function makeMacMenu(askToQuit) {
   return {
-    label: 'Ontime',
+    label: 'Houseria',
     submenu: [
-      { role: 'about', label: 'About Ontime' },
       { type: 'separator' },
-      { role: 'hide', label: 'Hide Ontime' },
+      { role: 'hide', label: 'Hide Houseria' },
       { role: 'hideOthers' },
       { role: 'unhide' },
       { type: 'separator' },
@@ -301,7 +300,7 @@ function makeHelpMenu(redirectWindow) {
     role: 'help',
     submenu: [
       {
-        label: `Ontime ${releaseTag}`,
+        label: `Houseria ${releaseTag}`,
         click: () => redirectWindow('/editor?settings=about'),
       },
       {
