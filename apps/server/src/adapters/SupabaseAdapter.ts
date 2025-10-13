@@ -37,6 +37,7 @@ export class SupabaseAdapter {
   private lastDelayOffset: number = 0;
   private lastRollPlayEventId: string | null = null; // Track which event already sent timer_play during roll
   private lastPlayEventId: string | null = null; // Track which event already sent timer_play manually
+  private lastPauseEventId: string | null = null; // Track which event already sent timer_pause
   private lastAddedTime: number = 0;
   private lastAddedTimeSendTime: number = 0;
 
@@ -210,6 +211,19 @@ export class SupabaseAdapter {
           
           this.lastPlayEventId = currentEventId;
           this.lastRollPlayEventId = null; // Reset roll tracking when manually playing
+          this.lastPauseEventId = null; // Reset pause tracking when playing
+        }
+        
+        // Special handling for pause state - avoid spam
+        if (value.playback === 'pause') {
+          const currentEventId = currentData.eventNow?.id;
+          
+          // Only send pause once per event
+          if (currentEventId && this.lastPauseEventId === currentEventId) {
+            return; // Already sent for this event
+          }
+          
+          this.lastPauseEventId = currentEventId;
         }
         
         logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Timer ${value.playback}`);
@@ -222,8 +236,9 @@ export class SupabaseAdapter {
     if (key === 'eventNow' && value) {
       logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Evento mudou para ${value.title || value.id}`);
       
-      // Reset play tracking when event changes
+      // Reset play and pause tracking when event changes
       this.lastPlayEventId = null;
+      this.lastPauseEventId = null;
       this.lastRollPlayEventId = null;
       
       // If we were in delay mode, send accumulated delay now
@@ -343,9 +358,9 @@ export class SupabaseAdapter {
       return true;
     }
     
-    // For pause/stop, always send
+    // For pause/stop, only send if state actually changed (no duplicates)
     if (playback === 'pause' || playback === 'stop') {
-      return true;
+      return false; // Never send duplicates for pause/stop
     }
     
     return false;
@@ -414,13 +429,13 @@ export class SupabaseAdapter {
   private async handleTimerStateChange(playback: string, currentData: any, options?: { force?: boolean }) {
     const now = Date.now();
     
-    // Debouncing: prevent duplicate sends within 500ms
-    if (!options?.force && now - this.lastTimerSendTime < 500) {
+    // Debouncing: prevent duplicate sends within 1000ms
+    if (!options?.force && now - this.lastTimerSendTime < 1000) {
       return;
     }
     
-    // Extra check: if timer is paused, only send once every 5 seconds
-    if (!options?.force && playback === 'pause' && now - this.lastTimerSendTime < 5000) {
+    // Extra check: if timer is paused, only send once every 10 seconds
+    if (!options?.force && playback === 'pause' && now - this.lastTimerSendTime < 10000) {
       return;
     }
     
