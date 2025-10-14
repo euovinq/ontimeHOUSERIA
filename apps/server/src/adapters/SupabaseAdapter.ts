@@ -39,6 +39,12 @@ export class SupabaseAdapter {
   private lastPlayEventId: string | null = null; // Track which event already sent timer_play manually
   private lastAddedTime: number = 0;
   private lastAddedTimeSendTime: number = 0;
+  
+  // Performance optimization
+  private lastSentPayloadHash: string = '';
+  private globalThrottleTime: number = 0;
+  private readonly GLOBAL_THROTTLE_MS = 200; // Max 5 sends per second
+  private readonly DELAY_DEBOUNCE_MS = 2000; // Increased from 500ms to 2s
 
   constructor() {
     // Listen to eventStore changes with specific triggers
@@ -60,7 +66,7 @@ export class SupabaseAdapter {
       url: 'https://gxcgwhscnroiizjwswqv.supabase.co',
       anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4Y2d3aHNjbnJvaWl6andzd3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDMwNjMsImV4cCI6MjA3NTM3OTA2M30.suNBGtPXUr0YY8BaJEHcSja2m-vdxuCrA2CdOPip5fg',
       tableName: 'ontime_realtime',
-      enabled: true
+      enabled: false
     };
 
     // Fallback to environment variables if hardcoded values are empty
@@ -71,13 +77,14 @@ export class SupabaseAdapter {
       enabled: hardcodedConfig.enabled !== undefined ? hardcodedConfig.enabled : (process.env.SUPABASE_ENABLED === 'true')
     };
 
-    logger.info(LogOrigin.Server, `Supabase config - URL: ${envConfig.url ? 'SET' : 'NOT SET'}, Key: ${envConfig.anonKey ? 'SET' : 'NOT SET'}, Enabled: ${envConfig.enabled}`);
+    // Use console.log instead of logger during initialization
+    console.log(`Supabase config - URL: ${envConfig.url ? 'SET' : 'NOT SET'}, Key: ${envConfig.anonKey ? 'SET' : 'NOT SET'}, Enabled: ${envConfig.enabled}`);
 
     if (envConfig.url && envConfig.anonKey) {
-      logger.info(LogOrigin.Server, 'Supabase configuration loaded');
+      console.log('Supabase configuration loaded');
       this.init(envConfig);
     } else {
-      logger.warn(LogOrigin.Server, 'Supabase configuration not found');
+      console.warn('Supabase configuration not found');
     }
   }
 
@@ -86,8 +93,8 @@ export class SupabaseAdapter {
    */
   init(config: SupabaseConfig) {
     if (!config.enabled || !config.url || !config.anonKey) {
-      logger.info(LogOrigin.Server, 'Supabase adapter disabled or missing config');
-      logger.info(LogOrigin.Server, `Config details - enabled: ${config.enabled}, url: ${config.url ? 'SET' : 'MISSING'}, anonKey: ${config.anonKey ? 'SET' : 'MISSING'}`);
+      console.log('Supabase adapter disabled or missing config');
+      console.log(`Config details - enabled: ${config.enabled}, url: ${config.url ? 'SET' : 'MISSING'}, anonKey: ${config.anonKey ? 'SET' : 'MISSING'}`);
       return;
     }
 
@@ -96,9 +103,9 @@ export class SupabaseAdapter {
       this.supabase = createClient(config.url, config.anonKey);
       this.isConnected = true;
       
-      logger.info(LogOrigin.Server, `Supabase adapter initialized for table: ${config.tableName || 'ontime_realtime'}`);
-      logger.info(LogOrigin.Server, `Supabase URL: ${config.url}`);
-      logger.info(LogOrigin.Server, `Supabase anonKey: ${config.anonKey.substring(0, 20)}...`);
+      console.log(`Supabase adapter initialized for table: ${config.tableName || 'ontime_realtime'}`);
+      console.log(`Supabase URL: ${config.url}`);
+      console.log(`Supabase anonKey: ${config.anonKey.substring(0, 20)}...`);
       
       // Save configuration
       this.saveConfig(config);
@@ -106,7 +113,7 @@ export class SupabaseAdapter {
       // Send initial data
       this.sendToSupabase();
     } catch (error) {
-      logger.error(LogOrigin.Server, `Failed to initialize Supabase: ${error}`);
+      console.error(`Failed to initialize Supabase: ${error}`);
       this.isConnected = false;
     }
   }
@@ -252,32 +259,28 @@ export class SupabaseAdapter {
       this.handleRundownChange(currentData);
     }
 
-    // Delay changes (offset/relativeOffset) - detect rising delay
+    // Delay changes (offset/relativeOffset) - detect any offset movement
     if (key === 'runtime' && (value?.offset !== undefined || value?.relativeOffset !== undefined)) {
       const currentOffset = value?.offset || 0;
       const now = Date.now();
       
-      // Debouncing: prevent processing same offset within 1000ms and threshold of 100ms
-      if (Math.abs(currentOffset - this.lastDelayOffset) < 100 && now - this.lastDelaySendTime < 1000) {
+      // Debouncing: prevent processing same offset within 500ms and threshold of 50ms
+      if (Math.abs(currentOffset - this.lastDelayOffset) < 50 && now - this.lastDelaySendTime < 500) {
         return;
       }
       
-      // Detectar se o offset está subindo (aumentando o atraso)
-      const isOffsetRising = currentOffset < this.lastDelayOffset && currentOffset < -1000;
+      // Detectar se o offset está se movimentando (qualquer direção)
+      const isOffsetMoving = Math.abs(currentOffset - this.lastDelayOffset) > 50;
       
-      // Detectar se está subindo significativamente (mais de 2 segundos)
-      const isSignificantlyRising = currentOffset < this.lastDelayOffset - 2000 && currentOffset < -2000;
+      // Detectar se parou de se movimentar (offset estático)
+      const isDelayStopped = this.isInDelayMode && !isOffsetMoving;
       
-      // Detectar se parou de subir (offset melhorou ou estabilizou)
-      const isDelayStopped = this.isInDelayMode && (currentOffset >= this.lastDelayOffset || currentOffset > -1000);
-      
-      // Check if user compensated (offset went back towards zero) - more strict
-      const isCompensation = Math.abs(currentOffset) < Math.abs(this.lastSentOffset) - 2000 && 
-                            Math.abs(currentOffset) < Math.abs(this.accumulatedDelay) - 2000;
+      // Check if user compensated (offset went back towards zero)
+      const isCompensation = Math.abs(currentOffset) < Math.abs(this.lastSentOffset) - 1000;
       
       if (isCompensation) {
         // User compensated - reset delay mode and send immediately
-        logger.info(LogOrigin.Server, `Supabase: Detectou delay - Usuário compensou delay, offset: ${currentOffset}`);
+        logger.info(LogOrigin.Server, `Supabase: Usuário compensou delay, offset: ${currentOffset} (era: ${this.lastSentOffset})`);
         this.isInDelayMode = false;
         this.accumulatedDelay = 0;
         this.lastSentOffset = currentOffset;
@@ -287,8 +290,8 @@ export class SupabaseAdapter {
         return;
       }
       
-      if (isSignificantlyRising && !this.isInDelayMode) {
-        // Delay está subindo significativamente - entrar em modo delay e enviar UMA VEZ
+      if (isOffsetMoving && !this.isInDelayMode) {
+        // Offset está se movimentando - entrar em modo delay e enviar UMA VEZ
         logger.info(LogOrigin.Server, `Supabase: Delay subindo detectado - offset: ${currentOffset} (era: ${this.lastDelayOffset})`);
         this.isInDelayMode = true;
         this.accumulatedDelay = currentOffset;
@@ -300,7 +303,7 @@ export class SupabaseAdapter {
       }
       
       if (isDelayStopped) {
-        // Delay parou de subir - sair do modo delay e enviar UMA VEZ
+        // Offset parou de se movimentar - sair do modo delay e enviar UMA VEZ
         logger.info(LogOrigin.Server, `Supabase: Delay parou de subir - offset: ${currentOffset} (era: ${this.lastDelayOffset})`);
         this.isInDelayMode = false;
         this.accumulatedDelay = 0;
@@ -470,6 +473,78 @@ export class SupabaseAdapter {
     
     const payload = this.buildRundownPayload(currentData);
     await this.sendOptimizedData(payload);
+  }
+
+  /**
+   * Force update to Supabase (called from button actions) with throttling
+   */
+  public forceUpdate(currentData: any) {
+    if (!this.isConnected || !this.config?.enabled) {
+      return;
+    }
+    
+    const now = Date.now();
+    
+    // Throttle force updates to prevent spam from rapid button clicks
+    if (now - this.lastTimerSendTime < 1000) {
+      console.log('Supabase: Force update throttled - too frequent');
+      return;
+    }
+    
+    logger.info(LogOrigin.Server, 'Supabase: Force update triggered by button action');
+    
+    // Send current timer state
+    const timerPlayback = currentData.timer?.playback || 'stop';
+    this.handleTimerStateChange(timerPlayback, currentData, { force: true });
+  }
+
+  /**
+   * Toggle Supabase connection on/off
+   */
+  public toggleConnection(): boolean {
+    if (this.isConnected) {
+      this.disconnect();
+      logger.info(LogOrigin.Server, 'Supabase: Connection disabled by user');
+      return false;
+    } else {
+      logger.info(LogOrigin.Server, 'Supabase: Attempting to reconnect...');
+      this.reconnect();
+      logger.info(LogOrigin.Server, 'Supabase: Connection enabled by user');
+      return this.isConnected;
+    }
+  }
+
+  /**
+   * Get current connection status
+   */
+  public getConnectionStatus(): { connected: boolean; enabled: boolean } {
+    return {
+      connected: this.isConnected,
+      enabled: this.config?.enabled || false
+    };
+  }
+
+  /**
+   * Reconnect to Supabase
+   */
+  private reconnect() {
+    // Force enable Supabase with hardcoded config
+    const config: SupabaseConfig = {
+      url: 'https://gxcgwhscnroiizjwswqv.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4Y2d3aHNjbnJvaWl6andzd3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDMwNjMsImV4cCI6MjA3NTM3OTA2M30.suNBGtPXUr0YY8BaJEHcSja2m-vdxuCrA2CdOPip5fg',
+      tableName: 'ontime_realtime',
+      enabled: true
+    };
+    this.init(config);
+  }
+
+  /**
+   * Disconnect from Supabase
+   */
+  private disconnect() {
+    this.isConnected = false;
+    this.supabase = null;
+    // Keep config so we can reconnect later
   }
 
   /**
@@ -787,7 +862,7 @@ export class SupabaseAdapter {
     }
 
     try {
-      logger.info(LogOrigin.Server, `Sending ${payload.status} to Supabase for project: ${payload.projectCode}`);
+      console.log(`Sending ${payload.status} to Supabase for project: ${payload.projectCode}`);
 
       const { data: result, error } = await this.supabase
         .from(this.config.tableName || 'ontime_realtime')
@@ -799,13 +874,13 @@ export class SupabaseAdapter {
         });
 
       if (error) {
-        logger.error(LogOrigin.Server, `Supabase upsert error: ${error.message}`);
+        console.error(`Supabase upsert error: ${error.message}`);
       } else {
-        logger.info(LogOrigin.Server, `Supabase ${payload.status} sent successfully`);
+        console.log(`Supabase ${payload.status} sent successfully`);
         this.lastSendTime = Date.now();
       }
     } catch (error) {
-      logger.error(LogOrigin.Server, `Supabase send error: ${error}`);
+      console.error(`Supabase send error: ${error}`);
     }
   }
 
@@ -821,13 +896,13 @@ export class SupabaseAdapter {
       const currentData = eventStore.poll();
       
       if (!currentData) {
-        logger.warning(LogOrigin.Server, 'Supabase: Skipping initial send - no data available');
+        console.warn('Supabase: Skipping initial send - no data available');
         return;
       }
       
       const rundown = getDataProvider().getRundown();
       if (!rundown || rundown.length === 0) {
-        logger.warning(LogOrigin.Server, 'Supabase: Skipping initial send - rundown not ready');
+        console.warn('Supabase: Skipping initial send - rundown not ready');
         return;
       }
       
@@ -835,9 +910,9 @@ export class SupabaseAdapter {
       const payload = this.buildProjectPayload(currentData);
       await this.sendOptimizedData(payload);
       
-      logger.info(LogOrigin.Server, 'Initial project data sent to Supabase');
+      console.log('Initial project data sent to Supabase');
     } catch (error) {
-      logger.error(LogOrigin.Server, `Supabase initial send error: ${error}`);
+      console.error(`Supabase initial send error: ${error}`);
     }
   }
 
@@ -902,15 +977,6 @@ export class SupabaseAdapter {
     return this.isConnected;
   }
 
-  /**
-   * Disconnect from Supabase
-   */
-  disconnect() {
-    this.isConnected = false;
-    this.supabase = null;
-    this.config = null;
-    logger.info(LogOrigin.Server, 'Supabase adapter disconnected');
-  }
 
   /**
    * Test connection to Supabase
