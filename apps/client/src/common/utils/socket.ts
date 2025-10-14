@@ -219,6 +219,26 @@ export const connectSocket = () => {
           flushBatchUpdates();
           break;
         }
+        case 'togglesupabase': {
+          // Handle Supabase toggle response
+          if (typeof payload === 'object' && payload !== null) {
+            // Dispatch custom event for SupabaseControl component
+            window.dispatchEvent(new CustomEvent('supabase-status', { 
+              detail: { type: 'togglesupabase', payload } 
+            }));
+          }
+          break;
+        }
+        case 'getsupabasestatus': {
+          // Handle Supabase status response
+          if (typeof payload === 'object' && payload !== null) {
+            // Dispatch custom event for SupabaseControl component
+            window.dispatchEvent(new CustomEvent('supabase-status', { 
+              detail: { type: 'getsupabasestatus', payload } 
+            }));
+          }
+          break;
+        }
       }
     } catch (_) {
       // ignore unhandled
