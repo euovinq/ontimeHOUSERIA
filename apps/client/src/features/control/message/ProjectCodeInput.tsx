@@ -3,7 +3,7 @@ import { Input, Button, useDisclosure } from '@chakra-ui/react';
 import { IoRefresh, IoLink } from 'react-icons/io5';
 
 import useProjectData, { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
-import { generateProjectCode } from 'ontime-utils';
+import { generateProjectCode } from 'houseriaapp-utils';
 import { cx } from '../../../common/utils/styleUtils';
 import ProjectLinksModal from './ProjectLinksModal';
 import SupabaseControl from '../../app-settings/panel/general-panel/SupabaseControl';

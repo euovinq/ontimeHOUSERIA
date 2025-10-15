@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { useLocalStorage } from '@mantine/hooks';
 import { ColumnDef } from '@tanstack/react-table';
-import { OntimeRundownEntry } from 'ontime-types';
+import { OntimeRundownEntry } from 'houseriaapp-types';
 
 export default function useColumnManager(columns: ColumnDef<OntimeRundownEntry>[]) {
   const [columnVisibility, setColumnVisibility] = useLocalStorage({ key: 'table-hidden', defaultValue: {} });

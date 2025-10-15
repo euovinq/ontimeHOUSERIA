@@ -1,4 +1,4 @@
-import { Automation, AutomationDTO, CustomFields, TimerLifeCycle, Trigger } from 'ontime-types';
+import { Automation, AutomationDTO, CustomFields, TimerLifeCycle, Trigger } from 'houseriaapp-types';
 
 type CycleLabel = {
   id: number;

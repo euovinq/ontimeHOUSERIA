@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { MaybeString } from 'ontime-types';
+import { MaybeString } from 'houseriaapp-types';
 
 import { cx } from '../../../common/utils/styleUtils';
 

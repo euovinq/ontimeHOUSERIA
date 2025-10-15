@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { MaybeString } from 'ontime-types';
+import { MaybeString } from 'houseriaapp-types';
 
 import Schedule from './Schedule';
 import { ScheduleProvider } from './ScheduleContext';

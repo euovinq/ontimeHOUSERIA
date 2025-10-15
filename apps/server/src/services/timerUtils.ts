@@ -1,5 +1,5 @@
-import { MaybeNumber, TimerPhase } from 'ontime-types';
-import { dayInMs, isPlaybackActive } from 'ontime-utils';
+import { MaybeNumber, TimerPhase } from 'houseriaapp-types';
+import { dayInMs, isPlaybackActive } from 'houseriaapp-utils';
 import type { RuntimeState } from '../stores/runtimeState.js';
 
 /**

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { NormalisedRundown, OntimeRundown, OntimeRundownEntry, RundownCached } from 'ontime-types';
+import { NormalisedRundown, OntimeRundown, OntimeRundownEntry, RundownCached } from 'houseriaapp-types';
 
 import { queryRefetchIntervalSlow } from '../../ontimeConfig';
 import { RUNDOWN } from '../api/constants';

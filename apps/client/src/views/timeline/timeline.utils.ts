@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { isOntimeEvent, isPlayableEvent, MaybeString, OntimeEvent, OntimeRundown, PlayableEvent } from 'ontime-types';
+import { isOntimeEvent, isPlayableEvent, MaybeString, OntimeEvent, OntimeRundown, PlayableEvent } from 'houseriaapp-types';
 import {
   dayInMs,
   getEventWithId,
@@ -9,7 +9,7 @@ import {
   getTimeFromPrevious,
   isNewLatest,
   MILLIS_PER_HOUR,
-} from 'ontime-utils';
+} from 'houseriaapp-utils';
 
 import { clamp } from '../../common/utils/math';
 import { formatDuration } from '../../common/utils/time';

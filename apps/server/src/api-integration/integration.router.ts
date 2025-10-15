@@ -5,7 +5,7 @@
  *
  */
 
-import { LogOrigin } from 'ontime-types';
+import { LogOrigin } from 'houseriaapp-types';
 
 import express, { type Request, type Response } from 'express';
 
@@ -13,7 +13,7 @@ import { logger } from '../classes/Logger.js';
 import { integrationPayloadFromPath } from '../adapters/utils/parse.js';
 
 import { dispatchFromAdapter } from './integration.controller.js';
-import { getErrorMessage } from 'ontime-utils';
+import { getErrorMessage } from 'houseriaapp-utils';
 import { isEmptyObject } from '../utils/parserUtils.js';
 
 export const integrationRouter = express.Router();

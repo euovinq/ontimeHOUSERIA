@@ -1,5 +1,5 @@
-import type { MaybeString } from 'ontime-types';
-import { EndAction, TimerType, TimeStrategy } from 'ontime-types';
+import type { MaybeString } from 'houseriaapp-types';
+import { EndAction, TimerType, TimeStrategy } from 'houseriaapp-types';
 
 /**
  * Check if a given value is a valid type linkStart, returns the fallback otherwise

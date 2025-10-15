@@ -1,4 +1,4 @@
-import { LogOrigin, OntimeAction } from 'ontime-types';
+import { LogOrigin, OntimeAction } from 'houseriaapp-types';
 
 import { logger } from '../../../classes/Logger.js';
 import { auxTimerService } from '../../../services/aux-timer-service/AuxTimerService.js';

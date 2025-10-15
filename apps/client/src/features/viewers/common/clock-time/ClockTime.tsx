@@ -2,7 +2,7 @@
  * encapsulate logic related to showing a clock timer
  */
 
-import { MaybeNumber } from 'ontime-types';
+import { MaybeNumber } from 'houseriaapp-types';
 
 import { formatTime } from '../../../../common/utils/time';
 import { FORMAT_12, FORMAT_24 } from '../../../../viewerConfig';

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { dayInMs } from 'ontime-utils';
+import { dayInMs } from 'houseriaapp-utils';
 
 import { version } from '../../../../../package.json';
 import { isLocalhost } from '../../externals';

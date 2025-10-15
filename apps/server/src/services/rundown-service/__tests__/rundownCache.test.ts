@@ -9,8 +9,8 @@ import {
   SupportedEvent,
   TimeStrategy,
   TimerType,
-} from 'ontime-types';
-import { MILLIS_PER_HOUR, MILLIS_PER_MINUTE, dayInMs } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { MILLIS_PER_HOUR, MILLIS_PER_MINUTE, dayInMs } from 'houseriaapp-utils';
 
 import { calculateRuntimeDelays, getDelayAt, calculateRuntimeDelaysFrom } from '../delayUtils.js';
 import {

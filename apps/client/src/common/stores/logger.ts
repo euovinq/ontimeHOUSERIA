@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { Log, LogLevel, LogOrigin } from 'ontime-types';
-import { generateId, millisToString } from 'ontime-utils';
+import { Log, LogLevel, LogOrigin } from 'houseriaapp-types';
+import { generateId, millisToString } from 'houseriaapp-utils';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 

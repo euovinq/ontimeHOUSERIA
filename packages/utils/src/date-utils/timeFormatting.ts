@@ -1,4 +1,4 @@
-import type { MaybeNumber } from 'ontime-types';
+import type { MaybeNumber } from 'houseriaapp-types';
 
 import { millisToSeconds, secondsToHours, secondsToMinutes } from './conversionUtils.js';
 

@@ -1,4 +1,4 @@
-import { OSCOutput, HTTPOutput } from 'ontime-types';
+import { OSCOutput, HTTPOutput } from 'houseriaapp-types';
 
 export function makeOSCAction(action?: Partial<OSCOutput>): OSCOutput {
   return {

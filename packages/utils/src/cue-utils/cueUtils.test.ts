@@ -1,5 +1,5 @@
-import type { OntimeDelay, OntimeEvent, OntimeRundown } from 'ontime-types';
-import { SupportedEvent } from 'ontime-types';
+import type { OntimeDelay, OntimeEvent, OntimeRundown } from 'houseriaapp-types';
+import { SupportedEvent } from 'houseriaapp-types';
 
 import { getCueCandidate, getIncrement, sanitiseCue } from './cueUtils.js';
 

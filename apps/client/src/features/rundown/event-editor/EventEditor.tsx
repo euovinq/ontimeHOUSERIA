@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { CustomFieldLabel, OntimeEvent } from 'ontime-types';
+import { CustomFieldLabel, OntimeEvent } from 'houseriaapp-types';
 
 import AppLink from '../../../common/components/link/app-link/AppLink';
 import { useEventAction } from '../../../common/hooks/useEventAction';

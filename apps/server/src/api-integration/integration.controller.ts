@@ -1,5 +1,5 @@
-import { MessageState, OffsetMode, OntimeEvent, SimpleDirection, SimplePlayback } from 'ontime-types';
-import { MILLIS_PER_HOUR, MILLIS_PER_SECOND } from 'ontime-utils';
+import { MessageState, OffsetMode, OntimeEvent, SimpleDirection, SimplePlayback } from 'houseriaapp-types';
+import { MILLIS_PER_HOUR, MILLIS_PER_SECOND } from 'houseriaapp-utils';
 
 import { DeepPartial } from 'ts-essentials';
 

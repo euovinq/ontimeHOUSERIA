@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { MaybeString, OntimeEvent, ProjectData, Runtime, Settings } from 'ontime-types';
+import { MaybeString, OntimeEvent, ProjectData, Runtime, Settings } from 'houseriaapp-types';
 
 import ViewLogo from '../../common/components/view-logo/ViewLogo';
 import ViewParamsEditor from '../../common/components/view-params-editor/ViewParamsEditor';

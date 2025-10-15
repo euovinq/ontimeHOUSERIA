@@ -11,7 +11,7 @@ import {
   Playback,
   RundownCached,
   SupportedEvent,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 import {
   checkIsNextDay,
   getFirstNormal,
@@ -21,7 +21,7 @@ import {
   getPreviousBlockNormal,
   getPreviousNormal,
   isNewLatest,
-} from 'ontime-utils';
+} from 'houseriaapp-utils';
 
 import { type EventOptions, useEventAction } from '../../common/hooks/useEventAction';
 import useFollowComponent from '../../common/hooks/useFollowComponent';

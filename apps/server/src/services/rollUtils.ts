@@ -1,5 +1,5 @@
-import { dayInMs, getFirstEvent } from 'ontime-utils';
-import { OntimeEvent, MaybeNumber, PlayableEvent, isPlayableEvent } from 'ontime-types';
+import { dayInMs, getFirstEvent } from 'houseriaapp-utils';
+import { OntimeEvent, MaybeNumber, PlayableEvent, isPlayableEvent } from 'houseriaapp-types';
 
 import { normaliseEndTime } from './timerUtils.js';
 

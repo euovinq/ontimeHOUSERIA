@@ -1,4 +1,4 @@
-import { DatabaseModel, AutomationSettings, NormalisedAutomation, Trigger } from 'ontime-types';
+import { DatabaseModel, AutomationSettings, NormalisedAutomation, Trigger } from 'houseriaapp-types';
 
 import { dbModel } from '../../models/dataModel.js';
 import type { ErrorEmitter } from '../../utils/parser.js';

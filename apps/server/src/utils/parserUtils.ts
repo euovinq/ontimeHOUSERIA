@@ -1,5 +1,5 @@
 import { unlink } from 'fs';
-import { deepmerge } from 'ontime-utils';
+import { deepmerge } from 'houseriaapp-utils';
 
 /**
  * @description Ensures variable is string, it skips object types

@@ -1,5 +1,5 @@
-import type { OntimeEvent } from 'ontime-types';
-import { TimeStrategy } from 'ontime-types';
+import type { OntimeEvent } from 'houseriaapp-types';
+import { TimeStrategy } from 'houseriaapp-types';
 
 import { dayInMs } from '../date-utils/conversionUtils.js';
 import { validateTimeStrategy } from '../validate-events/validateEvent.js';

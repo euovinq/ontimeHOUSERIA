@@ -1,4 +1,4 @@
-import { Log, RundownCached, RuntimeStore } from 'ontime-types';
+import { Log, RundownCached, RuntimeStore } from 'houseriaapp-types';
 
 import { isProduction, websocketUrl } from '../../externals';
 import { CLIENT_LIST, CUSTOM_FIELDS, REPORT, RUNDOWN, RUNTIME } from '../api/constants';

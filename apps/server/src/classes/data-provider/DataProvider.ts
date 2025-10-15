@@ -7,7 +7,7 @@ import {
   CustomFields,
   URLPreset,
   AutomationSettings,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 import type { Low } from 'lowdb';
 import { JSONFilePreset } from 'lowdb/node';

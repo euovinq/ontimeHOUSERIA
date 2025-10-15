@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { OntimeEvent, OntimeRundownEntry, SupportedEvent } from 'ontime-types';
+import { OntimeEvent, OntimeRundownEntry, SupportedEvent } from 'houseriaapp-types';
 
 import Empty from '../../../common/components/state/Empty';
 import { formatTime } from '../../../common/utils/time';

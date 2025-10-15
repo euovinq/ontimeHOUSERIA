@@ -1,5 +1,5 @@
-import { getErrorMessage } from 'ontime-utils';
-import { Automation, AutomationSettings, ErrorResponse, Trigger } from 'ontime-types';
+import { getErrorMessage } from 'houseriaapp-utils';
+import { Automation, AutomationSettings, ErrorResponse, Trigger } from 'houseriaapp-types';
 
 import type { Request, Response } from 'express';
 

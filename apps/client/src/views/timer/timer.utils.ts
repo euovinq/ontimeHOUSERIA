@@ -7,8 +7,8 @@ import {
   TimerPhase,
   TimerType,
   ViewSettings,
-} from 'ontime-types';
-import { isPlaybackActive } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { isPlaybackActive } from 'houseriaapp-utils';
 
 import { getFormattedTimer, getPropertyValue } from '../../features/viewers/common/viewUtils';
 

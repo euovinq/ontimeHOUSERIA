@@ -1,4 +1,4 @@
-import { OntimeEvent, SupportedEvent } from 'ontime-types';
+import { OntimeEvent, SupportedEvent } from 'houseriaapp-types';
 
 /**
  * @description Creates a safe duplicate of an event

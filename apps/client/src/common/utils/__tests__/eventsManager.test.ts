@@ -1,4 +1,4 @@
-import { EndAction, EventCustomFields, OntimeEvent, SupportedEvent, TimerType, TimeStrategy } from 'ontime-types';
+import { EndAction, EventCustomFields, OntimeEvent, SupportedEvent, TimerType, TimeStrategy } from 'houseriaapp-types';
 
 import { cloneEvent } from '../eventsManager';
 

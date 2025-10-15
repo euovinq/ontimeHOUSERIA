@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { OntimeReport } from 'ontime-types';
+import { OntimeReport } from 'houseriaapp-types';
 
 import { ontimeQueryClient } from '../../common/queryClient';
 

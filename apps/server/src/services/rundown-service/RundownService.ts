@@ -11,8 +11,8 @@ import {
   OntimeRundown,
   PatchWithId,
   EventPostPayload,
-} from 'ontime-types';
-import { getCueCandidate } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { getCueCandidate } from 'houseriaapp-utils';
 
 import { block as blockDef, delay as delayDef } from '../../models/eventsDefinition.js';
 import { sendRefetch } from '../../adapters/websocketAux.js';

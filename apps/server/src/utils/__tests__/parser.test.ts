@@ -13,14 +13,14 @@ import {
   TimerType,
   TimeStrategy,
   ViewSettings,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 import { dbModel } from '../../models/dataModel.js';
 
 import { createEvent, getCustomFieldData, parseExcel, parseDatabaseModel } from '../parser.js';
 import { makeString } from '../parserUtils.js';
 import { parseRundown, parseUrlPresets, parseViewSettings } from '../parserFunctions.js';
-import { ImportMap, MILLIS_PER_MINUTE } from 'ontime-utils';
+import { ImportMap, MILLIS_PER_MINUTE } from 'houseriaapp-utils';
 import * as cache from '../../services/rundown-service/rundownCache.js';
 
 const requiredSettings = {

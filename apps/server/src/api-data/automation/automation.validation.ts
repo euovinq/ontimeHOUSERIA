@@ -7,8 +7,8 @@ import {
   OSCOutput,
   SecondarySource,
   timerLifecycleValues,
-} from 'ontime-types';
-import { parseUserTime } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { parseUserTime } from 'houseriaapp-utils';
 
 import type { Request, Response, NextFunction } from 'express';
 import { body, oneOf, param, validationResult } from 'express-validator';

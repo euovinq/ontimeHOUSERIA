@@ -1,4 +1,4 @@
-import { MaybeNumber } from 'ontime-types';
+import { MaybeNumber } from 'houseriaapp-types';
 
 import { clamp } from './math';
 

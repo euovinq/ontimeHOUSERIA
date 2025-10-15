@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Button, Input, Switch, useDisclosure } from '@chakra-ui/react';
-import { ViewSettings } from 'ontime-types';
+import { ViewSettings } from 'houseriaapp-types';
 
 import { maybeAxiosError } from '../../../../common/api/utils';
 import { postViewSettings } from '../../../../common/api/viewSettings';

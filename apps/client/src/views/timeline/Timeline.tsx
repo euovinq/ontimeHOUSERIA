@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { useViewportSize } from '@mantine/hooks';
-import { isOntimeEvent, isPlayableEvent, OntimeRundown } from 'ontime-types';
-import { dayInMs, getLastEvent, MILLIS_PER_HOUR } from 'ontime-utils';
+import { isOntimeEvent, isPlayableEvent, OntimeRundown } from 'houseriaapp-types';
+import { dayInMs, getLastEvent, MILLIS_PER_HOUR } from 'houseriaapp-utils';
 
 import TimelineMarkers from './timeline-markers/TimelineMarkers';
 import { getElementPosition, getEndHour, getStartHour } from './timeline.utils';

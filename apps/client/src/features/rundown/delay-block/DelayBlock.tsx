@@ -3,7 +3,7 @@ import { IoCheckmarkDone, IoClose, IoReorderTwo } from 'react-icons/io5';
 import { Button } from '@chakra-ui/react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { OntimeDelay } from 'ontime-types';
+import { OntimeDelay } from 'houseriaapp-types';
 
 import DelayInput from '../../../common/components/input/delay-input/DelayInput';
 import { useEventAction } from '../../../common/hooks/useEventAction';

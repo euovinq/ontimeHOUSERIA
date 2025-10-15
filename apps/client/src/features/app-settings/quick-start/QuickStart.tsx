@@ -12,8 +12,8 @@ import {
   Select,
   Switch,
 } from '@chakra-ui/react';
-import { QuickStartData } from 'ontime-types';
-import { parseUserTime } from 'ontime-utils';
+import { QuickStartData } from 'houseriaapp-types';
+import { parseUserTime } from 'houseriaapp-utils';
 
 import { quickProject } from '../../../common/api/db';
 import { invalidateAllCaches, maybeAxiosError } from '../../../common/api/utils';

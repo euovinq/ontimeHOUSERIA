@@ -1,4 +1,4 @@
-import { isOntimeEvent, MaybeString, OntimeEvent, OntimeRundown } from 'ontime-types';
+import { isOntimeEvent, MaybeString, OntimeEvent, OntimeRundown } from 'houseriaapp-types';
 
 import { formatTime } from '../../../common/utils/time';
 import SuperscriptTime from '../common/superscript-time/SuperscriptTime';

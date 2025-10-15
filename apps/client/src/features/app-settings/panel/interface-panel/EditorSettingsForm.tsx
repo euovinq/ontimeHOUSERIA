@@ -1,6 +1,6 @@
 import { Select, Switch } from '@chakra-ui/react';
-import { EndAction, TimerType, TimeStrategy } from 'ontime-types';
-import { parseUserTime } from 'ontime-utils';
+import { EndAction, TimerType, TimeStrategy } from 'houseriaapp-types';
+import { parseUserTime } from 'houseriaapp-utils';
 
 import TimeInput from '../../../../common/components/input/time-input/TimeInput';
 import { editorSettingsDefaults, useEditorSettings } from '../../../../common/stores/editorSettings';

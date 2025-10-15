@@ -1,5 +1,5 @@
 import { MouseEvent } from 'react';
-import { isOntimeEvent, MaybeNumber, MaybeString, OntimeEvent, RundownCached } from 'ontime-types';
+import { isOntimeEvent, MaybeNumber, MaybeString, OntimeEvent, RundownCached } from 'houseriaapp-types';
 import { create } from 'zustand';
 
 import { RUNDOWN } from '../../common/api/constants';

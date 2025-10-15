@@ -3,8 +3,8 @@
  * Google Sheets
  */
 
-import { CustomFields, OntimeRundown } from 'ontime-types';
-import type { ImportMap } from 'ontime-utils';
+import { CustomFields, OntimeRundown } from 'houseriaapp-types';
+import type { ImportMap } from 'houseriaapp-utils';
 
 import { extname } from 'path';
 import { existsSync } from 'fs';

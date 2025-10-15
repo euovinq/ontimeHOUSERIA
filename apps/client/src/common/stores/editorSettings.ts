@@ -1,5 +1,5 @@
-import { EndAction, TimerType, TimeStrategy } from 'ontime-types';
-import { validateEndAction, validateTimerType, validateTimeStrategy } from 'ontime-utils';
+import { EndAction, TimerType, TimeStrategy } from 'houseriaapp-types';
+import { validateEndAction, validateTimerType, validateTimeStrategy } from 'houseriaapp-utils';
 import { create } from 'zustand';
 
 import { booleanFromLocalStorage } from '../utils/localStorage';

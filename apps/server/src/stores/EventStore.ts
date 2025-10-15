@@ -1,4 +1,4 @@
-import { RuntimeStore } from 'ontime-types';
+import { RuntimeStore } from 'houseriaapp-types';
 
 import { socket } from '../adapters/WebsocketAdapter.js';
 

@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { Playback, ProjectData, TimerPhase, TimerType, ViewSettings } from 'ontime-types';
+import { Playback, ProjectData, TimerPhase, TimerType, ViewSettings } from 'houseriaapp-types';
 
 import ViewLogo from '../../../common/components/view-logo/ViewLogo';
 import ViewParamsEditor from '../../../common/components/view-params-editor/ViewParamsEditor';

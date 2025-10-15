@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
 import { useViewportSize } from '@mantine/hooks';
-import { CustomFields, OntimeEvent, ProjectData, Runtime, Settings } from 'ontime-types';
-import { millisToString, removeLeadingZero } from 'ontime-utils';
+import { CustomFields, OntimeEvent, ProjectData, Runtime, Settings } from 'houseriaapp-types';
+import { millisToString, removeLeadingZero } from 'houseriaapp-utils';
 
 import ProgressBar from '../../common/components/progress-bar/ProgressBar';
 import Empty from '../../common/components/state/Empty';

@@ -1,4 +1,4 @@
-import type { MaybeNumber } from 'ontime-types';
+import type { MaybeNumber } from 'houseriaapp-types';
 
 export const MILLIS_PER_SECOND = 1000;
 export const MILLIS_PER_MINUTE = 1000 * 60;

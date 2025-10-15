@@ -1,4 +1,4 @@
-import { MILLIS_PER_MINUTE } from 'ontime-utils';
+import { MILLIS_PER_MINUTE } from 'houseriaapp-utils';
 import { getShouldClockUpdate, getShouldTimerUpdate } from '../rundownService.utils.js';
 
 beforeEach(() => {

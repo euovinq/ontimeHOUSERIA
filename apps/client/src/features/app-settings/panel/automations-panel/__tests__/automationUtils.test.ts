@@ -1,4 +1,4 @@
-import { TimerLifeCycle, Trigger } from 'ontime-types';
+import { TimerLifeCycle, Trigger } from 'houseriaapp-types';
 
 import { checkDuplicates } from '../automationUtils';
 

@@ -1,6 +1,6 @@
 import axios, { AxiosResponse } from 'axios';
-import { CustomFields, OntimeRundown } from 'ontime-types';
-import { ImportMap } from 'ontime-utils';
+import { CustomFields, OntimeRundown } from 'houseriaapp-types';
+import { ImportMap } from 'houseriaapp-utils';
 
 import { apiEntryUrl } from './constants';
 

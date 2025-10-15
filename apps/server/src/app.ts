@@ -1,4 +1,4 @@
-import { LogOrigin, Playback, runtimeStorePlaceholder, SimpleDirection, SimplePlayback } from 'ontime-types';
+import { LogOrigin, Playback, runtimeStorePlaceholder, SimpleDirection, SimplePlayback } from 'houseriaapp-types';
 
 import 'dotenv/config';
 import express from 'express';

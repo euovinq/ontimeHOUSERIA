@@ -1,4 +1,4 @@
-import { SupportedEvent, OntimeEvent, OntimeDelay } from 'ontime-types';
+import { SupportedEvent, OntimeEvent, OntimeDelay } from 'houseriaapp-types';
 
 const baseEvent = {
   type: SupportedEvent.Event,

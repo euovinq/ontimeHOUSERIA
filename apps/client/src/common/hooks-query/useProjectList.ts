@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ProjectFileListResponse } from 'ontime-types';
+import { ProjectFileListResponse } from 'houseriaapp-types';
 
 import { queryRefetchIntervalSlow } from '../../ontimeConfig';
 import { PROJECT_LIST } from '../api/constants';

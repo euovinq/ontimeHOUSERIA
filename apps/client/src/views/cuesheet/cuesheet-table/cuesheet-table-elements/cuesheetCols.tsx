@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { CellContext, ColumnDef } from '@tanstack/react-table';
-import { CustomFields, isOntimeEvent, OntimeEvent, OntimeRundownEntry, TimeStrategy } from 'ontime-types';
-import { millisToString, removeSeconds } from 'ontime-utils';
+import { CustomFields, isOntimeEvent, OntimeEvent, OntimeRundownEntry, TimeStrategy } from 'houseriaapp-types';
+import { millisToString, removeSeconds } from 'houseriaapp-utils';
 
 import DelayIndicator from '../../../../common/components/delay-indicator/DelayIndicator';
 import { formatDuration } from '../../../../common/utils/time';

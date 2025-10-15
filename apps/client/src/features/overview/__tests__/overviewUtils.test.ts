@@ -1,4 +1,4 @@
-import { dayInMs } from 'ontime-utils';
+import { dayInMs } from 'houseriaapp-utils';
 
 import { calculateEndAndDaySpan } from '../overviewUtils';
 

@@ -1,6 +1,6 @@
 import { horizontalListSortingStrategy, SortableContext } from '@dnd-kit/sortable';
 import { flexRender, HeaderGroup } from '@tanstack/react-table';
-import { OntimeRundownEntry } from 'ontime-types';
+import { OntimeRundownEntry } from 'houseriaapp-types';
 
 import { getAccessibleColour } from '../../../../common/utils/styleUtils';
 import { useCuesheetOptions } from '../../cuesheet.options';
