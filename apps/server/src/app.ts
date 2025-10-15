@@ -40,6 +40,7 @@ import { initRundown } from './services/rundown-service/RundownService.js';
 import { initialiseProject } from './services/project-service/ProjectService.js';
 import { getShowWelcomeDialog } from './services/app-state-service/AppStateService.js';
 import { oscServer } from './adapters/OscAdapter.js';
+import { supabaseAdapter } from './adapters/SupabaseAdapter.js';
 
 // Utilities
 import { clearUploadfolder } from './utils/upload.js';

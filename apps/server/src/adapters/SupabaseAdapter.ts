@@ -17,7 +17,7 @@ export interface SupabaseConfig {
 export class SupabaseAdapter {
   private supabase: any = null;
   private config: SupabaseConfig | null = null;
-  private isConnected = false;
+  private isConnected = false; // ALWAYS start as disconnected
   private lastSentData: any = null;
   private configFilePath: string;
   private lastSendTime: number = 0;
@@ -48,73 +48,109 @@ export class SupabaseAdapter {
   private readonly DELAY_DEBOUNCE_MS = 2000; // Increased from 500ms to 2s
 
   constructor() {
-    // Listen to eventStore changes with specific triggers
-    this.setupEventStoreListener();
+    console.log('🏗️ SupabaseAdapter constructor called');
+    console.log('🔍 Initial state - isConnected:', this.isConnected);
     
     // Set config file path
     this.configFilePath = join(publicDir.root, 'supabase-config.json');
+    console.log('📁 Config file path:', this.configFilePath);
     
-    // Load hardcoded configuration
+    // Load hardcoded configuration - ALWAYS start disabled
+    console.log('🔄 Loading hardcoded configuration (ALWAYS DISABLED)...');
     this.loadConfigFromEnv();
+    
+    // Setup eventStore listener after a delay to ensure eventStore is initialized
+    setTimeout(() => {
+      console.log('🔄 Setting up eventStore listener...');
+      this.setupEventStoreListener();
+    }, 1000);
+    
+    console.log('🏗️ SupabaseAdapter constructor completed - Final Status:', {
+      isConnected: this.isConnected,
+      hasConfig: !!this.config,
+      hasSupabase: !!this.supabase,
+      configEnabled: this.config?.enabled
+    });
   }
 
   /**
    * Load configuration from hardcoded values (fallback to env if needed)
    */
   private loadConfigFromEnv() {
-    // Hardcoded Supabase configuration
-    const hardcodedConfig: SupabaseConfig = {
+    console.log('🔧 SupabaseAdapter.loadConfigFromEnv() called');
+    
+    // ALWAYS use hardcoded configuration - NEVER load from saved files
+    const config: SupabaseConfig = {
       url: 'https://YOUR_PROJECT.supabase.co',
       anonKey: 'YOUR_SUPABASE_ANON_KEY',
       tableName: 'ontime_realtime',
-      enabled: false
+      enabled: false  // ← ALWAYS start disabled - user must connect manually
     };
 
-    // Fallback to environment variables if hardcoded values are empty
-    const envConfig: SupabaseConfig = {
-      url: hardcodedConfig.url || process.env.SUPABASE_URL || '',
-      anonKey: hardcodedConfig.anonKey || process.env.SUPABASE_ANON_KEY || '',
-      tableName: hardcodedConfig.tableName || process.env.SUPABASE_TABLE_NAME || 'ontime_realtime',
-      enabled: hardcodedConfig.enabled !== undefined ? hardcodedConfig.enabled : (process.env.SUPABASE_ENABLED === 'true')
-    };
+    console.log('📋 Hardcoded config (ALWAYS DISABLED):', {
+      url: config.url ? 'SET' : 'MISSING',
+      anonKey: config.anonKey ? 'SET' : 'MISSING',
+      tableName: config.tableName,
+      enabled: config.enabled
+    });
 
-    // Use console.log instead of logger during initialization
-    console.log(`Supabase config - URL: ${envConfig.url ? 'SET' : 'NOT SET'}, Key: ${envConfig.anonKey ? 'SET' : 'NOT SET'}, Enabled: ${envConfig.enabled}`);
-
-    if (envConfig.url && envConfig.anonKey) {
-      console.log('Supabase configuration loaded');
-      this.init(envConfig);
-    } else {
-      console.warn('Supabase configuration not found');
-    }
+    // ALWAYS store config but NEVER initialize automatically
+    this.config = config;
+    console.log('🔌 Supabase ALWAYS starts disabled - user must connect manually');
   }
 
   /**
    * Initialize Supabase connection
    */
-  init(config: SupabaseConfig) {
+  async init(config: SupabaseConfig) {
+    console.log('🔧 SupabaseAdapter.init() called with config:', {
+      enabled: config.enabled,
+      url: config.url ? 'SET' : 'MISSING',
+      anonKey: config.anonKey ? 'SET' : 'MISSING',
+      tableName: config.tableName
+    });
+
     if (!config.enabled || !config.url || !config.anonKey) {
-      console.log('Supabase adapter disabled or missing config');
+      console.log('❌ Supabase adapter disabled or missing config');
       console.log(`Config details - enabled: ${config.enabled}, url: ${config.url ? 'SET' : 'MISSING'}, anonKey: ${config.anonKey ? 'SET' : 'MISSING'}`);
+      this.isConnected = false;
       return;
     }
 
     try {
+      console.log('🔄 Creating Supabase client...');
+      console.log('🔄 URL:', config.url);
+      console.log('🔄 Key length:', config.anonKey.length);
+      
       this.config = config;
       this.supabase = createClient(config.url, config.anonKey);
-      this.isConnected = true;
       
-      console.log(`Supabase adapter initialized for table: ${config.tableName || 'ontime_realtime'}`);
-      console.log(`Supabase URL: ${config.url}`);
-      console.log(`Supabase anonKey: ${config.anonKey.substring(0, 20)}...`);
+      console.log('🔄 Supabase client created successfully');
+      console.log('🔄 Testing client...');
       
-      // Save configuration
-      this.saveConfig(config);
+      // Test the client immediately
+      const testResult = await this.testConnection();
+      console.log('🔄 Test result:', testResult);
       
-      // Send initial data
-      this.sendToSupabase();
+      this.isConnected = testResult;
+      
+      if (this.isConnected) {
+        console.log('✅ Supabase adapter initialized successfully!');
+        console.log(`📊 Table: ${config.tableName || 'ontime_realtime'}`);
+        console.log(`🌐 URL: ${config.url}`);
+        console.log(`🔑 Key: ${config.anonKey.substring(0, 20)}...`);
+        
+        // Save configuration
+        this.saveConfig(config);
+        
+        // Send initial data
+        console.log('📤 Sending initial data to Supabase...');
+        this.sendToSupabase();
+      } else {
+        console.log('❌ Supabase client created but connection test failed');
+      }
     } catch (error) {
-      console.error(`Failed to initialize Supabase: ${error}`);
+      console.error(`❌ Failed to initialize Supabase: ${error}`);
       this.isConnected = false;
     }
   }
@@ -123,18 +159,33 @@ export class SupabaseAdapter {
    * Setup listener for eventStore changes with specific triggers
    */
   private setupEventStoreListener() {
-    // Hook into the eventStore.set method to catch specific changes
-    const originalSet = eventStore.set;
-    
-    eventStore.set = <T extends keyof any>(key: T, value: any) => {
-      // Call original method
-      originalSet.call(eventStore, key, value);
+    try {
+      console.log('🔧 Setting up eventStore listener...');
       
-      // Check for specific triggers
-      if (this.isConnected) {
-        this.checkForTriggers(key, value);
+      // Check if eventStore is available
+      if (!eventStore || !eventStore.set) {
+        console.log('❌ eventStore not available yet, retrying in 500ms...');
+        setTimeout(() => this.setupEventStoreListener(), 500);
+        return;
       }
-    };
+      
+      // Hook into the eventStore.set method to catch specific changes
+      const originalSet = eventStore.set;
+      
+      eventStore.set = <T extends keyof any>(key: T, value: any) => {
+        // Call original method
+        originalSet.call(eventStore, key, value);
+        
+        // Check for specific triggers
+        if (this.isConnected) {
+          this.checkForTriggers(key, value);
+        }
+      };
+      
+      console.log('✅ eventStore listener setup completed');
+    } catch (error) {
+      console.error('❌ Error setting up eventStore listener:', error);
+    }
   }
 
   /**
@@ -517,13 +568,26 @@ export class SupabaseAdapter {
    * Toggle Supabase connection on/off
    */
   public toggleConnection(): boolean {
+    console.log('🔄 toggleConnection() called - Current status:', {
+      isConnected: this.isConnected,
+      hasConfig: !!this.config,
+      hasSupabase: !!this.supabase
+    });
+
     if (this.isConnected) {
+      console.log('🔌 Disconnecting Supabase...');
       this.disconnect();
       logger.info(LogOrigin.Server, 'Supabase: Connection disabled by user');
       return false;
     } else {
+      console.log('🔌 Attempting to reconnect Supabase...');
       logger.info(LogOrigin.Server, 'Supabase: Attempting to reconnect...');
       this.reconnect();
+      console.log('🔌 Reconnect completed - New status:', {
+        isConnected: this.isConnected,
+        hasConfig: !!this.config,
+        hasSupabase: !!this.supabase
+      });
       logger.info(LogOrigin.Server, 'Supabase: Connection enabled by user');
       return this.isConnected;
     }
@@ -533,24 +597,46 @@ export class SupabaseAdapter {
    * Get current connection status
    */
   public getConnectionStatus(): { connected: boolean; enabled: boolean } {
-    return {
-      connected: this.isConnected,
-      enabled: this.config?.enabled || false
+    console.log('📊 getConnectionStatus() called - Current status:', {
+      isConnected: this.isConnected,
+      hasConfig: !!this.config,
+      hasSupabase: !!this.supabase,
+      configEnabled: this.config?.enabled,
+      configObject: this.config
+    });
+    
+    // ALWAYS return disabled and disconnected unless explicitly enabled
+    const isEnabled = this.config?.enabled === true;
+    const isConnected = isEnabled && this.isConnected;
+    
+    const status = {
+      connected: isConnected,
+      enabled: isEnabled
     };
+    
+    console.log('📊 Returning status (FORCED):', status);
+    console.log('📊 DEBUG - isEnabled check:', {
+      'this.config?.enabled': this.config?.enabled,
+      '=== true': this.config?.enabled === true,
+      'isEnabled': isEnabled,
+      'isConnected': isConnected
+    });
+    return status;
   }
 
   /**
    * Reconnect to Supabase
    */
   private reconnect() {
-    // Force enable Supabase with hardcoded config
-    const config: SupabaseConfig = {
-      url: 'https://YOUR_PROJECT.supabase.co',
-      anonKey: 'YOUR_SUPABASE_ANON_KEY',
-      tableName: 'ontime_realtime',
-      enabled: true
-    };
-    this.init(config);
+    if (!this.config) {
+      console.error('❌ Cannot reconnect Supabase: configuration not loaded');
+      return;
+    }
+
+    const config: SupabaseConfig = { ...this.config, enabled: true };
+    this.init(config).catch(error => {
+      console.error('❌ Error reconnecting to Supabase:', error);
+    });
   }
 
   /**
@@ -932,15 +1018,13 @@ export class SupabaseAdapter {
   }
 
   /**
-   * Save configuration to file
+   * Save configuration to file - DISABLED to prevent overriding hardcoded config
    */
-  private async saveConfig(config: SupabaseConfig) {
-    try {
-      await writeFile(this.configFilePath, JSON.stringify(config, null, 2));
-      logger.info(LogOrigin.Server, 'Supabase configuration saved');
-    } catch (error) {
-      logger.error(LogOrigin.Server, `Failed to save Supabase config: ${error}`);
-    }
+  private async saveConfig(_config: SupabaseConfig) {
+    // DISABLED: Never save config to prevent overriding hardcoded settings
+    console.log('🚫 Config save disabled - using hardcoded configuration only');
+    logger.info(LogOrigin.Server, 'Supabase configuration save disabled - using hardcoded config');
+    return;
   }
 
   /**
@@ -950,7 +1034,7 @@ export class SupabaseAdapter {
     try {
       const configData = await readFile(this.configFilePath, 'utf-8');
       const config = JSON.parse(configData);
-      this.init(config);
+      await this.init(config);
       return config;
     } catch (error) {
       logger.warning(LogOrigin.Server, 'No saved Supabase configuration found');
@@ -997,18 +1081,35 @@ export class SupabaseAdapter {
    * Test connection to Supabase
    */
   async testConnection(): Promise<boolean> {
-    if (!this.isConnected || !this.supabase) {
+    console.log('🧪 testConnection() called - Status:', {
+      isConnected: this.isConnected,
+      hasSupabase: !!this.supabase,
+      hasConfig: !!this.config,
+      tableName: this.config?.tableName
+    });
+
+    if (!this.supabase) {
+      console.log('❌ testConnection failed - no supabase client');
       return false;
     }
 
     try {
+      console.log('🧪 Testing Supabase connection...');
       const { data, error } = await this.supabase
         .from(this.config?.tableName || 'ontime_realtime')
         .select('id')
         .limit(1);
       
-      return !error;
+      if (error) {
+        console.log('❌ Supabase test failed with error:', error);
+        logger.error(LogOrigin.Server, `Supabase connection test failed: ${error}`);
+        return false;
+      }
+      
+      console.log('✅ Supabase test successful - data:', data);
+      return true;
     } catch (error) {
+      console.log('❌ Supabase test failed with exception:', error);
       logger.error(LogOrigin.Server, `Supabase connection test failed: ${error}`);
       return false;
     }
