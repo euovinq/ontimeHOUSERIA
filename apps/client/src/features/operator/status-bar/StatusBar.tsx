@@ -1,4 +1,4 @@
-import { Playback } from 'ontime-types';
+import { Playback } from 'houseriaapp-types';
 
 import useViewSettings from '../../../common/hooks-query/useViewSettings';
 

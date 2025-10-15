@@ -7,7 +7,7 @@ import {
   Settings,
   SimpleTimerState,
   ViewSettings,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 import { FitText } from '../../common/components/fit-text/FitText';
 import MultiPartProgressBar from '../../common/components/multi-part-progress-bar/MultiPartProgressBar';

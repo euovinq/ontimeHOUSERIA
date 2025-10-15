@@ -1,4 +1,4 @@
-import { OffsetMode, RuntimeStore, SimpleDirection, SimplePlayback, TimerMessage } from 'ontime-types';
+import { OffsetMode, RuntimeStore, SimpleDirection, SimplePlayback, TimerMessage } from 'houseriaapp-types';
 
 import { useRuntimeStore } from '../stores/runtime';
 import { socketSendJson } from '../utils/socket';

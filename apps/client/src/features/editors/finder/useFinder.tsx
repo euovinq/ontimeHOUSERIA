@@ -1,5 +1,5 @@
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
-import { isOntimeBlock, isOntimeEvent, MaybeString, SupportedEvent } from 'ontime-types';
+import { isOntimeBlock, isOntimeEvent, MaybeString, SupportedEvent } from 'houseriaapp-types';
 
 import { useFlatRundown } from '../../../common/hooks-query/useRundown';
 

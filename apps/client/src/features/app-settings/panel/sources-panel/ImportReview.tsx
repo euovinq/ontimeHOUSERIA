@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@chakra-ui/react';
-import { CustomFields, OntimeRundown } from 'ontime-types';
+import { CustomFields, OntimeRundown } from 'houseriaapp-types';
 
 import * as Panel from '../../panel-utils/PanelUtils';
 

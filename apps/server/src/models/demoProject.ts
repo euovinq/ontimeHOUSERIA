@@ -1,4 +1,4 @@
-import { DatabaseModel, EndAction, SupportedEvent, TimeStrategy, TimerType } from 'ontime-types';
+import { DatabaseModel, EndAction, SupportedEvent, TimeStrategy, TimerType } from 'houseriaapp-types';
 
 export const demoDb: DatabaseModel = {
   rundown: [

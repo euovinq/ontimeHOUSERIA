@@ -1,4 +1,4 @@
-import { DatabaseModel } from 'ontime-types';
+import { DatabaseModel } from 'houseriaapp-types';
 import { ONTIME_VERSION } from '../ONTIME_VERSION.js';
 
 export const dbModel: DatabaseModel = {

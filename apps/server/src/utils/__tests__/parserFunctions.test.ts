@@ -9,7 +9,7 @@ import {
   TimeStrategy,
   TimerType,
   URLPreset,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 import {
   parseCustomFields,

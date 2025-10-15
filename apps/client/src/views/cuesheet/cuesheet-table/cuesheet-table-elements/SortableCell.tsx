@@ -2,7 +2,7 @@ import { CSSProperties, ReactNode } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Header } from '@tanstack/react-table';
-import { OntimeRundownEntry } from 'ontime-types';
+import { OntimeRundownEntry } from 'houseriaapp-types';
 
 import styles from '../CuesheetTable.module.scss';
 

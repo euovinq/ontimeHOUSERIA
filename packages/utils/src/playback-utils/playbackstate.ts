@@ -1,4 +1,4 @@
-import { Playback } from 'ontime-types';
+import { Playback } from 'houseriaapp-types';
 
 /**
  * Utility checks whether the playback is considered to be active

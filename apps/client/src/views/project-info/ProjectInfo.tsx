@@ -1,4 +1,4 @@
-import { ProjectData } from 'ontime-types';
+import { ProjectData } from 'houseriaapp-types';
 
 import Empty from '../../common/components/state/Empty';
 import EmptyPage from '../../common/components/state/EmptyPage';

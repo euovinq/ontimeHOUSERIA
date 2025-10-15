@@ -1,7 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { Tooltip } from '@chakra-ui/react';
-import { MaybeNumber, Playback, TimerPhase } from 'ontime-types';
-import { dayInMs, millisToString } from 'ontime-utils';
+import { MaybeNumber, Playback, TimerPhase } from 'houseriaapp-types';
+import { dayInMs, millisToString } from 'houseriaapp-utils';
 
 import AppLink from '../../../../common/components/link/app-link/AppLink';
 import { useTimer } from '../../../../common/hooks/useSocket';

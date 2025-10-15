@@ -12,7 +12,7 @@ import {
 } from 'react-icons/io5';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { EndAction, MaybeString, OntimeEvent, Playback, TimerType, TimeStrategy } from 'ontime-types';
+import { EndAction, MaybeString, OntimeEvent, Playback, TimerType, TimeStrategy } from 'houseriaapp-types';
 
 import { useContextMenu } from '../../../common/hooks/useContextMenu';
 import { cx, getAccessibleColour } from '../../../common/utils/styleUtils';

@@ -1,5 +1,5 @@
-import { EndAction, OntimeEvent, SupportedEvent, TimeStrategy, TimerType } from 'ontime-types';
-import { millisToString } from 'ontime-utils';
+import { EndAction, OntimeEvent, SupportedEvent, TimeStrategy, TimerType } from 'houseriaapp-types';
+import { millisToString } from 'houseriaapp-utils';
 
 import { getA1Notation, cellRequestFromEvent } from '../sheetUtils.js';
 

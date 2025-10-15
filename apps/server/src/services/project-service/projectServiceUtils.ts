@@ -1,4 +1,4 @@
-import { DatabaseModel, MaybeString, ProjectFile } from 'ontime-types';
+import { DatabaseModel, MaybeString, ProjectFile } from 'houseriaapp-types';
 
 import { existsSync } from 'fs';
 import { copyFile, readFile, stat } from 'fs/promises';

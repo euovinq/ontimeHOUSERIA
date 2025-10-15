@@ -1,4 +1,4 @@
-import { LogOrigin } from 'ontime-types';
+import { LogOrigin } from 'houseriaapp-types';
 
 import type { Server } from 'http';
 import { networkInterfaces } from 'os';

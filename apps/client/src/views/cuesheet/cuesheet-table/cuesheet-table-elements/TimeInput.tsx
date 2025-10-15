@@ -1,5 +1,5 @@
 import { memo, PropsWithChildren, useCallback, useEffect, useRef, useState } from 'react';
-import { millisToString, parseUserTime } from 'ontime-utils';
+import { millisToString, parseUserTime } from 'houseriaapp-utils';
 
 import SingleLineCell from './SingleLineCell';
 import TextLikeInput from './TextLikeInput';

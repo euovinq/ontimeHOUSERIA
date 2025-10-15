@@ -71,7 +71,7 @@ const stylesPath = path.join(getAppDataPath(), 'user', 'styles');
 const externalPath = path.join(getAppDataPath(), 'external');
 
 /** path to tray icon */
-const trayIcon = path.join(__dirname, electronConfig.assets.pathToAssets, 'background.png');
+const trayIcon = path.join(__dirname, electronConfig.assets.pathToAssets, 'logo-tray.png');
 /** path to app icon directory */
 const appIcon = path.join(__dirname, electronConfig.assets.pathToAssets, 'logo.png');
 

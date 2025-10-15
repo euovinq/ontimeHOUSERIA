@@ -7,8 +7,8 @@ import {
   type AutomationFilter,
   type AutomationOutput,
   type FilterRule,
-} from 'ontime-types';
-import { getPropertyFromPath } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { getPropertyFromPath } from 'houseriaapp-utils';
 
 import { logger } from '../../classes/Logger.js';
 import { getState, type RuntimeState } from '../../stores/runtimeState.js';

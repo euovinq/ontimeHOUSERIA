@@ -1,4 +1,4 @@
-import { DatabaseModel } from 'ontime-types';
+import { DatabaseModel } from 'houseriaapp-types';
 
 /**
  * Merges a partial ontime project into a given ontime project

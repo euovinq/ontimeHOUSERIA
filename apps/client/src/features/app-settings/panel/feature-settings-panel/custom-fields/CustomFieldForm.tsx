@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Button, Input, Radio, RadioGroup } from '@chakra-ui/react';
-import { CustomField } from 'ontime-types';
-import { customFieldLabelToKey, isAlphanumericWithSpace } from 'ontime-utils';
+import { CustomField } from 'houseriaapp-types';
+import { customFieldLabelToKey, isAlphanumericWithSpace } from 'houseriaapp-utils';
 
 import { maybeAxiosError } from '../../../../../common/api/utils';
 import Info from '../../../../../common/components/info/Info';

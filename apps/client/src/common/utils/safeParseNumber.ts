@@ -1,4 +1,4 @@
-import { MaybeString } from 'ontime-types';
+import { MaybeString } from 'houseriaapp-types';
 
 export default function safeParseNumber(value: MaybeString, defaultValue: number = 0): number {
   if (!value) return defaultValue;

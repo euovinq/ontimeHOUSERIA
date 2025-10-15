@@ -9,7 +9,7 @@ import {
   validateLinkStart,
   validateTimerType,
   validateTimes,
-} from 'ontime-utils';
+} from 'houseriaapp-utils';
 import {
   CustomFields,
   DatabaseModel,
@@ -21,7 +21,7 @@ import {
   SupportedEvent,
   TimerType,
   TimeStrategy,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 import { parseAutomationSettings } from '../api-data/automation/automation.parser.js';
 import { logger } from '../classes/Logger.js';

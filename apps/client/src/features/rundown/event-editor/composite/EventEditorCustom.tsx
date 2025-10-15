@@ -1,5 +1,5 @@
 import { CSSProperties, Fragment } from 'react';
-import { CustomFields, OntimeEvent } from 'ontime-types';
+import { CustomFields, OntimeEvent } from 'houseriaapp-types';
 
 import { getAccessibleColour } from '../../../../common/utils/styleUtils';
 import { EditorUpdateFields } from '../EventEditor';

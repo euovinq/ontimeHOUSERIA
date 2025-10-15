@@ -1,4 +1,4 @@
-import { Settings } from 'ontime-types';
+import { Settings } from 'houseriaapp-types';
 
 export const ontimePlaceholderSettings: Settings = {
   app: 'ontime',

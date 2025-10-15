@@ -1,5 +1,5 @@
 import { Path, resolvePath } from 'react-router-dom';
-import { URLPreset } from 'ontime-types';
+import { URLPreset } from 'houseriaapp-types';
 
 /**
  * Validates a preset against defined parameters

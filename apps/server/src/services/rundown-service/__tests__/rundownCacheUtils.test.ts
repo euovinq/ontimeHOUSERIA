@@ -6,7 +6,7 @@ import {
   SupportedEvent,
   TimeStrategy,
   TimerType,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 import {
   addToCustomAssignment,
   calculateDayOffset,
@@ -16,7 +16,7 @@ import {
   hasChanges,
   isDataStale,
 } from '../rundownCacheUtils.js';
-import { MILLIS_PER_HOUR } from 'ontime-utils';
+import { MILLIS_PER_HOUR } from 'houseriaapp-utils';
 
 describe('getLink()', () => {
   it('should return null if there is no link', () => {

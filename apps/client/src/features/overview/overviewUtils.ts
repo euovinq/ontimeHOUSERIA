@@ -1,5 +1,5 @@
-import { MaybeNumber } from 'ontime-types';
-import { dayInMs, millisToString } from 'ontime-utils';
+import { MaybeNumber } from 'houseriaapp-types';
+import { dayInMs, millisToString } from 'houseriaapp-utils';
 
 import { enDash, timerPlaceholder } from '../../common/utils/styleUtils';
 

@@ -1,5 +1,5 @@
-import type { OntimeEvent, OntimeRundown, OntimeRundownEntry } from 'ontime-types';
-import { isOntimeEvent } from 'ontime-types';
+import type { OntimeEvent, OntimeRundown, OntimeRundownEntry } from 'houseriaapp-types';
+import { isOntimeEvent } from 'houseriaapp-types';
 
 import { getFirstEvent, getNextEvent, getPreviousEvent } from '../rundown-utils/rundownUtils.js';
 import { isNumeric } from '../types/types.js';

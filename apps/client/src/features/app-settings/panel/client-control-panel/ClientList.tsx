@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Badge, Button, useDisclosure } from '@chakra-ui/react';
-import { Client } from 'ontime-types';
+import { Client } from 'houseriaapp-types';
 
 import { RedirectClientModal } from '../../../../common/components/client-modal/RedirectClientModal';
 import { RenameClientModal } from '../../../../common/components/client-modal/RenameClientModal';

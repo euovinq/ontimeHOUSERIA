@@ -1,4 +1,4 @@
-import { DatabaseModel, OntimeRundown, Settings, URLPreset, ViewSettings } from 'ontime-types';
+import { DatabaseModel, OntimeRundown, Settings, URLPreset, ViewSettings } from 'houseriaapp-types';
 import { safeMerge } from '../DataProvider.utils.js';
 
 describe('safeMerge', () => {

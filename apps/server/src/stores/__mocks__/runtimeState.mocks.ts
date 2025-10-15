@@ -1,5 +1,5 @@
-import { TimerPhase, Playback, OffsetMode } from 'ontime-types';
-import { deepmerge } from 'ontime-utils';
+import { TimerPhase, Playback, OffsetMode } from 'houseriaapp-types';
+import { deepmerge } from 'houseriaapp-utils';
 import type { RuntimeState } from '../runtimeState.js';
 
 const baseState: RuntimeState = {

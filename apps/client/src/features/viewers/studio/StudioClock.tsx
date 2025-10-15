@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
-import type { MaybeString, OntimeEvent, OntimeRundown, ProjectData, Settings } from 'ontime-types';
-import { Playback } from 'ontime-types';
-import { millisToString, removeSeconds, secondsInMillis } from 'ontime-utils';
+import type { MaybeString, OntimeEvent, OntimeRundown, ProjectData, Settings } from 'houseriaapp-types';
+import { Playback } from 'houseriaapp-types';
+import { millisToString, removeSeconds, secondsInMillis } from 'houseriaapp-utils';
 
 import { FitText } from '../../../common/components/fit-text/FitText';
 import ViewLogo from '../../../common/components/view-logo/ViewLogo';

@@ -1,6 +1,6 @@
 import { IoAdd, IoArrowDown, IoArrowUp, IoDuplicateOutline, IoOptions, IoTrash } from 'react-icons/io5';
 import { MenuDivider, MenuItem, MenuList } from '@chakra-ui/react';
-import { isOntimeEvent, SupportedEvent } from 'ontime-types';
+import { isOntimeEvent, SupportedEvent } from 'houseriaapp-types';
 
 import { useEventAction } from '../../../../common/hooks/useEventAction';
 import { cloneEvent } from '../../../../common/utils/eventsManager';

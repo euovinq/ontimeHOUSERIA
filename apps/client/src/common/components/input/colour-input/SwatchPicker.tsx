@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { IoEyedrop } from 'react-icons/io5';
-import { ViewSettings } from 'ontime-types';
+import { ViewSettings } from 'houseriaapp-types';
 
 import { debounce } from '../../../utils/debounce';
 import { cx, getAccessibleColour } from '../../../utils/styleUtils';

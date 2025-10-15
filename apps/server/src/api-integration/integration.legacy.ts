@@ -1,4 +1,4 @@
-import { MessageState } from 'ontime-types';
+import { MessageState } from 'houseriaapp-types';
 import { DeepPartial } from 'ts-essentials';
 
 export type LegacyMessageState = DeepPartial<{

@@ -1,4 +1,4 @@
-import { ImportCustom } from 'ontime-utils';
+import { ImportCustom } from 'houseriaapp-utils';
 
 import { convertToImportMap, NamedImportMap } from '../importMapUtils';
 

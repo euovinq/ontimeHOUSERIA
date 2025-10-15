@@ -6,7 +6,7 @@ import type {
   AutomationSettings,
   Trigger,
   TriggerDTO,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 import { apiEntryUrl } from './constants';
 

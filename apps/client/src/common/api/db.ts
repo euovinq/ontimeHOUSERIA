@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { DatabaseModel, MessageResponse, ProjectData, ProjectFileListResponse, QuickStartData } from 'ontime-types';
+import { DatabaseModel, MessageResponse, ProjectData, ProjectFileListResponse, QuickStartData } from 'houseriaapp-types';
 
 import { makeTable } from '../../views/cuesheet/cuesheet.utils';
 import { makeCSVFromArrayOfArrays } from '../utils/csv';

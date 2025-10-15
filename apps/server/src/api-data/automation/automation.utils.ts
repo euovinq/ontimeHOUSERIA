@@ -1,5 +1,5 @@
-import { FilterRule, MaybeNumber, OntimeAction } from 'ontime-types';
-import { millisToString, removeLeadingZero, splitWhitespace, getPropertyFromPath } from 'ontime-utils';
+import { FilterRule, MaybeNumber, OntimeAction } from 'houseriaapp-types';
+import { millisToString, removeLeadingZero, splitWhitespace, getPropertyFromPath } from 'houseriaapp-utils';
 import type { OscArgOrArrayInput, OscArgInput } from 'osc-min';
 
 type FilterOperator = 'equals' | 'not_equals' | 'greater_than' | 'less_than' | 'contains';

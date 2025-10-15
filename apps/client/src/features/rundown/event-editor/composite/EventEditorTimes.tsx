@@ -1,8 +1,8 @@
 import { memo } from 'react';
 import { IoInformationCircle } from 'react-icons/io5';
 import { Select, Switch, Tooltip } from '@chakra-ui/react';
-import { EndAction, MaybeString, TimerType, TimeStrategy } from 'ontime-types';
-import { millisToString, parseUserTime } from 'ontime-utils';
+import { EndAction, MaybeString, TimerType, TimeStrategy } from 'houseriaapp-types';
+import { millisToString, parseUserTime } from 'houseriaapp-utils';
 
 import TimeInput from '../../../../common/components/input/time-input/TimeInput';
 import { useEventAction } from '../../../../common/hooks/useEventAction';

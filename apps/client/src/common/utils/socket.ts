@@ -1,4 +1,4 @@
-import { Log, RundownCached, RuntimeStore } from 'ontime-types';
+import { Log, RundownCached, RuntimeStore } from 'houseriaapp-types';
 
 import { isProduction, websocketUrl } from '../../externals';
 import { CLIENT_LIST, CUSTOM_FIELDS, REPORT, RUNDOWN, RUNTIME } from '../api/constants';
@@ -217,6 +217,26 @@ export const connectSocket = () => {
         }
         case 'ontime-flush': {
           flushBatchUpdates();
+          break;
+        }
+        case 'togglesupabase': {
+          // Handle Supabase toggle response
+          if (typeof payload === 'object' && payload !== null) {
+            // Dispatch custom event for SupabaseControl component
+            window.dispatchEvent(new CustomEvent('supabase-status', { 
+              detail: { type: 'togglesupabase', payload } 
+            }));
+          }
+          break;
+        }
+        case 'getsupabasestatus': {
+          // Handle Supabase status response
+          if (typeof payload === 'object' && payload !== null) {
+            // Dispatch custom event for SupabaseControl component
+            window.dispatchEvent(new CustomEvent('supabase-status', { 
+              detail: { type: 'getsupabasestatus', payload } 
+            }));
+          }
           break;
         }
       }

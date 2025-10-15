@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { OntimeEvent, OntimeRundownEntry, Playback, SupportedEvent } from 'ontime-types';
+import { OntimeEvent, OntimeRundownEntry, Playback, SupportedEvent } from 'houseriaapp-types';
 
 import { useEventAction } from '../../common/hooks/useEventAction';
 import useMemoisedFn from '../../common/hooks/useMemoisedFn';

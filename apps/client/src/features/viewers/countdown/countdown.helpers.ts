@@ -1,4 +1,4 @@
-import { OntimeEvent, Playback } from 'ontime-types';
+import { OntimeEvent, Playback } from 'houseriaapp-types';
 
 import { ViewExtendedTimer } from '../../../common/models/TimeManager.type';
 import { formatTime } from '../../../common/utils/time';

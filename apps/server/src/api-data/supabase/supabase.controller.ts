@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { logger } from '../../classes/Logger.js';
-import { LogOrigin } from 'ontime-types';
+import { LogOrigin } from 'houseriaapp-types';
 
 export interface SupabaseConfigRequest {
   url: string;

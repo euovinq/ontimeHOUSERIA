@@ -1,4 +1,4 @@
-import { SimpleDirection, SimplePlayback, SimpleTimerState } from 'ontime-types';
+import { SimpleDirection, SimplePlayback, SimpleTimerState } from 'houseriaapp-types';
 
 export class SimpleTimer {
   state: SimpleTimerState = {

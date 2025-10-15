@@ -11,7 +11,7 @@ import {
   OntimeRundown,
   OntimeRundownEntry,
   PlayableEvent,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 import {
   generateId,
   insertAtIndex,
@@ -20,7 +20,7 @@ import {
   getTimeFromPrevious,
   isNewLatest,
   customFieldLabelToKey,
-} from 'ontime-utils';
+} from 'houseriaapp-utils';
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 import { createPatch } from '../../utils/parser.js';
 import { apply } from './delayUtils.js';

@@ -1,7 +1,7 @@
-import { millisToSeconds } from 'ontime-utils';
+import { millisToSeconds } from 'houseriaapp-utils';
 
 import { timerConfig } from '../../config/config.js';
-import { MaybeNumber } from 'ontime-types';
+import { MaybeNumber } from 'houseriaapp-types';
 
 /**
  * Checks whether we should update the clock value

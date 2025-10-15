@@ -6,7 +6,7 @@ import {
   SupportedEvent,
   TimeStrategy,
   TimerType,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 export const event: Omit<OntimeEvent, 'id' | 'cue'> = {
   title: '',

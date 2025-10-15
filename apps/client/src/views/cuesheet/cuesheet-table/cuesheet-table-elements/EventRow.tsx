@@ -2,7 +2,7 @@ import { memo, MutableRefObject, useLayoutEffect, useRef, useState } from 'react
 import { IoEllipsisHorizontal } from 'react-icons/io5';
 import { flexRender, Table } from '@tanstack/react-table';
 import Color from 'color';
-import { OntimeEvent, OntimeRundownEntry } from 'ontime-types';
+import { OntimeEvent, OntimeRundownEntry } from 'houseriaapp-types';
 
 import IconButton from '../../../../common/components/buttons/IconButton';
 import { cx, getAccessibleColour } from '../../../../common/utils/styleUtils';

@@ -1,4 +1,4 @@
-import { isAlphanumericWithSpace } from 'ontime-utils';
+import { isAlphanumericWithSpace } from 'houseriaapp-utils';
 
 import type { Request, Response, NextFunction } from 'express';
 import { body, param, validationResult } from 'express-validator';

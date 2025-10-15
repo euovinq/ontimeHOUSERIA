@@ -14,7 +14,7 @@
  * Payload: adds necessary payload for the request to be completed
  */
 
-import { Client, LogOrigin } from 'ontime-types';
+import { Client, LogOrigin } from 'houseriaapp-types';
 
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
@@ -24,7 +24,7 @@ import type { IAdapter } from './IAdapter.js';
 import { eventStore } from '../stores/EventStore.js';
 import { logger } from '../classes/Logger.js';
 import { dispatchFromAdapter } from '../api-integration/integration.controller.js';
-import { generateId } from 'ontime-utils';
+import { generateId } from 'houseriaapp-utils';
 import { authenticateSocket } from '../middleware/authenticate.js';
 
 let instance: SocketServer | null = null;

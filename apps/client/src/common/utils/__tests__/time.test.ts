@@ -1,5 +1,5 @@
-import { OffsetMode } from 'ontime-types';
-import { dayInMs } from 'ontime-utils';
+import { OffsetMode } from 'houseriaapp-types';
+import { dayInMs } from 'houseriaapp-utils';
 
 import { calculateTimeUntilStart, formatTime, nowInMillis } from '../time';
 

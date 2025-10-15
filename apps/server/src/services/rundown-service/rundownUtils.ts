@@ -1,5 +1,5 @@
-import { OntimeEvent, OntimeRundown, RundownCached, OntimeRundownEntry, PlayableEvent } from 'ontime-types';
-import { filterPlayable, filterTimedEvents } from 'ontime-utils';
+import { OntimeEvent, OntimeRundown, RundownCached, OntimeRundownEntry, PlayableEvent } from 'houseriaapp-types';
+import { filterPlayable, filterTimedEvents } from 'houseriaapp-utils';
 
 import * as cache from './rundownCache.js';
 

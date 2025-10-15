@@ -10,8 +10,8 @@ import {
   TimerLifeCycle,
   TimerPhase,
   TimerState,
-} from 'ontime-types';
-import { millisToString, validatePlayback } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { millisToString, validatePlayback } from 'houseriaapp-utils';
 
 import { deepEqual } from 'fast-equals';
 
@@ -290,9 +290,10 @@ class RuntimeService {
    * makes calls for loading and starting given event
    * @param {PlayableEvent} event
    * @param {Partial<TimerState & RestorePoint>} initialData
+   * @param {boolean} preserveOffset - if true, preserves offset during load
    * @return {boolean} success - whether an event was loaded
    */
-  private loadEvent(event: OntimeEvent, initialData?: Partial<TimerState & RestorePoint>): boolean {
+  private loadEvent(event: OntimeEvent, initialData?: Partial<TimerState & RestorePoint>, preserveOffset = false): boolean {
     if (!isPlayableEvent(event)) {
       logger.warning(LogOrigin.Playback, `Refused skipped event with ID ${event.id}`);
       return false;
@@ -300,7 +301,7 @@ class RuntimeService {
     const previousState = runtimeState.getState();
 
     const rundown = getRundown();
-    const success = runtimeState.load(event, rundown, initialData);
+    const success = runtimeState.load(event, rundown, initialData, preserveOffset);
 
     if (success) {
       logger.info(LogOrigin.Playback, `Loaded event with ID ${event.id}`);
@@ -423,7 +424,8 @@ class RuntimeService {
     const state = runtimeState.getState();
     const previousEvent = findPrevious(state.eventNow?.id);
     if (previousEvent) {
-      return this.loadEvent(previousEvent);
+      // Preserve offset when just loading previous event (not starting it)
+      return this.loadEvent(previousEvent, undefined, true);
     }
     return false;
   }
@@ -451,7 +453,8 @@ class RuntimeService {
       if (state.timer.playback === Playback.Roll) {
         return this.loadEvent(nextEvent, { firstStart: state.runtime.actualStart });
       }
-      return this.loadEvent(nextEvent);
+      // Preserve offset when just loading next event (not starting it)
+      return this.loadEvent(nextEvent, undefined, true);
     }
 
     logger.info(LogOrigin.Playback, 'No next event found! Continuing playback');

@@ -1,5 +1,5 @@
-import { OntimeRundown, PlayableEvent, Playback, SupportedEvent, TimerPhase } from 'ontime-types';
-import { deepmerge } from 'ontime-utils';
+import { OntimeRundown, PlayableEvent, Playback, SupportedEvent, TimerPhase } from 'houseriaapp-types';
+import { deepmerge } from 'houseriaapp-utils';
 
 import {
   type RuntimeState,

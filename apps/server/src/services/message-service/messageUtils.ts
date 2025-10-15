@@ -1,4 +1,4 @@
-import { TimerMessage } from 'ontime-types';
+import { TimerMessage } from 'houseriaapp-types';
 
 import * as assert from '../../utils/assert.js';
 import { coerceBoolean, coerceString } from '../../utils/coerceType.js';

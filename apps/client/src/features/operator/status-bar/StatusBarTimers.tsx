@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { MaybeNumber, Playback } from 'ontime-types';
+import { MaybeNumber, Playback } from 'houseriaapp-types';
 
 import PlaybackIcon from '../../../common/components/playback-icon/PlaybackIcon';
 import { useClock, useTimer } from '../../../common/hooks/useSocket';

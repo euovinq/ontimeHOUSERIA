@@ -1,4 +1,4 @@
-import { LogOrigin } from 'ontime-types';
+import { LogOrigin } from 'houseriaapp-types';
 
 import { fromBuffer, type OscPacketOutput } from 'osc-min';
 import * as dgram from 'node:dgram';

@@ -2,8 +2,8 @@
  * encapsulate logic related to showing a running timer
  */
 
-import { MaybeNumber } from 'ontime-types';
-import { millisToString, removeLeadingZero, removeSeconds } from 'ontime-utils';
+import { MaybeNumber } from 'houseriaapp-types';
+import { millisToString, removeLeadingZero, removeSeconds } from 'houseriaapp-utils';
 
 interface RunningTimeProps {
   value: MaybeNumber;

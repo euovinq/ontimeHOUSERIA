@@ -1,4 +1,4 @@
-import { SimpleDirection, SimplePlayback, SimpleTimerState } from 'ontime-types';
+import { SimpleDirection, SimplePlayback, SimpleTimerState } from 'houseriaapp-types';
 
 import { SimpleTimer } from '../../classes/simple-timer/SimpleTimer.js';
 import { eventStore } from '../../stores/EventStore.js';

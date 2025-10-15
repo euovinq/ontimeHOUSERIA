@@ -1,7 +1,7 @@
 import { memo, useCallback, useRef } from 'react';
 import { IoAdd } from 'react-icons/io5';
 import { Button } from '@chakra-ui/react';
-import { SupportedEvent } from 'ontime-types';
+import { SupportedEvent } from 'houseriaapp-types';
 
 import { useEventAction } from '../../../common/hooks/useEventAction';
 import { useEmitLog } from '../../../common/stores/logger';

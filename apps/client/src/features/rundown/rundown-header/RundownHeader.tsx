@@ -1,5 +1,5 @@
 import { Button, ButtonGroup } from '@chakra-ui/react';
-import { OffsetMode } from 'ontime-types';
+import { OffsetMode } from 'houseriaapp-types';
 
 import { setOffsetMode, useOffsetMode } from '../../../common/hooks/useSocket';
 import { AppMode, useAppMode } from '../../../common/stores/appModeStore';

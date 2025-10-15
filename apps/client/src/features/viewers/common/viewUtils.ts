@@ -1,5 +1,5 @@
-import { MaybeNumber, MaybeString, OntimeEvent, TimerType } from 'ontime-types';
-import { MILLIS_PER_MINUTE, MILLIS_PER_SECOND, millisToString, removeLeadingZero, removeSeconds } from 'ontime-utils';
+import { MaybeNumber, MaybeString, OntimeEvent, TimerType } from 'houseriaapp-types';
+import { MILLIS_PER_MINUTE, MILLIS_PER_SECOND, millisToString, removeLeadingZero, removeSeconds } from 'houseriaapp-utils';
 
 import type { ViewExtendedTimer } from '../../../common/models/TimeManager.type';
 import { timerPlaceholder, timerPlaceholderMin } from '../../../common/utils/styleUtils';
