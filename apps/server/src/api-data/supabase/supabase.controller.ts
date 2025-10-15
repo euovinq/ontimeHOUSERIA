@@ -21,7 +21,7 @@ export async function configureSupabase(req: Request<{}, {}, SupabaseConfigReque
     }
 
     // Initialize Supabase adapter
-    supabaseAdapter.init({
+    await supabaseAdapter.init({
       url,
       anonKey,
       tableName: tableName || 'ontime_realtime',
