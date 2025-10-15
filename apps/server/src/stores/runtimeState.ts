@@ -90,15 +90,19 @@ export function getState(): Readonly<RuntimeState> {
 
 /* clear data related to the current event, but leave in place data about the global run state
  * used when loading a new event but the playback is not interrupted
+ * @param preserveOffset - if true, preserves the current offset values instead of zeroing them
  */
-export function clearEventData() {
+export function clearEventData(preserveOffset = false) {
   runtimeState.eventNow = null;
   runtimeState.publicEventNow = null;
   runtimeState.eventNext = null;
   runtimeState.publicEventNext = null;
 
-  runtimeState.runtime.offset = 0;
-  runtimeState.runtime.relativeOffset = 0;
+  // Only zero offset if not preserving it (for backward compatibility)
+  if (!preserveOffset) {
+    runtimeState.runtime.offset = 0;
+    runtimeState.runtime.relativeOffset = 0;
+  }
   runtimeState.runtime.expectedEnd = null;
   runtimeState.runtime.selectedEventIndex = null;
 
@@ -180,13 +184,15 @@ export function updateRundownData(rundownData: RundownData) {
 
 /**
  * Loads a given event into state
+ * @param preserveOffset - if true, preserves the current offset values during load
  */
 export function load(
   event: PlayableEvent,
   rundown: OntimeRundown,
   initialData?: Partial<TimerState & RestorePoint>,
+  preserveOffset = false,
 ): boolean {
-  clearEventData();
+  clearEventData(preserveOffset);
 
   // filter rundown
   const timedEvents = filterTimedEvents(rundown);
