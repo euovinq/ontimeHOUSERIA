@@ -1,4 +1,4 @@
-import { CustomFields } from 'ontime-types';
+import { CustomFields } from 'houseriaapp-types';
 
 const humanConstants = [
   '{{human.clock}}',

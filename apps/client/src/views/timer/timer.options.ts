@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CustomFields, OntimeEvent, TimerType } from 'ontime-types';
-import { validateTimerType } from 'ontime-utils';
+import { CustomFields, OntimeEvent, TimerType } from 'houseriaapp-types';
+import { validateTimerType } from 'houseriaapp-utils';
 
 import {
   getTimeOption,

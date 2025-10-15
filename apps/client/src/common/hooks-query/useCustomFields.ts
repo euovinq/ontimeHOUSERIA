@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { CustomFields } from 'ontime-types';
+import { CustomFields } from 'houseriaapp-types';
 
 import { queryRefetchIntervalSlow } from '../../ontimeConfig';
 import { CUSTOM_FIELDS } from '../api/constants';

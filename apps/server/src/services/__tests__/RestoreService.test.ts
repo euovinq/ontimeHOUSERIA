@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';
 
-import { Playback } from 'ontime-types';
+import { Playback } from 'houseriaapp-types';
 
 import { isRestorePoint, RestorePoint, RestoreService } from '../RestoreService.js';
 

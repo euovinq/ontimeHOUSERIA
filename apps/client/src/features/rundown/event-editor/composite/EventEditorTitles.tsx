@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Input } from '@chakra-ui/react';
-import { sanitiseCue } from 'ontime-utils';
+import { sanitiseCue } from 'houseriaapp-utils';
 
 import SwatchSelect from '../../../../common/components/input/colour-input/SwatchSelect';
 import * as Editor from '../../../editors/editor-utils/EditorUtils';

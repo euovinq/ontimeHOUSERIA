@@ -1,4 +1,4 @@
-import { OntimeEvent, Playback } from 'ontime-types';
+import { OntimeEvent, Playback } from 'houseriaapp-types';
 
 import { enDash } from '../../common/utils/styleUtils';
 import { getPropertyValue } from '../../features/viewers/common/viewUtils';

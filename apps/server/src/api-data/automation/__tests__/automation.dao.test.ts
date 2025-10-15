@@ -1,4 +1,4 @@
-import { TriggerDTO, TimerLifeCycle, AutomationDTO, Automation } from 'ontime-types';
+import { TriggerDTO, TimerLifeCycle, AutomationDTO, Automation } from 'houseriaapp-types';
 
 import {
   addTrigger,

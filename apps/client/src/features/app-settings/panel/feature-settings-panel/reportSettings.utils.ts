@@ -1,4 +1,4 @@
-import { isOntimeEvent, MaybeNumber, NormalisedRundown, OntimeReport } from 'ontime-types';
+import { isOntimeEvent, MaybeNumber, NormalisedRundown, OntimeReport } from 'houseriaapp-types';
 
 import { makeCSVFromArrayOfArrays } from '../../../../common/utils/csv';
 import { formatTime } from '../../../../common/utils/time';

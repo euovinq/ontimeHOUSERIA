@@ -1,5 +1,5 @@
-import { AuthenticationStatus, CustomFields, OntimeRundown } from 'ontime-types';
-import { defaultImportMap, ImportMap } from 'ontime-utils';
+import { AuthenticationStatus, CustomFields, OntimeRundown } from 'houseriaapp-types';
+import { defaultImportMap, ImportMap } from 'houseriaapp-utils';
 import { create } from 'zustand';
 
 type SheetStore = {

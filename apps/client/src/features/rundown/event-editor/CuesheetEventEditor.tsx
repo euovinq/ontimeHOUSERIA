@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { isOntimeEvent, OntimeEvent } from 'ontime-types';
+import { isOntimeEvent, OntimeEvent } from 'houseriaapp-types';
 
 import useRundown from '../../../common/hooks-query/useRundown';
 import { cx } from '../../../common/utils/styleUtils';

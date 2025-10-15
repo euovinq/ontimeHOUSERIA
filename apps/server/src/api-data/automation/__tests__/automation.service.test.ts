@@ -1,4 +1,4 @@
-import { PlayableEvent, TimerLifeCycle } from 'ontime-types';
+import { PlayableEvent, TimerLifeCycle } from 'houseriaapp-types';
 
 import { makeRuntimeStateData } from '../../../stores/__mocks__/runtimeState.mocks.js';
 import { makeOntimeEvent } from '../../../services/rundown-service/__mocks__/rundown.mocks.js';

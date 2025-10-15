@@ -1,7 +1,7 @@
 import { PropsWithChildren, useState } from 'react';
 import { UseFormRegister, UseFormSetValue } from 'react-hook-form';
 import { Input, Select } from '@chakra-ui/react';
-import { AutomationDTO, OntimeAction } from 'ontime-types';
+import { AutomationDTO, OntimeAction } from 'houseriaapp-types';
 
 import { cx } from '../../../../common/utils/styleUtils';
 import * as Panel from '../../panel-utils/PanelUtils';

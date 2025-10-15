@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { unobfuscate } from 'ontime-utils';
+import { unobfuscate } from 'houseriaapp-utils';
 
 import { queryRefetchIntervalSlow } from '../../ontimeConfig';
 import { APP_SETTINGS } from '../api/constants';

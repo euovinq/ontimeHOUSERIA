@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { IoPencil, IoTrash } from 'react-icons/io5';
 import { IconButton } from '@chakra-ui/react';
-import { CustomField, CustomFieldLabel } from 'ontime-types';
+import { CustomField, CustomFieldLabel } from 'houseriaapp-types';
 
 import CopyTag from '../../../../../common/components/copy-tag/CopyTag';
 import Swatch from '../../../../../common/components/input/colour-input/Swatch';

@@ -1,4 +1,4 @@
-import { MaybeNumber, Playback, TimerPhase, TimerType } from 'ontime-types';
+import { MaybeNumber, Playback, TimerPhase, TimerType } from 'houseriaapp-types';
 
 // first set extends TimerState
 export type ViewExtendedTimer = {

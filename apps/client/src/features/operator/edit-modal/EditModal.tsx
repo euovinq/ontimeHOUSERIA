@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Button, Textarea } from '@chakra-ui/react';
-import { OntimeEvent } from 'ontime-types';
+import { OntimeEvent } from 'houseriaapp-types';
 
 import { useEventAction } from '../../../common/hooks/useEventAction';
 import type { EditEvent } from '../Operator';

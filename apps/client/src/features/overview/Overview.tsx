@@ -1,6 +1,6 @@
 import { memo, PropsWithChildren, ReactNode, useMemo } from 'react';
-import { Playback } from 'ontime-types';
-import { millisToString } from 'ontime-utils';
+import { Playback } from 'houseriaapp-types';
+import { millisToString } from 'houseriaapp-utils';
 
 import ErrorBoundary from '../../common/components/error-boundary/ErrorBoundary';
 import { useIsOnline, useRuntimeOverview, useRuntimePlaybackOverview, useTimer } from '../../common/hooks/useSocket';

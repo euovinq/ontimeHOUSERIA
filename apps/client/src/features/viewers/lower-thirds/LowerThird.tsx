@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CustomFields, OntimeEvent, ViewSettings } from 'ontime-types';
-import { isPlaybackActive, MILLIS_PER_SECOND } from 'ontime-utils';
+import { CustomFields, OntimeEvent, ViewSettings } from 'houseriaapp-types';
+import { isPlaybackActive, MILLIS_PER_SECOND } from 'houseriaapp-utils';
 
 import { overrideStylesURL } from '../../../common/api/constants';
 import ViewParamsEditor from '../../../common/components/view-params-editor/ViewParamsEditor';

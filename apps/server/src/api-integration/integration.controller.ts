@@ -1,5 +1,5 @@
-import { MessageState, OffsetMode, OntimeEvent, SimpleDirection, SimplePlayback } from 'ontime-types';
-import { MILLIS_PER_HOUR, MILLIS_PER_SECOND } from 'ontime-utils';
+import { MessageState, OffsetMode, OntimeEvent, SimpleDirection, SimplePlayback } from 'houseriaapp-types';
+import { MILLIS_PER_HOUR, MILLIS_PER_SECOND } from 'houseriaapp-utils';
 
 import { DeepPartial } from 'ts-essentials';
 
@@ -18,6 +18,7 @@ import { willCauseRegeneration } from '../services/rundown-service/rundownCacheU
 
 import { handleLegacyMessageConversion } from './integration.legacy.js';
 import { coerceEnum } from '../utils/coerceType.js';
+import { supabaseAdapter } from '../adapters/SupabaseAdapter.js';
 
 const throttledUpdateEvent = throttle(updateEvent, 20);
 let lastRequest: Date | null = null;
@@ -28,7 +29,18 @@ export function dispatchFromAdapter(type: string, payload: unknown, _source?: 'o
   lastRequest = new Date();
 
   if (handler) {
-    return handler(payload);
+    const result = handler(payload);
+    
+    // Trigger Supabase update for any button action
+    if (supabaseAdapter && _source === 'ws') {
+      // Add small delay to ensure state is updated
+      setTimeout(() => {
+        const currentData = eventStore.poll();
+        supabaseAdapter.forceUpdate(currentData);
+      }, 100);
+    }
+    
+    return result;
   } else {
     throw new Error(`Unhandled message ${type}`);
   }
@@ -291,6 +303,14 @@ const actionHandlers: Record<string, ActionHandler> = {
     const mode = coerceEnum<OffsetMode>(payload, OffsetMode);
     runtimeService.setOffsetMode(mode);
     return { payload: 'success' };
+  },
+  togglesupabase: () => {
+    const isConnected = supabaseAdapter.toggleConnection();
+    return { payload: { connected: isConnected } };
+  },
+  getsupabasestatus: () => {
+    const status = supabaseAdapter.getConnectionStatus();
+    return { payload: status };
   },
 };
 

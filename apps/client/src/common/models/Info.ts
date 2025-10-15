@@ -1,4 +1,4 @@
-import { GetInfo } from 'ontime-types';
+import { GetInfo } from 'houseriaapp-types';
 
 export const ontimePlaceholderInfo: GetInfo = {
   networkInterfaces: [],

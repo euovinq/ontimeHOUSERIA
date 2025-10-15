@@ -1,4 +1,4 @@
-import { CustomFields } from 'ontime-types';
+import { CustomFields } from 'houseriaapp-types';
 
 import { makeOptionsFromCustomFields } from '../constants';
 

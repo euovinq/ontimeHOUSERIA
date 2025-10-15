@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Button, Input, Select } from '@chakra-ui/react';
-import { NormalisedAutomation, TimerLifeCycle, TriggerDTO } from 'ontime-types';
+import { NormalisedAutomation, TimerLifeCycle, TriggerDTO } from 'houseriaapp-types';
 
 import { addTrigger, editTrigger } from '../../../../common/api/automation';
 import { maybeAxiosError } from '../../../../common/api/utils';

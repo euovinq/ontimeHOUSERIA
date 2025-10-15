@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { IoAdd } from 'react-icons/io5';
 import { Button } from '@chakra-ui/react';
-import { CustomField, CustomFieldLabel } from 'ontime-types';
+import { CustomField, CustomFieldLabel } from 'houseriaapp-types';
 
 import { deleteCustomField, editCustomField, postCustomField } from '../../../../../common/api/customFields';
 import Info from '../../../../../common/components/info/Info';

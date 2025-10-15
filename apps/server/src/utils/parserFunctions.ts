@@ -14,8 +14,8 @@ import {
   isOntimeBlock,
   isOntimeDelay,
   isOntimeEvent,
-} from 'ontime-types';
-import { customFieldLabelToKey, generateId, isAlphanumericWithSpace } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { customFieldLabelToKey, generateId, isAlphanumericWithSpace } from 'houseriaapp-utils';
 
 import { dbModel } from '../models/dataModel.js';
 import { block as blockDef, delay as delayDef } from '../models/eventsDefinition.js';

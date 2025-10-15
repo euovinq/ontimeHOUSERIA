@@ -1,5 +1,5 @@
-import { ErrorResponse, ProjectData } from 'ontime-types';
-import { getErrorMessage } from 'ontime-utils';
+import { ErrorResponse, ProjectData } from 'houseriaapp-types';
+import { getErrorMessage } from 'houseriaapp-utils';
 
 import type { Request, Response } from 'express';
 

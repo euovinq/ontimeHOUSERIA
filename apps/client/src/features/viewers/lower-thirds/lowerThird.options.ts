@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CustomFields } from 'ontime-types';
+import { CustomFields } from 'houseriaapp-types';
 
 import { makeOptionsFromCustomFields, OptionTitle } from '../../../common/components/view-params-editor/constants';
 import { ViewOption } from '../../../common/components/view-params-editor/types';

@@ -1,8 +1,8 @@
-import { CustomField, CustomFields, ErrorResponse } from 'ontime-types';
+import { CustomField, CustomFields, ErrorResponse } from 'houseriaapp-types';
 
 import type { Request, Response } from 'express';
 
-import { getErrorMessage } from 'ontime-utils';
+import { getErrorMessage } from 'houseriaapp-utils';
 import {
   createCustomField,
   editCustomField,

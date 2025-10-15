@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { isOntimeEvent, OntimeEvent, OntimeRundownEntry } from 'ontime-types';
+import { isOntimeEvent, OntimeEvent, OntimeRundownEntry } from 'houseriaapp-types';
 
 import { usePartialRundown } from '../../../common/hooks-query/useRundown';
 

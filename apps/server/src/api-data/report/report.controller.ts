@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import type { OntimeReport } from 'ontime-types';
+import type { OntimeReport } from 'houseriaapp-types';
 import * as report from './report.service.js';
 
 export function getAll(_req: Request, res: Response<OntimeReport>) {

@@ -1,4 +1,4 @@
-import { isImportMap } from 'ontime-utils';
+import { isImportMap } from 'houseriaapp-utils';
 
 import { body, param, validationResult } from 'express-validator';
 import { NextFunction, Request, Response } from 'express';

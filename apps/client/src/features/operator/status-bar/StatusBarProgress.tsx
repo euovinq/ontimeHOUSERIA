@@ -1,4 +1,4 @@
-import { ViewSettings } from 'ontime-types';
+import { ViewSettings } from 'houseriaapp-types';
 
 import MultiPartProgressBar from '../../../common/components/multi-part-progress-bar/MultiPartProgressBar';
 import { useProgressData } from '../../../common/hooks/useSocket';

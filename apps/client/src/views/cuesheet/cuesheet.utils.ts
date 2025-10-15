@@ -6,8 +6,8 @@ import {
   OntimeEntryCommonKeys,
   OntimeRundown,
   ProjectData,
-} from 'ontime-types';
-import { millisToString } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { millisToString } from 'houseriaapp-utils';
 
 type CsvHeaderKey = OntimeEntryCommonKeys | keyof CustomFields;
 

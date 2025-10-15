@@ -10,8 +10,8 @@ import {
   TimeField,
   TimeStrategy,
   TransientEventPayload,
-} from 'ontime-types';
-import { dayInMs, MILLIS_PER_SECOND, parseUserTime, reorderArray, swapEventData } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { dayInMs, MILLIS_PER_SECOND, parseUserTime, reorderArray, swapEventData } from 'houseriaapp-utils';
 
 import { RUNDOWN } from '../api/constants';
 import {

@@ -1,7 +1,7 @@
 import { KeyboardEvent, useState } from 'react';
 import { Input, Modal, ModalBody, ModalContent, ModalFooter, ModalOverlay } from '@chakra-ui/react';
 import { useDebouncedCallback } from '@mantine/hooks';
-import { SupportedEvent } from 'ontime-types';
+import { SupportedEvent } from 'houseriaapp-types';
 
 import { useEventSelection } from '../../rundown/useEventSelection';
 

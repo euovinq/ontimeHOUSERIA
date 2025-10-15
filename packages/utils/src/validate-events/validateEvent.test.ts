@@ -1,4 +1,4 @@
-import { EndAction, TimerType } from 'ontime-types';
+import { EndAction, TimerType } from 'houseriaapp-types';
 import { expect } from 'vitest';
 
 import { validateEndAction, validateTimerType } from './validateEvent.js';

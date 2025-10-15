@@ -1,5 +1,5 @@
-import { MaybeNumber } from 'ontime-types';
-import { millisToString } from 'ontime-utils';
+import { MaybeNumber } from 'houseriaapp-types';
+import { millisToString } from 'houseriaapp-utils';
 
 import { cx, timerPlaceholder } from '../../../../common/utils/styleUtils';
 

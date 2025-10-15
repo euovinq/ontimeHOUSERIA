@@ -1,5 +1,5 @@
-import { EndAction, OntimeEvent, TimerType, isKeyOfType, isOntimeEvent } from 'ontime-types';
-import { MILLIS_PER_SECOND, maxDuration } from 'ontime-utils';
+import { EndAction, OntimeEvent, TimerType, isKeyOfType, isOntimeEvent } from 'houseriaapp-types';
+import { MILLIS_PER_SECOND, maxDuration } from 'houseriaapp-utils';
 
 import { editEvent } from '../services/rundown-service/RundownService.js';
 import { getEventWithId } from '../services/rundown-service/rundownUtils.js';

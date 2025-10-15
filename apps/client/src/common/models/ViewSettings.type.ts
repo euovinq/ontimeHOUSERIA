@@ -1,4 +1,4 @@
-import { ViewSettings } from 'ontime-types';
+import { ViewSettings } from 'houseriaapp-types';
 
 export const viewsSettingsPlaceholder: ViewSettings = {
   dangerColor: '#ED3333',

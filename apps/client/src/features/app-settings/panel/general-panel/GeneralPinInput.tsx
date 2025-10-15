@@ -2,7 +2,7 @@ import { PropsWithChildren, useState } from 'react';
 import { UseFormRegister } from 'react-hook-form';
 import { IoEyeOutline } from 'react-icons/io5';
 import { IconButton, Input, InputGroup, InputRightElement } from '@chakra-ui/react';
-import { Settings } from 'ontime-types';
+import { Settings } from 'houseriaapp-types';
 
 import { isAlphanumeric } from '../../../../common/utils/regex';
 

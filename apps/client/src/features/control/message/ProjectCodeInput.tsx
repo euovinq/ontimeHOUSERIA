@@ -3,9 +3,10 @@ import { Input, Button, useDisclosure } from '@chakra-ui/react';
 import { IoRefresh, IoLink } from 'react-icons/io5';
 
 import useProjectData, { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
-import { generateProjectCode } from 'ontime-utils';
+import { generateProjectCode } from 'houseriaapp-utils';
 import { cx } from '../../../common/utils/styleUtils';
 import ProjectLinksModal from './ProjectLinksModal';
+import SupabaseControl from '../../app-settings/panel/general-panel/SupabaseControl';
 
 import style from './InputRow.module.scss';
 
@@ -77,12 +78,15 @@ export default function ProjectCodeInput() {
         </div>
         {projectCode && (
           <div style={{ 
-            marginTop: '8px', 
+            marginTop: '4px', 
             display: 'flex', 
-            justifyContent: 'flex-start' 
+            flexDirection: 'row',
+            gap: '8px',
+            alignItems: 'center',
+            justifyContent: 'center'
           }}>
             <Button
-              size="xs"
+              size="sm"
               variant="ontime-subtle"
               onClick={onOpen}
               leftIcon={<IoLink size="12px" />}
@@ -90,6 +94,7 @@ export default function ProjectCodeInput() {
             >
               Links do Projeto
             </Button>
+            <SupabaseControl />
           </div>
         )}
       </div>

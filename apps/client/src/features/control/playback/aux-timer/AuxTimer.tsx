@@ -1,6 +1,6 @@
 import { IoArrowDown, IoArrowUp, IoPause, IoPlay, IoStop } from 'react-icons/io5';
-import { Playback, SimpleDirection, SimplePlayback } from 'ontime-types';
-import { parseUserTime } from 'ontime-utils';
+import { Playback, SimpleDirection, SimplePlayback } from 'houseriaapp-types';
+import { parseUserTime } from 'houseriaapp-utils';
 
 import TimeInput from '../../../../common/components/input/time-input/TimeInput';
 import { setAuxTimer, useAuxTimerControl, useAuxTimerTime } from '../../../../common/hooks/useSocket';

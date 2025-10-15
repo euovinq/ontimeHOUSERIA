@@ -1,5 +1,5 @@
-import type { NormalisedRundown, OntimeEvent, OntimeRundown } from 'ontime-types';
-import { SupportedEvent } from 'ontime-types';
+import type { NormalisedRundown, OntimeEvent, OntimeRundown } from 'houseriaapp-types';
+import { SupportedEvent } from 'houseriaapp-types';
 
 import {
   filterPlayable,

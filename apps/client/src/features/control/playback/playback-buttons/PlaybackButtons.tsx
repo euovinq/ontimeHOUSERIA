@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { IoPause, IoPlay, IoPlaySkipBack, IoPlaySkipForward, IoReload, IoStop, IoTime } from 'react-icons/io5';
 import { Tooltip } from '@chakra-ui/react';
-import { Playback, TimerPhase } from 'ontime-types';
-import { validatePlayback } from 'ontime-utils';
+import { Playback, TimerPhase } from 'houseriaapp-types';
+import { validatePlayback } from 'houseriaapp-utils';
 
 import { setPlayback } from '../../../../common/hooks/useSocket';
 import { tooltipDelayMid } from '../../../../ontimeConfig';

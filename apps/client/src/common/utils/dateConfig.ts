@@ -1,5 +1,5 @@
-import { MaybeNumber } from 'ontime-types';
-import { formatFromMillis, MILLIS_PER_HOUR, MILLIS_PER_MINUTE } from 'ontime-utils';
+import { MaybeNumber } from 'houseriaapp-types';
+import { formatFromMillis, MILLIS_PER_HOUR, MILLIS_PER_MINUTE } from 'houseriaapp-utils';
 
 /**
  * Parses a value in millis to a string which encodes a delay

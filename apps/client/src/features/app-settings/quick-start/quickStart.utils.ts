@@ -1,4 +1,4 @@
-import type { QuickStartData } from 'ontime-types';
+import type { QuickStartData } from 'houseriaapp-types';
 
 export const quickStartDefaults: QuickStartData = {
   project: {

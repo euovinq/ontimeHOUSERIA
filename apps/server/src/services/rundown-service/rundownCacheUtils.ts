@@ -6,8 +6,8 @@ import {
   CustomFields,
   OntimeRundownEntry,
   OntimeBaseEvent,
-} from 'ontime-types';
-import { dayInMs, getLinkedTimes } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { dayInMs, getLinkedTimes } from 'houseriaapp-utils';
 
 /**
  * Get linked event

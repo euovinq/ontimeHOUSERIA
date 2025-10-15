@@ -1,8 +1,8 @@
 import { IoAdd, IoRemove } from 'react-icons/io5';
 import { Tooltip } from '@chakra-ui/react';
 import { useLocalStorage } from '@mantine/hooks';
-import { Playback } from 'ontime-types';
-import { MILLIS_PER_HOUR, MILLIS_PER_SECOND, parseUserTime } from 'ontime-utils';
+import { Playback } from 'houseriaapp-types';
+import { MILLIS_PER_HOUR, MILLIS_PER_SECOND, parseUserTime } from 'houseriaapp-utils';
 
 import TimeInput from '../../../../common/components/input/time-input/TimeInput';
 import { setPlayback } from '../../../../common/hooks/useSocket';

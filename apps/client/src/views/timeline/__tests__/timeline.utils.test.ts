@@ -1,4 +1,4 @@
-import { dayInMs } from 'ontime-utils';
+import { dayInMs } from 'houseriaapp-utils';
 
 import { getElementPosition, getTimeToStart, makeTimelineSections } from '../timeline.utils';
 
