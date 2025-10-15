@@ -1,4 +1,4 @@
-import { Playback, TimerPhase } from 'ontime-types';
+import { Playback, TimerPhase } from 'houseriaapp-types';
 
 /**
  * Simple rules to determine whether a playback action is valid

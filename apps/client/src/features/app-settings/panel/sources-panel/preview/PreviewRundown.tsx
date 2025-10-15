@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { IoLink } from 'react-icons/io5';
-import { CustomFields, isOntimeBlock, isOntimeEvent, OntimeRundown } from 'ontime-types';
-import { millisToString } from 'ontime-utils';
+import { CustomFields, isOntimeBlock, isOntimeEvent, OntimeRundown } from 'houseriaapp-types';
+import { millisToString } from 'houseriaapp-utils';
 
 import Tag from '../../../../../common/components/tag/Tag';
 import { getAccessibleColour } from '../../../../../common/utils/styleUtils';

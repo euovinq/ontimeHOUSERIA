@@ -12,7 +12,7 @@ import {
   runtimeStorePlaceholder,
   TimerPhase,
   TimerState,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 import {
   calculateDuration,
   checkIsNow,
@@ -20,7 +20,7 @@ import {
   filterTimedEvents,
   getPreviousBlock,
   isPlaybackActive,
-} from 'ontime-utils';
+} from 'houseriaapp-utils';
 
 import { clock } from '../services/Clock.js';
 import type { RestorePoint } from '../services/RestoreService.js';

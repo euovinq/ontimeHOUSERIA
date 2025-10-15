@@ -1,6 +1,6 @@
 import { IoArrowDown, IoArrowUp, IoBan, IoFlag, IoTime } from 'react-icons/io5';
 import { Tooltip } from '@chakra-ui/react';
-import { TimerPhase, TimerType } from 'ontime-types';
+import { TimerPhase, TimerType } from 'houseriaapp-types';
 
 import { useMessagePreview } from '../../../common/hooks/useSocket';
 import useViewSettings from '../../../common/hooks-query/useViewSettings';

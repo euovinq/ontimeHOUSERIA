@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { IoAdd, IoTrash } from 'react-icons/io5';
 import { Button, IconButton, Input, Select, Tooltip } from '@chakra-ui/react';
-import { ImportMap, isAlphanumericWithSpace } from 'ontime-utils';
+import { ImportMap, isAlphanumericWithSpace } from 'houseriaapp-utils';
 
 import * as Panel from '../../../panel-utils/PanelUtils';
 import useGoogleSheet from '../useGoogleSheet';

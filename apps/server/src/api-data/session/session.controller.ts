@@ -1,5 +1,5 @@
-import { getErrorMessage } from 'ontime-utils';
-import { ErrorResponse, GetInfo, GetUrl, SessionStats } from 'ontime-types';
+import { getErrorMessage } from 'houseriaapp-utils';
+import { ErrorResponse, GetInfo, GetUrl, SessionStats } from 'houseriaapp-types';
 
 import type { Request, Response } from 'express';
 

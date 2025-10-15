@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { MessageResponse, OntimeEvent, OntimeRundownEntry, RundownCached, TransientEventPayload } from 'ontime-types';
+import { MessageResponse, OntimeEvent, OntimeRundownEntry, RundownCached, TransientEventPayload } from 'houseriaapp-types';
 
 import { apiEntryUrl } from './constants';
 

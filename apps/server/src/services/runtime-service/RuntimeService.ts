@@ -10,8 +10,8 @@ import {
   TimerLifeCycle,
   TimerPhase,
   TimerState,
-} from 'ontime-types';
-import { millisToString, validatePlayback } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { millisToString, validatePlayback } from 'houseriaapp-utils';
 
 import { deepEqual } from 'fast-equals';
 

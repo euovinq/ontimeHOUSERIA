@@ -6,7 +6,7 @@
 import { Request, Response } from 'express';
 import { readFileSync } from 'fs';
 
-import type { AuthenticationStatus, CustomFields, ErrorResponse, OntimeRundown } from 'ontime-types';
+import type { AuthenticationStatus, CustomFields, ErrorResponse, OntimeRundown } from 'houseriaapp-types';
 
 import { deleteFile } from '../../utils/parserUtils.js';
 import {
@@ -18,7 +18,7 @@ import {
   upload,
   getWorksheetOptions,
 } from '../../services/sheet-service/SheetService.js';
-import { getErrorMessage } from 'ontime-utils';
+import { getErrorMessage } from 'houseriaapp-utils';
 
 export async function requestConnection(
   req: Request,

@@ -1,4 +1,4 @@
-import { MILLIS_PER_MINUTE } from 'ontime-utils';
+import { MILLIS_PER_MINUTE } from 'houseriaapp-utils';
 
 export const timerConfig = {
   skipLimit: 1000, // threshold of skip for recalculating, values lower than updateRate can cause issues with rolling over midnight

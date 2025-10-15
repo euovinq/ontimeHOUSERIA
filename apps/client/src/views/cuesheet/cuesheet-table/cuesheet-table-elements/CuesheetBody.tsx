@@ -1,7 +1,7 @@
 import { MutableRefObject } from 'react';
 import { RowModel, Table } from '@tanstack/react-table';
 import Color from 'color';
-import { isOntimeBlock, isOntimeDelay, isOntimeEvent, OntimeRundownEntry } from 'ontime-types';
+import { isOntimeBlock, isOntimeDelay, isOntimeEvent, OntimeRundownEntry } from 'houseriaapp-types';
 
 import { useSelectedEventId } from '../../../../common/hooks/useSocket';
 import { lazyEvaluate } from '../../../../common/utils/lazyEvaluate';

@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 
 import { eventStore } from '../../stores/EventStore.js';
 import { logger } from '../../classes/Logger.js';
-import { LogOrigin } from 'ontime-types';
+import { LogOrigin } from 'houseriaapp-types';
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 
 export interface RealtimeData {

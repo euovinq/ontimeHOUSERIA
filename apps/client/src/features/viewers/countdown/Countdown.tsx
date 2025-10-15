@@ -9,7 +9,7 @@ import {
   Settings,
   SupportedEvent,
   TimerPhase,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 import ViewLogo from '../../../common/components/view-logo/ViewLogo';
 import ViewParamsEditor from '../../../common/components/view-params-editor/ViewParamsEditor';

@@ -1,4 +1,4 @@
-import { MILLIS_PER_HOUR, MILLIS_PER_MINUTE } from 'ontime-utils';
+import { MILLIS_PER_HOUR, MILLIS_PER_MINUTE } from 'houseriaapp-utils';
 
 import { loadRoll } from '../rollUtils.js';
 import { prepareTimedEvents, makeOntimeEvent } from '../rundown-service/__mocks__/rundown.mocks.js';

@@ -1,5 +1,5 @@
-import { OntimeRundown, isOntimeDelay, isOntimeBlock, isOntimeEvent, OntimeEvent } from 'ontime-types';
-import { deleteAtIndex } from 'ontime-utils';
+import { OntimeRundown, isOntimeDelay, isOntimeBlock, isOntimeEvent, OntimeEvent } from 'houseriaapp-types';
+import { deleteAtIndex } from 'houseriaapp-utils';
 
 /**
  * Calculates all delays in a given rundown

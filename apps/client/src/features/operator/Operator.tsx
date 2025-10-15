@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { isOntimeEvent, OntimeEvent, SupportedEvent } from 'ontime-types';
-import { getFirstEventNormal, getLastEventNormal } from 'ontime-utils';
+import { isOntimeEvent, OntimeEvent, SupportedEvent } from 'houseriaapp-types';
+import { getFirstEventNormal, getLastEventNormal } from 'houseriaapp-utils';
 
 import EmptyPage from '../../common/components/state/EmptyPage';
 import ViewParamsEditor from '../../common/components/view-params-editor/ViewParamsEditor';

@@ -1,4 +1,4 @@
-import { isColourHex } from 'ontime-utils';
+import { isColourHex } from 'houseriaapp-utils';
 
 /**
  * @description Converts a value to an item in the provided enume.

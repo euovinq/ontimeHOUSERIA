@@ -1,4 +1,4 @@
-import { Playback } from 'ontime-types';
+import { Playback } from 'houseriaapp-types';
 
 import { usePlaybackControl } from '../../../common/hooks/useSocket';
 

@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { ProjectData } from 'ontime-types';
+import { ProjectData } from 'houseriaapp-types';
 
 import { isStringBoolean } from '../../../features/viewers/common/viewUtils';
 import { useTranslation } from '../../../translation/TranslationProvider';

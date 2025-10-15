@@ -1,4 +1,4 @@
-import { ProjectData } from 'ontime-types';
+import { ProjectData } from 'houseriaapp-types';
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 
 /**

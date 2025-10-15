@@ -11,7 +11,7 @@ import {
   SupportedEvent,
   TimerType,
   ViewSettings,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 import { useStore } from 'zustand';
 
 import ViewNavigationMenu from '../../common/components/navigation-menu/ViewNavigationMenu';

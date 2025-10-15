@@ -1,8 +1,8 @@
 import { memo } from 'react';
 import { IoAlertCircleOutline, IoLink, IoLockClosed, IoLockOpenOutline, IoUnlink } from 'react-icons/io5';
 import { InputRightElement, Tooltip } from '@chakra-ui/react';
-import { MaybeString, TimeField, TimeStrategy } from 'ontime-types';
-import { dayInMs } from 'ontime-utils';
+import { MaybeString, TimeField, TimeStrategy } from 'houseriaapp-types';
+import { dayInMs } from 'houseriaapp-utils';
 
 import TimeInputWithButton from '../../../common/components/input/time-input/TimeInputWithButton';
 import { useEventAction } from '../../../common/hooks/useEventAction';

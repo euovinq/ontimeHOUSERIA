@@ -1,4 +1,4 @@
-import type { CustomFields } from 'ontime-types';
+import type { CustomFields } from 'houseriaapp-types';
 
 import { isAlphanumericWithSpace } from '../regex-utils/isAlphanumeric.js';
 

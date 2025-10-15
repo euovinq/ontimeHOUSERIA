@@ -1,4 +1,4 @@
-import { MILLIS_PER_HOUR, MILLIS_PER_MINUTE, MILLIS_PER_SECOND, pad, parseUserTime, isISO8601 } from 'ontime-utils';
+import { MILLIS_PER_HOUR, MILLIS_PER_MINUTE, MILLIS_PER_SECOND, pad, parseUserTime, isISO8601 } from 'houseriaapp-utils';
 
 export const timeFormat = 'HH:mm';
 export const timeFormatSeconds = 'HH:mm:ss';

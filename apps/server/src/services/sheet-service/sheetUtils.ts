@@ -1,5 +1,5 @@
-import { isOntimeBlock, isOntimeEvent, OntimeEvent, OntimeRundownEntry } from 'ontime-types';
-import { millisToString } from 'ontime-utils';
+import { isOntimeBlock, isOntimeEvent, OntimeEvent, OntimeRundownEntry } from 'houseriaapp-types';
+import { millisToString } from 'houseriaapp-utils';
 
 import type { sheets_v4 } from '@googleapis/sheets';
 import { isObject } from '../../utils/assert.js';

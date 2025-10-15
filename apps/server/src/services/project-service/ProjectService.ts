@@ -1,5 +1,5 @@
-import { DatabaseModel, LogOrigin, ProjectData, ProjectFileListResponse } from 'ontime-types';
-import { getErrorMessage, generateProjectCode } from 'ontime-utils';
+import { DatabaseModel, LogOrigin, ProjectData, ProjectFileListResponse } from 'houseriaapp-types';
+import { getErrorMessage, generateProjectCode } from 'houseriaapp-utils';
 
 import { join } from 'path';
 import { copyFile } from 'fs/promises';

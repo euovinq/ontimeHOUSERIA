@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { AuthenticationStatus, CustomFields, OntimeRundown } from 'ontime-types';
-import { ImportMap } from 'ontime-utils';
+import { AuthenticationStatus, CustomFields, OntimeRundown } from 'houseriaapp-types';
+import { ImportMap } from 'houseriaapp-utils';
 
 import { CUSTOM_FIELDS, RUNDOWN } from '../../../../common/api/constants';
 import { patchData } from '../../../../common/api/db';

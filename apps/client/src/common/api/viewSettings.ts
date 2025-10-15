@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ViewSettings } from 'ontime-types';
+import { ViewSettings } from 'houseriaapp-types';
 
 import { apiEntryUrl } from './constants';
 

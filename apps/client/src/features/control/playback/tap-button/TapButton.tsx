@@ -1,5 +1,5 @@
 import { ForwardedRef, forwardRef, PropsWithChildren } from 'react';
-import { Playback } from 'ontime-types';
+import { Playback } from 'houseriaapp-types';
 
 import { cx } from '../../../../common/utils/styleUtils';
 

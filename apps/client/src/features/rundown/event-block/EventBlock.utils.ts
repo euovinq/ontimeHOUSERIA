@@ -1,4 +1,4 @@
-import { millisToString, removeTrailingZero } from 'ontime-utils';
+import { millisToString, removeTrailingZero } from 'houseriaapp-utils';
 
 import { formatDuration } from '../../../common/utils/time';
 

@@ -1,6 +1,6 @@
 import { IoPause, IoPlay, IoStop } from 'react-icons/io5';
 import { Tooltip } from '@chakra-ui/react';
-import { Playback } from 'ontime-types';
+import { Playback } from 'houseriaapp-types';
 
 import { tooltipDelayFast } from '../../../ontimeConfig';
 

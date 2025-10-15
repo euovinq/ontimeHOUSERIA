@@ -4,8 +4,8 @@ import {
   MessageResponse,
   ProjectFileListResponse,
   ProjectLogoResponse,
-} from 'ontime-types';
-import { getErrorMessage } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { getErrorMessage } from 'houseriaapp-utils';
 
 import type { Request, Response } from 'express';
 

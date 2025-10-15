@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { OntimeReport } from 'ontime-types';
-import { MILLIS_PER_HOUR } from 'ontime-utils';
+import { OntimeReport } from 'houseriaapp-types';
+import { MILLIS_PER_HOUR } from 'houseriaapp-utils';
 
 import { REPORT } from '../api/constants';
 import { fetchReport } from '../api/report';

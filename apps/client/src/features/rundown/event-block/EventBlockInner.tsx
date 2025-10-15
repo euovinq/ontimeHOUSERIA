@@ -12,7 +12,7 @@ import {
   IoTime,
 } from 'react-icons/io5';
 import { Tooltip } from '@chakra-ui/react';
-import { EndAction, MaybeString, Playback, TimerType, TimeStrategy } from 'ontime-types';
+import { EndAction, MaybeString, Playback, TimerType, TimeStrategy } from 'houseriaapp-types';
 
 import { cx } from '../../../common/utils/styleUtils';
 import { tooltipDelayMid } from '../../../ontimeConfig';

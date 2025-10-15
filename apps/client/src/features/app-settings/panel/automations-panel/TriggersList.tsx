@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { IoAdd } from 'react-icons/io5';
 import { Button } from '@chakra-ui/react';
-import { NormalisedAutomation, Trigger } from 'ontime-types';
+import { NormalisedAutomation, Trigger } from 'houseriaapp-types';
 
 import { deleteTrigger } from '../../../../common/api/automation';
 import { maybeAxiosError } from '../../../../common/api/utils';

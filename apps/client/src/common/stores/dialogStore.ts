@@ -1,4 +1,4 @@
-import { MaybeString } from 'ontime-types';
+import { MaybeString } from 'houseriaapp-types';
 import { create } from 'zustand';
 
 interface DialogStore {

@@ -9,7 +9,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { ColumnDef } from '@tanstack/react-table';
-import { OntimeRundownEntry } from 'ontime-types';
+import { OntimeRundownEntry } from 'houseriaapp-types';
 
 import useColumnManager from '../cuesheet-table/useColumnManager';
 

@@ -1,4 +1,4 @@
-import { ClientList } from 'ontime-types';
+import { ClientList } from 'houseriaapp-types';
 import { create } from 'zustand';
 
 interface ClientStore {

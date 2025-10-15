@@ -1,7 +1,7 @@
 import { memo, ReactNode } from 'react';
 import { Button, Checkbox } from '@chakra-ui/react';
 import { Column } from '@tanstack/react-table';
-import { OntimeRundownEntry } from 'ontime-types';
+import { OntimeRundownEntry } from 'houseriaapp-types';
 
 import * as Editor from '../../../../features/editors/editor-utils/EditorUtils';
 

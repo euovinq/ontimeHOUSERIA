@@ -1,4 +1,4 @@
-import { OntimeEvent } from 'ontime-types';
+import { OntimeEvent } from 'houseriaapp-types';
 
 /**
  * @description Returns trimmed event list array

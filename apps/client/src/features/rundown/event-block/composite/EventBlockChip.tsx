@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { IoCheckmarkCircle } from 'react-icons/io5';
 import { Tooltip } from '@chakra-ui/react';
-import { isPlaybackActive, MILLIS_PER_MINUTE, MILLIS_PER_SECOND } from 'ontime-utils';
+import { isPlaybackActive, MILLIS_PER_MINUTE, MILLIS_PER_SECOND } from 'houseriaapp-utils';
 
 import { usePlayback } from '../../../../common/hooks/useSocket';
 import useReport from '../../../../common/hooks-query/useReport';

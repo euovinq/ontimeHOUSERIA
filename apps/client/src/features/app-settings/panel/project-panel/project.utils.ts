@@ -1,4 +1,4 @@
-import { DatabaseModel, isKeyOfType } from 'ontime-types';
+import { DatabaseModel, isKeyOfType } from 'houseriaapp-types';
 
 export async function makeProjectPatch(data: DatabaseModel, mergeKeys: Record<string, boolean>) {
   const patchObject: Partial<DatabaseModel> = {};

@@ -1,4 +1,4 @@
-import { OntimeRundown } from 'ontime-types';
+import { OntimeRundown } from 'houseriaapp-types';
 import { getPaginated } from '../rundownUtils.js';
 
 describe('getPaginated', () => {

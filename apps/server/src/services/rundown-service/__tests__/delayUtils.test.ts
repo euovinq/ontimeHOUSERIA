@@ -1,5 +1,5 @@
-import { OntimeBlock, OntimeEvent, OntimeRundown, SupportedEvent } from 'ontime-types';
-import { MILLIS_PER_HOUR } from 'ontime-utils';
+import { OntimeBlock, OntimeEvent, OntimeRundown, SupportedEvent } from 'houseriaapp-types';
+import { MILLIS_PER_HOUR } from 'houseriaapp-utils';
 
 import { apply } from '../delayUtils.js';
 import { makeOntimeDelay, makeOntimeEvent } from '../__mocks__/rundown.mocks.js';

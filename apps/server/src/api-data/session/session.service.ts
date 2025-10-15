@@ -1,4 +1,4 @@
-import { GetInfo, SessionStats } from 'ontime-types';
+import { GetInfo, SessionStats } from 'houseriaapp-types';
 
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 import { publicDir } from '../../setup/index.js';

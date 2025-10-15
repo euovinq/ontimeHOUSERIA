@@ -2,7 +2,7 @@ import { ChangeEvent, useEffect, useRef } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { IoAdd, IoDownloadOutline, IoTrash } from 'react-icons/io5';
 import { Button, Input, Textarea } from '@chakra-ui/react';
-import { type ProjectData } from 'ontime-types';
+import { type ProjectData } from 'houseriaapp-types';
 
 import { projectLogoPath } from '../../../../common/api/constants';
 import { postProjectData, uploadProjectLogo } from '../../../../common/api/project';

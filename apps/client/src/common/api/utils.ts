@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
-import { LogLevel } from 'ontime-types';
-import { generateId, millisToString } from 'ontime-utils';
+import { LogLevel } from 'houseriaapp-types';
+import { generateId, millisToString } from 'houseriaapp-utils';
 
 import { ontimeQueryClient } from '../queryClient';
 import { addLog } from '../stores/logger';

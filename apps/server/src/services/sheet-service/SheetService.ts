@@ -4,8 +4,8 @@
  * @link https://developers.google.com/identity/protocols/oauth2/limited-input-device
  */
 
-import { AuthenticationStatus, CustomFields, LogOrigin, MaybeString, OntimeRundown } from 'ontime-types';
-import { ImportMap, getErrorMessage } from 'ontime-utils';
+import { AuthenticationStatus, CustomFields, LogOrigin, MaybeString, OntimeRundown } from 'houseriaapp-types';
+import { ImportMap, getErrorMessage } from 'houseriaapp-utils';
 
 import { sheets, type sheets_v4 } from '@googleapis/sheets';
 import { Credentials, OAuth2Client } from 'google-auth-library';

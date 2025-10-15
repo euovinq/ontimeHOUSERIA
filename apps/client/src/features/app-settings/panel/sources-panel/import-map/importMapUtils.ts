@@ -1,4 +1,4 @@
-import { ImportCustom, ImportMap } from 'ontime-utils';
+import { ImportCustom, ImportMap } from 'houseriaapp-utils';
 
 export type NamedImportMap = typeof namedImportMap;
 

@@ -1,5 +1,5 @@
-import { Log, LogLevel } from 'ontime-types';
-import { generateId, millisToString } from 'ontime-utils';
+import { Log, LogLevel } from 'houseriaapp-types';
+import { generateId, millisToString } from 'houseriaapp-utils';
 
 import { clock } from '../services/Clock.js';
 import { socket } from '../adapters/WebsocketAdapter.js';

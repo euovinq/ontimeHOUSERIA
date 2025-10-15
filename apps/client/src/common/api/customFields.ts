@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { CustomField, CustomFieldLabel, CustomFields } from 'ontime-types';
+import { CustomField, CustomFieldLabel, CustomFields } from 'houseriaapp-types';
 
 import { apiEntryUrl } from './constants';
 

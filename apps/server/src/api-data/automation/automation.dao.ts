@@ -5,8 +5,8 @@ import type {
   NormalisedAutomation,
   Trigger,
   TriggerDTO,
-} from 'ontime-types';
-import { deleteAtIndex, generateId } from 'ontime-utils';
+} from 'houseriaapp-types';
+import { deleteAtIndex, generateId } from 'houseriaapp-utils';
 
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 import { getTimedEvents } from '../../services/rundown-service/rundownUtils.js';

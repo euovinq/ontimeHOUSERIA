@@ -1,5 +1,5 @@
-import { MaybeNumber, OffsetMode, OntimeEvent, Settings, TimeFormat } from 'ontime-types';
-import { dayInMs, formatFromMillis, MILLIS_PER_HOUR, MILLIS_PER_MINUTE, MILLIS_PER_SECOND } from 'ontime-utils';
+import { MaybeNumber, OffsetMode, OntimeEvent, Settings, TimeFormat } from 'houseriaapp-types';
+import { dayInMs, formatFromMillis, MILLIS_PER_HOUR, MILLIS_PER_MINUTE, MILLIS_PER_SECOND } from 'houseriaapp-utils';
 
 import { FORMAT_12, FORMAT_24 } from '../../viewerConfig';
 import { APP_SETTINGS } from '../api/constants';

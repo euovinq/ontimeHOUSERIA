@@ -5,8 +5,8 @@ import type {
   OntimeRundown,
   OntimeRundownEntry,
   PlayableEvent,
-} from 'ontime-types';
-import { isOntimeBlock, isOntimeEvent, isPlayableEvent } from 'ontime-types';
+} from 'houseriaapp-types';
+import { isOntimeBlock, isOntimeEvent, isPlayableEvent } from 'houseriaapp-types';
 
 type IndexAndEntry = { entry: OntimeRundownEntry | null; index: number | null };
 

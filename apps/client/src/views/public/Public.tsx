@@ -1,6 +1,6 @@
 import QRCode from 'react-qr-code';
 import { useViewportSize } from '@mantine/hooks';
-import { CustomFields, OntimeEvent, ProjectData, Settings } from 'ontime-types';
+import { CustomFields, OntimeEvent, ProjectData, Settings } from 'houseriaapp-types';
 
 import Empty from '../../common/components/state/Empty';
 import TitleCard from '../../common/components/title-card/TitleCard';

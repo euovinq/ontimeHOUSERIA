@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { IoReorderTwo } from 'react-icons/io5';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { OntimeBlock } from 'ontime-types';
+import { OntimeBlock } from 'houseriaapp-types';
 
 import { cx } from '../../../common/utils/styleUtils';
 import EditableBlockTitle from '../common/EditableBlockTitle';

@@ -1,8 +1,8 @@
 import { Fragment, useCallback, useState } from 'react';
 import { IoAlertCircle, IoCheckmarkCircle, IoTrash } from 'react-icons/io5';
 import { Button, IconButton, Select, Tooltip } from '@chakra-ui/react';
-import { TimerLifeCycle, timerLifecycleValues, Trigger } from 'ontime-types';
-import { generateId } from 'ontime-utils';
+import { TimerLifeCycle, timerLifecycleValues, Trigger } from 'houseriaapp-types';
+import { generateId } from 'houseriaapp-utils';
 
 import Tag from '../../../../common/components/tag/Tag';
 import { useEventAction } from '../../../../common/hooks/useEventAction';

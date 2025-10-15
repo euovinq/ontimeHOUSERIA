@@ -11,7 +11,7 @@ import {
   isOSCOutput,
   OntimeAction,
   OSCOutput,
-} from 'ontime-types';
+} from 'houseriaapp-types';
 
 import { addAutomation, editAutomation, testOutput } from '../../../../common/api/automation';
 import { maybeAxiosError } from '../../../../common/api/utils';

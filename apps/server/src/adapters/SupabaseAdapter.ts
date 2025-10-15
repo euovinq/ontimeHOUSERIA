@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { eventStore } from '../stores/EventStore.js';
 import { logger } from '../classes/Logger.js';
-import { LogOrigin } from 'ontime-types';
+import { LogOrigin } from 'houseriaapp-types';
 import { getDataProvider } from '../classes/data-provider/DataProvider.js';
 import { writeFile, readFile } from 'fs/promises';
 import { join } from 'path';

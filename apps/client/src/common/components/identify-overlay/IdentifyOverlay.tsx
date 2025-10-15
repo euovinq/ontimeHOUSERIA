@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { MILLIS_PER_MINUTE } from 'ontime-utils';
+import { MILLIS_PER_MINUTE } from 'houseriaapp-utils';
 
 import { setClientRemote } from '../../hooks/useSocket';
 import { useClientStore } from '../../stores/clientStore';
