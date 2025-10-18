@@ -39,26 +39,63 @@ export function getCombinedReport(report: OntimeReport, rundown: NormalisedRundo
   return combinedReport;
 }
 
-const csvHeader = ['Index', 'Title', 'Cue', 'Scheduled Start', 'Actual Start', 'Scheduled End', 'Actual End'];
+export type ReportColumnKey =
+  | 'index'
+  | 'title'
+  | 'cue'
+  | 'scheduledStart'
+  | 'actualStart'
+  | 'scheduledEnd'
+  | 'actualEnd';
+
+type ReportColumnConfig = {
+  key: ReportColumnKey;
+  label: string;
+};
+
+export const reportColumns: ReportColumnConfig[] = [
+  { key: 'index', label: 'Index' },
+  { key: 'title', label: 'Title' },
+  { key: 'cue', label: 'Cue' },
+  { key: 'scheduledStart', label: 'Scheduled Start' },
+  { key: 'actualStart', label: 'Actual Start' },
+  { key: 'scheduledEnd', label: 'Scheduled End' },
+  { key: 'actualEnd', label: 'Actual End' },
+];
 
 /**
- * Transforms a CombinedReport into a CSV string
+ * Transforms a CombinedReport into a CSV string using selected columns and semicolon delimiter
  */
-export function makeReportCSV(combinedReport: CombinedReport[]) {
+export function makeReportCSV(combinedReport: CombinedReport[], selectedColumns: ReportColumnKey[]) {
+  const columns = reportColumns.filter((column) => selectedColumns.includes(column.key));
+
   const csv: string[][] = [];
-  csv.push(csvHeader);
+  csv.push(columns.map((col) => col.label));
 
   for (const entry of combinedReport) {
-    csv.push([
-      String(entry.index),
-      entry.title,
-      entry.cue,
-      formatTime(entry.scheduledStart),
-      formatTime(entry.actualStart),
-      formatTime(entry.scheduledEnd),
-      formatTime(entry.actualEnd),
-    ]);
+    csv.push(
+      columns.map((column) => {
+        switch (column.key) {
+          case 'index':
+            return String(entry.index);
+          case 'title':
+            return entry.title;
+          case 'cue':
+            return entry.cue;
+          case 'scheduledStart':
+            return formatTime(entry.scheduledStart);
+          case 'actualStart':
+            return formatTime(entry.actualStart);
+          case 'scheduledEnd':
+            return formatTime(entry.scheduledEnd);
+          case 'actualEnd':
+            return formatTime(entry.actualEnd);
+          default:
+            return '';
+        }
+      })
+    );
   }
 
-  return makeCSVFromArrayOfArrays(csv);
+  return makeCSVFromArrayOfArrays(csv, ';');
 }

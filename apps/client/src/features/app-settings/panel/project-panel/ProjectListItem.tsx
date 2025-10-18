@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { IoEllipsisHorizontal } from 'react-icons/io5';
-import { IconButton, Menu, MenuButton, MenuItem, MenuList } from '@chakra-ui/react';
+import { IconButton, Menu, MenuButton, MenuItem, MenuList, useDisclosure } from '@chakra-ui/react';
 
 import {
   deleteProject,
-  downloadCSV,
   downloadProject,
   duplicateProject,
   loadProject,
@@ -14,6 +13,7 @@ import { invalidateAllCaches, maybeAxiosError } from '../../../../common/api/uti
 import { cx } from '../../../../common/utils/styleUtils';
 import * as Panel from '../../panel-utils/PanelUtils';
 
+import CSVExportModal from './CSVExportModal';
 import ProjectForm, { ProjectFormValues } from './ProjectForm';
 import ProjectMergeForm from './ProjectMergeForm';
 
@@ -166,6 +166,7 @@ interface ActionMenuProps {
 }
 function ActionMenu(props: ActionMenuProps) {
   const { current, filename, isDisabled, onChangeEditMode, onDelete, onLoad, onMerge } = props;
+  const csvExportModal = useDisclosure();
 
   const handleRename = () => {
     onChangeEditMode('rename', filename);
@@ -179,36 +180,40 @@ function ActionMenu(props: ActionMenuProps) {
     await downloadProject(filename);
   };
 
-  const handleExportCSV = async () => {
-    await downloadCSV(filename);
+  const handleExportCSV = () => {
+    csvExportModal.onOpen();
   };
 
   return (
-    <Menu variant='ontime-on-dark' size='sm'>
-      <MenuButton
-        as={IconButton}
-        aria-label='Options'
-        icon={<IoEllipsisHorizontal />}
-        color='#e2e2e2' // $gray-200
-        variant='ontime-ghosted'
-        size='sm'
-        isDisabled={isDisabled}
-      />
-      <MenuList>
-        <MenuItem onClick={() => onLoad(filename)} isDisabled={current}>
-          Load
-        </MenuItem>
-        <MenuItem onClick={() => onMerge(filename)} isDisabled={current}>
-          Partial Load
-        </MenuItem>
-        <MenuItem onClick={handleRename}>Rename</MenuItem>
-        <MenuItem onClick={handleDuplicate}>Duplicate</MenuItem>
-        <MenuItem onClick={handleDownload}>Download</MenuItem>
-        <MenuItem onClick={handleExportCSV}>Export CSV Rundown</MenuItem>
-        <MenuItem isDisabled={current} onClick={() => onDelete(filename)}>
-          Delete
-        </MenuItem>
-      </MenuList>
-    </Menu>
+    <>
+      <Menu variant='ontime-on-dark' size='sm'>
+        <MenuButton
+          as={IconButton}
+          aria-label='Options'
+          icon={<IoEllipsisHorizontal />}
+          color='#e2e2e2' // $gray-200
+          variant='ontime-ghosted'
+          size='sm'
+          isDisabled={isDisabled}
+        />
+        <MenuList>
+          <MenuItem onClick={() => onLoad(filename)} isDisabled={current}>
+            Load
+          </MenuItem>
+          <MenuItem onClick={() => onMerge(filename)} isDisabled={current}>
+            Partial Load
+          </MenuItem>
+          <MenuItem onClick={handleRename}>Rename</MenuItem>
+          <MenuItem onClick={handleDuplicate}>Duplicate</MenuItem>
+          <MenuItem onClick={handleDownload}>Download</MenuItem>
+          <MenuItem onClick={handleExportCSV}>Export CSV Rundown</MenuItem>
+          <MenuItem isDisabled={current} onClick={() => onDelete(filename)}>
+            Delete
+          </MenuItem>
+        </MenuList>
+      </Menu>
+
+      <CSVExportModal isOpen={csvExportModal.isOpen} onClose={csvExportModal.onClose} filename={filename} />
+    </>
   );
 }

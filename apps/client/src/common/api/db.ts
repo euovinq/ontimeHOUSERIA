@@ -1,5 +1,11 @@
 import axios, { AxiosResponse } from 'axios';
-import { DatabaseModel, MessageResponse, ProjectData, ProjectFileListResponse, QuickStartData } from 'houseriaapp-types';
+import {
+  DatabaseModel,
+  MessageResponse,
+  ProjectData,
+  ProjectFileListResponse,
+  QuickStartData,
+} from 'houseriaapp-types';
 
 import { makeTable } from '../../views/cuesheet/cuesheet.utils';
 import { makeCSVFromArrayOfArrays } from '../utils/csv';
@@ -20,18 +26,24 @@ export function getDb(filename: string): Promise<AxiosResponse<DatabaseModel>> {
  * Request download of the current project file
  * @param fileName
  */
-export async function downloadProject(fileName: string) {
+export async function downloadProject(filename: string, shouldDownload = true) {
   try {
-    const { data, name } = await fileDownload(fileName);
+    const { data, name } = await fileDownload(filename);
 
     const fileContent = JSON.stringify(data, null, 2);
 
+    if (!shouldDownload) {
+      const fileNameToSave = name.endsWith('.json') ? name : `${name}.json`;
+      return { fileContent, fileNameToSave };
+    }
+
     const blob = createBlob(fileContent, 'application/json;charset=utf-8;');
-    // Ensure filename has .json extension but don't duplicate it
-    const fileName = name.endsWith('.json') ? name : `${name}.json`;
-    downloadBlob(blob, fileName);
+    const fileNameToSave = name.endsWith('.json') ? name : `${name}.json`;
+    downloadBlob(blob, fileNameToSave);
+    return undefined;
   } catch (error) {
     console.error(error);
+    return undefined;
   }
 }
 
@@ -39,9 +51,9 @@ export async function downloadProject(fileName: string) {
  * Request download of the current rundown as a CSV file
  * @param fileName
  */
-export async function downloadCSV(fileName: string = 'rundown') {
+export async function downloadCSV(filename: string = 'rundown'): Promise<void> {
   try {
-    const { data, name } = await fileDownload(fileName);
+    const { data, name } = await fileDownload(filename);
     const { project, rundown, customFields } = data;
 
     const sheetData = makeTable(project, rundown, customFields);

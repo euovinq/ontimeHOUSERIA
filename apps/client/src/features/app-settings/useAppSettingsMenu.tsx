@@ -91,7 +91,7 @@ export function useAppSettingsMenu() {
     () =>
       staticOptions.map((option) => ({
         ...option,
-        highlight: option.id === 'about' && data.hasUpdates ? 'New version available' : undefined,
+        highlight: undefined,
       })),
     [data],
   );
