@@ -5,8 +5,8 @@ import { setMessage, useExternalMessageInput, useTimerMessageInput } from '../..
 import { tooltipDelayMid } from '../../../ontimeConfig';
 
 import InputRow from './InputRow';
-import TimerControlsPreview from './TimerViewControl';
 import ProjectCodeInput from './ProjectCodeInput';
+import TimerControlsPreview from './TimerViewControl';
 
 export default function MessageControl() {
   return (

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Button, Box } from '@chakra-ui/react';
+import { useCallback, useEffect, useState } from 'react';
+import { Box, Button } from '@chakra-ui/react';
 
 import { socketSendJson } from '../../../../common/utils/socket';
 
@@ -22,7 +22,7 @@ export default function SupabaseControl() {
   useEffect(() => {
     // Set initial status as disabled - user must enable manually
     setStatus({ connected: false, enabled: false });
-    
+
     // Get real status after component mounts
     setTimeout(() => {
       getRealStatus();
@@ -33,7 +33,7 @@ export default function SupabaseControl() {
   useEffect(() => {
     const handleSupabaseStatus = (event: CustomEvent) => {
       const { type, payload } = event.detail;
-      
+
       if (type === 'togglesupabase' || type === 'getsupabasestatus') {
         if (payload && typeof payload === 'object') {
           setStatus(payload);
@@ -43,7 +43,7 @@ export default function SupabaseControl() {
 
     // Add custom event listener
     window.addEventListener('supabase-status', handleSupabaseStatus as EventListener);
-    
+
     return () => {
       window.removeEventListener('supabase-status', handleSupabaseStatus as EventListener);
     };
@@ -51,18 +51,18 @@ export default function SupabaseControl() {
 
   const handleToggle = () => {
     const now = Date.now();
-    
+
     // Prevent rapid clicking
     if (now - lastToggleTime < 2000) {
       return;
     }
-    
+
     setLastToggleTime(now);
     setIsLoading(true);
-    
+
     // Send toggle command
     socketSendJson('togglesupabase');
-    
+
     // Wait for server response and get real status
     setTimeout(() => {
       getRealStatus();
@@ -70,9 +70,9 @@ export default function SupabaseControl() {
     }, 1500);
   };
 
-      const getStatusText = () => {
-        return status.connected ? 'Conectado' : 'Offline';
-      };
+  const getStatusText = () => {
+    return status.connected ? 'Conectado' : 'Offline';
+  };
 
   return (
     <Button
@@ -93,8 +93,8 @@ export default function SupabaseControl() {
             '@keyframes pulse': {
               '0%': { opacity: 1 },
               '50%': { opacity: 0.5 },
-              '100%': { opacity: 1 }
-            }
+              '100%': { opacity: 1 },
+            },
           }}
         />
       }

@@ -1,11 +1,11 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { queryRefetchIntervalSlow } from '../../ontimeConfig';
 import { PROJECT_DATA } from '../api/constants';
 import { getProjectData, postProjectData } from '../api/project';
+import { logAxiosError } from '../api/utils';
 import { projectDataPlaceholder } from '../models/ProjectData';
 import { ontimeQueryClient } from '../queryClient';
-import { logAxiosError } from '../api/utils';
 
 export default function useProjectData() {
   const { data, status, isFetching, isError, refetch } = useQuery({

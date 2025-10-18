@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Input, Button, useDisclosure } from '@chakra-ui/react';
-import { IoRefresh, IoLink } from 'react-icons/io5';
+import { IoLink, IoRefresh } from 'react-icons/io5';
+import { Button, Input, useDisclosure } from '@chakra-ui/react';
+import { generateProjectCode } from 'houseriaapp-utils';
 
 import useProjectData, { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
-import { generateProjectCode } from 'houseriaapp-utils';
 import { cx } from '../../../common/utils/styleUtils';
-import ProjectLinksModal from './ProjectLinksModal';
 import SupabaseControl from '../../app-settings/panel/general-panel/SupabaseControl';
+
+import ProjectLinksModal from './ProjectLinksModal';
 
 import style from './InputRow.module.scss';
 
@@ -14,7 +15,7 @@ export default function ProjectCodeInput() {
   const { data: projectData } = useProjectData();
   const { mutateAsync: updateProjectData } = useProjectDataMutation();
   const { isOpen, onOpen, onClose } = useDisclosure();
-  
+
   const [projectCode, setProjectCode] = useState(projectData?.projectCode || '');
 
   // Sync with external data
@@ -27,7 +28,7 @@ export default function ProjectCodeInput() {
   const handleGenerateNewCode = async () => {
     const newCode = generateProjectCode();
     setProjectCode(newCode);
-    
+
     if (projectData) {
       await updateProjectData({
         ...projectData,
@@ -38,9 +39,12 @@ export default function ProjectCodeInput() {
 
   const handleCodeChange = async (newValue: string) => {
     // Only allow alphanumeric characters and limit to 5 characters
-    const sanitizedValue = newValue.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 5);
+    const sanitizedValue = newValue
+      .replace(/[^A-Z0-9]/gi, '')
+      .toUpperCase()
+      .slice(0, 5);
     setProjectCode(sanitizedValue);
-    
+
     if (projectData) {
       await updateProjectData({
         ...projectData,
@@ -52,45 +56,47 @@ export default function ProjectCodeInput() {
   return (
     <>
       <div className={style.inputRow}>
-        <label className={cx([style.label, style.active])} htmlFor="project-code">
+        <label className={cx([style.label, style.active])} htmlFor='project-code'>
           Project Code
         </label>
         <div className={style.inputItems}>
           <Input
-            id="project-code"
-            size="sm"
-            variant="ontime-filled"
+            id='project-code'
+            size='sm'
+            variant='ontime-filled'
             value={projectCode}
             onChange={(e) => handleCodeChange(e.target.value)}
-            placeholder="A1B2C"
+            placeholder='A1B2C'
             maxLength={5}
-            textTransform="uppercase"
+            textTransform='uppercase'
           />
           <Button
-            size="sm"
-            variant="ontime-subtle"
+            size='sm'
+            variant='ontime-subtle'
             onClick={handleGenerateNewCode}
-            aria-label="Generate new project code"
-            leftIcon={<IoRefresh size="14px" />}
+            aria-label='Generate new project code'
+            leftIcon={<IoRefresh size='14px' />}
           >
             New
           </Button>
         </div>
         {projectCode && (
-          <div style={{ 
-            marginTop: '4px', 
-            display: 'flex', 
-            flexDirection: 'row',
-            gap: '8px',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
+          <div
+            style={{
+              marginTop: '4px',
+              display: 'flex',
+              flexDirection: 'row',
+              gap: '8px',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             <Button
-              size="sm"
-              variant="ontime-subtle"
+              size='sm'
+              variant='ontime-subtle'
               onClick={onOpen}
-              leftIcon={<IoLink size="12px" />}
-              aria-label="Abrir links do projeto"
+              leftIcon={<IoLink size='12px' />}
+              aria-label='Abrir links do projeto'
             >
               Links do Projeto
             </Button>
@@ -98,12 +104,8 @@ export default function ProjectCodeInput() {
           </div>
         )}
       </div>
-      
-      <ProjectLinksModal 
-        isOpen={isOpen} 
-        onClose={onClose} 
-        projectCode={projectCode} 
-      />
+
+      <ProjectLinksModal isOpen={isOpen} onClose={onClose} projectCode={projectCode} />
     </>
   );
 }
