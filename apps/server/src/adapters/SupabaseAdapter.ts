@@ -685,6 +685,41 @@ export class SupabaseAdapter {
     return JSON.stringify(hashData);
   }
 
+  /**
+   * Filter rundown to exclude events with skip=true and recalculate aggregates
+   */
+  private filterRundownForSupabase(rundown: readonly any[]): {
+    filteredRundown: any[];
+    totalEvents: number;
+    totalDuration: number;
+  } {
+    if (!rundown || rundown.length === 0) {
+      return {
+        filteredRundown: [],
+        totalEvents: 0,
+        totalDuration: 0
+      };
+    }
+
+    // Filter out events with skip === true
+    const filteredRundown = rundown.filter(event => event.skip !== true);
+
+    // Recalculate aggregates based on filtered rundown
+    const totalEvents = filteredRundown.length;
+    const totalDuration = filteredRundown.reduce((total, event) => {
+      if (event.type === 'event' && event.duration) {
+        return total + event.duration;
+      }
+      return total;
+    }, 0);
+
+    return {
+      filteredRundown,
+      totalEvents,
+      totalDuration
+    };
+  }
+
 
   /**
    * Build timer-specific payload (COMPLETE - all data since Supabase doesn't support partial JSON updates)
@@ -697,6 +732,9 @@ export class SupabaseAdapter {
     const timer = data.timer || {};
     const runtime = data.runtime || {};
 
+    // Filter rundown to exclude events with skip=true
+    const { filteredRundown, totalEvents, totalDuration } = this.filterRundownForSupabase(rundown);
+
     // Send ALL data since Supabase upsert replaces the entire row
     return {
       projectCode,
@@ -707,15 +745,10 @@ export class SupabaseAdapter {
         projectCode: projectCode
       },
       cuesheet: {
-        rundown: rundown || [],
+        rundown: filteredRundown,
         customFields: customFields || {},
-        totalEvents: rundown ? rundown.length : 0,
-        totalDuration: rundown ? rundown.reduce((total, event) => {
-          if (event.type === 'event' && event.duration) {
-            return total + event.duration;
-          }
-          return total;
-        }, 0) : 0
+        totalEvents: totalEvents,
+        totalDuration: totalDuration
       },
       timer: {
         startedAt: (timer.playback || 'stop') === 'stop' ? null : (timer.startedAt || null), // Only null when stopped
@@ -746,10 +779,13 @@ export class SupabaseAdapter {
   private buildProjectPayload(data: any) {
     const projectData = getDataProvider().getProjectData();
     const projectCode = projectData?.projectCode || '';
-    const rundown = getDataProvider().getRundown();
+    const rundown = getDataProvider().getRundown() || [];
     const customFields = getDataProvider().getCustomFields();
     const timer = data.timer || {};
     const runtime = data.runtime || {};
+
+    // Filter rundown to exclude events with skip=true
+    const { filteredRundown, totalEvents, totalDuration } = this.filterRundownForSupabase(rundown);
 
     return {
       projectCode,
@@ -760,15 +796,10 @@ export class SupabaseAdapter {
         projectCode: projectCode
       },
       cuesheet: {
-        rundown: rundown || [],
+        rundown: filteredRundown,
         customFields: customFields || {},
-        totalEvents: rundown ? rundown.length : 0,
-        totalDuration: rundown ? rundown.reduce((total, event) => {
-          if (event.type === 'event' && event.duration) {
-            return total + event.duration;
-          }
-          return total;
-        }, 0) : 0
+        totalEvents: totalEvents,
+        totalDuration: totalDuration
       },
       // Include ALL fields for proper incremental updates
       timer: {
@@ -800,10 +831,13 @@ export class SupabaseAdapter {
   private buildRundownPayload(data: any) {
     const projectData = getDataProvider().getProjectData();
     const projectCode = projectData?.projectCode || '';
-    const rundown = getDataProvider().getRundown();
+    const rundown = getDataProvider().getRundown() || [];
     const customFields = getDataProvider().getCustomFields();
     const timer = data.timer || {};
     const runtime = data.runtime || {};
+
+    // Filter rundown to exclude events with skip=true
+    const { filteredRundown, totalEvents, totalDuration } = this.filterRundownForSupabase(rundown);
 
     // Send ALL data since Supabase upsert replaces the entire row
     return {
@@ -815,15 +849,10 @@ export class SupabaseAdapter {
         projectCode: projectCode
       },
       cuesheet: {
-        rundown: rundown || [],
+        rundown: filteredRundown,
         customFields: customFields || {},
-        totalEvents: rundown ? rundown.length : 0,
-        totalDuration: rundown ? rundown.reduce((total, event) => {
-          if (event.type === 'event' && event.duration) {
-            return total + event.duration;
-          }
-          return total;
-        }, 0) : 0
+        totalEvents: totalEvents,
+        totalDuration: totalDuration
       },
       timer: {
         startedAt: (timer.playback || 'stop') === 'stop' ? null : (timer.startedAt || null), // Only null when stopped
@@ -854,7 +883,7 @@ export class SupabaseAdapter {
   private buildDelayPayload(data: any) {
     const projectData = getDataProvider().getProjectData();
     const projectCode = projectData?.projectCode || '';
-    const rundown = getDataProvider().getRundown();
+    const rundown = getDataProvider().getRundown() || [];
     const customFields = getDataProvider().getCustomFields();
     const timer = data.timer || {};
     const runtime = data.runtime || {};
@@ -863,6 +892,9 @@ export class SupabaseAdapter {
       logger.warning(LogOrigin.Server, 'Supabase: Cannot build delay payload - no project code');
       return null;
     }
+    
+    // Filter rundown to exclude events with skip=true
+    const { filteredRundown, totalEvents, totalDuration } = this.filterRundownForSupabase(rundown);
     
     // Use accumulated delay if in delay mode, otherwise use current offset
     // Apply -1000ms compensation to delay offset (1 second)
@@ -879,15 +911,10 @@ export class SupabaseAdapter {
         projectCode: projectCode
       },
       cuesheet: {
-        rundown: rundown || [],
+        rundown: filteredRundown,
         customFields: customFields || {},
-        totalEvents: rundown ? rundown.length : 0,
-        totalDuration: rundown ? rundown.reduce((total, event) => {
-          if (event.type === 'event' && event.duration) {
-            return total + event.duration;
-          }
-          return total;
-        }, 0) : 0
+        totalEvents: totalEvents,
+        totalDuration: totalDuration
       },
       timer: {
         startedAt: (timer.playback || 'stop') === 'stop' ? null : (timer.startedAt || null), // Only null when stopped
@@ -913,11 +940,16 @@ export class SupabaseAdapter {
   }
 
   /**
-   * Get current event from data
+   * Get current event from data (excluding skipped events)
    */
   private getCurrentEvent(data: any) {
     const currentEvent = data.eventNow;
     if (!currentEvent) return null;
+    
+    // Don't return events with skip=true
+    if (currentEvent.skip === true) {
+      return null;
+    }
     
     return {
       id: currentEvent.id,
@@ -934,11 +966,16 @@ export class SupabaseAdapter {
   }
 
   /**
-   * Get next event from data
+   * Get next event from data (excluding skipped events)
    */
   private getNextEvent(data: any) {
     const nextEvent = data.eventNext;
     if (!nextEvent) return null;
+    
+    // Don't return events with skip=true
+    if (nextEvent.skip === true) {
+      return null;
+    }
     
     return {
       id: nextEvent.id,
