@@ -35,6 +35,11 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode }: Proj
       url: `https://houseriasite.vercel.app/cliente/${projectCode}`,
       description: 'Área do cliente do projeto',
     },
+    {
+      label: 'Cliente TV',
+      url: `https://houseriasite.vercel.app/cliente-tv/${projectCode}`,
+      description: 'Versão TV para o cliente do projeto',
+    },
   ];
 
   const copyToClipboard = async (url: string, label: string) => {
