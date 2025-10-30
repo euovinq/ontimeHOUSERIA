@@ -105,7 +105,12 @@ export default function ProjectCodeInput() {
         )}
       </div>
 
-      <ProjectLinksModal isOpen={isOpen} onClose={onClose} projectCode={projectCode} />
+      <ProjectLinksModal 
+        isOpen={isOpen} 
+        onClose={onClose} 
+        projectCode={projectCode}
+        projectData={projectData}
+      />
     </>
   );
 }
