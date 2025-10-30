@@ -565,6 +565,27 @@ export class SupabaseAdapter {
   }
 
   /**
+   * Force project data update to Supabase (called when project data changes)
+   */
+  public async forceProjectUpdate() {
+    if (!this.isConnected || !this.config?.enabled) {
+      return;
+    }
+
+    try {
+      const currentData = eventStore.poll();
+      if (!currentData) {
+        return;
+      }
+
+      logger.info(LogOrigin.Server, 'Supabase: Force project update triggered');
+      await this.handleProjectChange(currentData);
+    } catch (error) {
+      logger.error(LogOrigin.Server, `Supabase: Error forcing project update: ${error}`);
+    }
+  }
+
+  /**
    * Toggle Supabase connection on/off
    */
   public toggleConnection(): boolean {
@@ -742,7 +763,8 @@ export class SupabaseAdapter {
       status: `timer_${playback}`,
       project: {
         title: projectData?.title || '',
-        projectCode: projectCode
+        projectCode: projectCode,
+        directorWhatsapp: projectData?.directorWhatsapp || null
       },
       cuesheet: {
         rundown: filteredRundown,
@@ -793,7 +815,8 @@ export class SupabaseAdapter {
       status: 'project_loaded',
       project: {
         title: projectData?.title || '',
-        projectCode: projectCode
+        projectCode: projectCode,
+        directorWhatsapp: projectData?.directorWhatsapp || null
       },
       cuesheet: {
         rundown: filteredRundown,
@@ -846,7 +869,8 @@ export class SupabaseAdapter {
       status: 'events_updated',
       project: {
         title: projectData?.title || '',
-        projectCode: projectCode
+        projectCode: projectCode,
+        directorWhatsapp: projectData?.directorWhatsapp || null
       },
       cuesheet: {
         rundown: filteredRundown,
@@ -908,7 +932,8 @@ export class SupabaseAdapter {
       status: this.isInDelayMode ? 'delay_accumulated' : 'delay_updated',
       project: {
         title: projectData?.title || '',
-        projectCode: projectCode
+        projectCode: projectCode,
+        directorWhatsapp: projectData?.directorWhatsapp || null
       },
       cuesheet: {
         rundown: filteredRundown,

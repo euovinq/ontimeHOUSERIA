@@ -7,5 +7,6 @@ export type ProjectData = {
   backstageInfo: string;
   projectLogo: string | null;
   projectCode: string;
+  directorWhatsapp?: string;
   custom: { title: string; value: string }[];
 };

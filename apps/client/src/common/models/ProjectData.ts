@@ -9,5 +9,6 @@ export const projectDataPlaceholder: ProjectData = {
   backstageInfo: '',
   projectLogo: null,
   projectCode: '',
+  directorWhatsapp: '',
   custom: [],
 };
