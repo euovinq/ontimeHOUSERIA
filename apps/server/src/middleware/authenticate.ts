@@ -54,11 +54,24 @@ export function makeAuthenticateMiddleware(prefix: string) {
   }
 
   function authenticate(req: Request, res: Response, next: NextFunction) {
+    // Log apenas para rotas PowerPoint para debug
+    if (req.path.includes('powerpoint')) {
+      console.log('🔐 [AUTH] Autenticando requisição PowerPoint:', req.method, req.path);
+      console.log('🔐 [AUTH] Token do query:', req.query.token);
+      console.log('🔐 [AUTH] Token do cookie:', req.cookies?.token);
+    }
+    
     const token = req.query.token || req.cookies?.token;
     if (token && token === hashedPassword) {
+      if (req.path.includes('powerpoint')) {
+        console.log('✅ [AUTH] Autenticação OK para PowerPoint');
+      }
       return next();
     }
 
+    if (req.path.includes('powerpoint')) {
+      console.error('❌ [AUTH] Autenticação FALHOU para PowerPoint - token não encontrado ou inválido');
+    }
     res.status(401).send('Unauthorized');
   }
 

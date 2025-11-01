@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { logger } from '../../classes/Logger.js';
 import { LogOrigin } from 'houseriaapp-types';
+import { socket } from '../../adapters/WebsocketAdapter.js';
 
 export interface SupabaseConfigRequest {
   url: string;
@@ -146,6 +147,98 @@ export async function getProjectData(req: Request, res: Response) {
     logger.error(LogOrigin.Server, `Error getting project data: ${error}`);
     res.status(500).json({ 
       error: 'Failed to get project data'
+    });
+  }
+}
+
+/**
+ * Controller para toggle do Supabase via REST API (Stream Deck)
+ */
+export async function toggleSupabaseController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const wasConnected = supabaseAdapter.getConnectionStatus().connected;
+    const isConnected = supabaseAdapter.toggleConnection();
+    
+    // Aguarda um delay maior para garantir que init() completo foi executado
+    // (init() é assíncrono e chama testConnection() que também é assíncrono)
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    const status = supabaseAdapter.getConnectionStatus();
+    
+    logger.info(LogOrigin.Server, `📡 Supabase toggle REST - Status obtido após toggle:`, status);
+    logger.info(LogOrigin.Server, `📡 Supabase toggle REST - isConnected retornado:`, isConnected);
+    logger.info(LogOrigin.Server, `📡 Supabase toggle REST - Era conectado antes:`, wasConnected);
+    
+    // O status final deve ser o oposto do que era antes (toggle)
+    // Mas também verifica getConnectionStatus() que é mais confiável após o delay
+    const finalStatus = {
+      connected: Boolean(status.connected),
+      enabled: Boolean(status.enabled),
+    };
+    
+    // Se getConnectionStatus() ainda não atualizou (raro), usa o toggle como fallback
+    if (!finalStatus.connected && !wasConnected && isConnected) {
+      finalStatus.connected = true;
+      finalStatus.enabled = true;
+      logger.info(LogOrigin.Server, `📡 Supabase toggle REST - Usando fallback: status baseado no toggle`);
+    }
+    
+    logger.info(LogOrigin.Server, `📡 Supabase toggle REST - Status final a ser enviado:`, finalStatus);
+    
+    // Envia atualização via WebSocket para todos os clientes conectados
+    socket.sendAsJson({
+      type: 'togglesupabase',
+      payload: finalStatus,
+    });
+    logger.info(LogOrigin.Server, `✅ Supabase toggle REST - Mensagem WebSocket enviada`);
+    
+    logger.info(LogOrigin.Server, `🔄 Supabase toggle REST: ${finalStatus.connected ? 'Conectado' : 'Desconectado'}`);
+    
+    res.status(200).json({
+      success: true,
+      connected: finalStatus.connected,
+      enabled: finalStatus.enabled,
+      message: finalStatus.connected ? 'Supabase conectado' : 'Supabase desconectado',
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    logger.error(LogOrigin.Server, `❌ Supabase toggle REST - Erro: ${errorMsg}`);
+    res.status(500).json({
+      success: false,
+      error: errorMsg,
+      connected: false,
+      enabled: false,
+    });
+  }
+}
+
+/**
+ * Controller para obter status do Supabase via REST API
+ */
+export async function getSupabaseToggleStatusController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const status = supabaseAdapter.getConnectionStatus();
+    
+    res.status(200).json({
+      success: true,
+      connected: status.connected,
+      enabled: status.enabled,
+      message: status.connected ? 'Supabase está conectado' : 'Supabase está desconectado',
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    logger.error(LogOrigin.Server, `❌ Supabase status REST - Erro: ${errorMsg}`);
+    res.status(500).json({
+      success: false,
+      error: errorMsg,
+      connected: false,
+      enabled: false,
     });
   }
 }

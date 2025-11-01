@@ -239,6 +239,36 @@ export const connectSocket = () => {
           }
           break;
         }
+        case 'togglepowerpoint': {
+          // Handle PowerPoint toggle response
+          if (typeof payload === 'object' && payload !== null) {
+            // Dispatch custom event for PowerPointControl component
+            window.dispatchEvent(new CustomEvent('powerpoint-status', { 
+              detail: { type: 'togglepowerpoint', payload } 
+            }));
+          }
+          break;
+        }
+        case 'getpowerpointstatus': {
+          // Handle PowerPoint status response
+          if (typeof payload === 'object' && payload !== null) {
+            // Dispatch custom event for PowerPointControl component
+            window.dispatchEvent(new CustomEvent('powerpoint-status', { 
+              detail: { type: 'getpowerpointstatus', payload } 
+            }));
+          }
+          break;
+        }
+        case 'powerpoint-status': {
+          // Handle PowerPoint status broadcast (sent by server when status changes)
+          if (typeof payload === 'object' && payload !== null) {
+            // Dispatch custom event for PowerPointControl component
+            window.dispatchEvent(new CustomEvent('powerpoint-status', { 
+              detail: { type: 'powerpoint-status', payload } 
+            }));
+          }
+          break;
+        }
       }
     } catch (_) {
       // ignore unhandled
