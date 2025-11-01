@@ -22,6 +22,7 @@ import { loginRouter, makeAuthenticateMiddleware } from './middleware/authentica
 // Import Routers
 import { appRouter } from './api-data/index.js';
 import { integrationRouter } from './api-integration/integration.router.js';
+import { publicRouter } from './api-integration/public.router.js';
 
 // Import adapters
 import { socket } from './adapters/WebsocketAdapter.js';
@@ -87,6 +88,7 @@ const { authenticate, authenticateAndRedirect } = makeAuthenticateMiddleware(pre
 
 // Implement route endpoints
 app.use(`${prefix}/login`, loginRouter); // router for login flow
+app.use(`${prefix}/api/public`, publicRouter); // router for public endpoints (Stream Deck) - SEM autenticação
 app.use(`${prefix}/data`, authenticate, appRouter); // router for application data
 app.use(`${prefix}/api`, authenticate, integrationRouter); // router for integrations
 

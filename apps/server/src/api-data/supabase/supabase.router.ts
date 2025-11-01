@@ -6,7 +6,9 @@ import {
   getSupabaseStatus,
   getActiveProjects,
   cleanupOldProjects,
-  getProjectData
+  getProjectData,
+  toggleSupabaseController,
+  getSupabaseToggleStatusController,
 } from './supabase.controller.js';
 
 export const router = express.Router();
@@ -18,6 +20,7 @@ router.get('/projects', getActiveProjects);
 router.get('/project/:projectCode', getProjectData);
 router.post('/cleanup', cleanupOldProjects);
 
-
-
+// Rotas para Stream Deck/Companion
+router.post('/toggle', toggleSupabaseController);
+router.get('/toggle/status', getSupabaseToggleStatusController);
 

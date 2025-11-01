@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { IoLink, IoRefresh } from 'react-icons/io5';
+import { IoLink, IoRefresh, IoSettingsOutline } from 'react-icons/io5';
 import { Button, Input, useDisclosure } from '@chakra-ui/react';
 import { generateProjectCode } from 'houseriaapp-utils';
 
 import useProjectData, { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
 import { cx } from '../../../common/utils/styleUtils';
 import SupabaseControl from '../../app-settings/panel/general-panel/SupabaseControl';
+import PowerPointControl from '../../app-settings/panel/general-panel/PowerPointControl';
 
 import ProjectLinksModal from './ProjectLinksModal';
+import PowerPointConfigModal from './PowerPointConfigModal';
 
 import style from './InputRow.module.scss';
 
@@ -15,6 +17,7 @@ export default function ProjectCodeInput() {
   const { data: projectData } = useProjectData();
   const { mutateAsync: updateProjectData } = useProjectDataMutation();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const { isOpen: isConfigOpen, onOpen: onConfigOpen, onClose: onConfigClose } = useDisclosure();
 
   const [projectCode, setProjectCode] = useState(projectData?.projectCode || '');
 
@@ -94,6 +97,15 @@ export default function ProjectCodeInput() {
             <Button
               size='sm'
               variant='ontime-subtle'
+              onClick={onConfigOpen}
+              leftIcon={<IoSettingsOutline size='12px' />}
+              aria-label='Configurar PowerPoint Windows'
+            >
+              Config
+            </Button>
+            <Button
+              size='sm'
+              variant='ontime-subtle'
               onClick={onOpen}
               leftIcon={<IoLink size='12px' />}
               aria-label='Abrir links do projeto'
@@ -101,6 +113,7 @@ export default function ProjectCodeInput() {
               Links do Projeto
             </Button>
             <SupabaseControl />
+            <PowerPointControl />
           </div>
         )}
       </div>
@@ -110,6 +123,10 @@ export default function ProjectCodeInput() {
         onClose={onClose} 
         projectCode={projectCode}
         projectData={projectData}
+      />
+      <PowerPointConfigModal 
+        isOpen={isConfigOpen} 
+        onClose={onConfigClose}
       />
     </>
   );

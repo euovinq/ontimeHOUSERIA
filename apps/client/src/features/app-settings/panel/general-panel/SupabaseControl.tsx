@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Box, Button } from '@chakra-ui/react';
 
 import { socketSendJson } from '../../../../common/utils/socket';
@@ -12,6 +12,15 @@ export default function SupabaseControl() {
   const [status, setStatus] = useState<SupabaseStatus>({ connected: false, enabled: false });
   const [isLoading, setIsLoading] = useState(false);
   const [lastToggleTime, setLastToggleTime] = useState<number>(0);
+  
+  // Ref para acessar o estado atual sem criar dependência no useEffect
+  const statusRef = useRef(status);
+  statusRef.current = status;
+
+  // Log do estado sempre que mudar
+  useEffect(() => {
+    console.log('SupabaseControl - Estado atualizado:', status.connected, status.enabled);
+  }, [status.connected, status.enabled]);
 
   // Get real status from server
   const getRealStatus = useCallback(() => {
@@ -34,20 +43,54 @@ export default function SupabaseControl() {
     const handleSupabaseStatus = (event: CustomEvent) => {
       const { type, payload } = event.detail;
 
+      console.log('SupabaseControl - Evento recebido:', { type, payload });
+
       if (type === 'togglesupabase' || type === 'getsupabasestatus') {
         if (payload && typeof payload === 'object') {
-          setStatus(payload);
+          const currentStatus = statusRef.current;
+          const newStatus = {
+            connected: Boolean(payload.connected),
+            enabled: Boolean(payload.enabled ?? payload.connected),
+          };
+          
+          console.log('SupabaseControl - Atualizando status:', {
+            de: currentStatus,
+            para: newStatus,
+            tipo: type,
+            payload: payload
+          });
+          
+          // Só atualiza se realmente mudou
+          if (currentStatus.connected !== newStatus.connected || currentStatus.enabled !== newStatus.enabled) {
+            console.log('SupabaseControl - Estado mudou, atualizando...');
+            // Força atualização usando função de atualização
+            setStatus(prevStatus => {
+              const updatedStatus = {
+                connected: Boolean(payload.connected),
+                enabled: Boolean(payload.enabled ?? payload.connected),
+              };
+              console.log('SupabaseControl - setStatus chamado:', { prevStatus, updatedStatus });
+              return updatedStatus;
+            });
+          } else {
+            console.log('SupabaseControl - Estado não mudou, ignorando atualização');
+          }
+        } else {
+          console.warn('SupabaseControl - Payload inválido:', payload);
         }
       }
     };
 
     // Add custom event listener
     window.addEventListener('supabase-status', handleSupabaseStatus as EventListener);
+    
+    console.log('SupabaseControl - Event listener registrado');
 
     return () => {
       window.removeEventListener('supabase-status', handleSupabaseStatus as EventListener);
+      console.log('SupabaseControl - Event listener removido');
     };
-  }, []);
+  }, []); // Sem dependências - usa ref para acessar estado atual
 
   const handleToggle = () => {
     const now = Date.now();
@@ -82,6 +125,7 @@ export default function SupabaseControl() {
       isLoading={isLoading}
       loadingText={!status.connected ? 'Desconectando...' : 'Conectando...'}
       colorScheme={status.connected ? 'green' : 'red'}
+      key={`supabase-btn-${status.connected}`} // ✅ FORÇA RE-RENDER do botão inteiro
       leftIcon={
         <Box
           w='8px'
@@ -89,6 +133,7 @@ export default function SupabaseControl() {
           borderRadius='50%'
           bg={status.connected ? 'green.400' : 'red.400'}
           animation={status.connected ? 'pulse 2s infinite' : 'none'}
+          key={`supabase-status-${status.connected}`} // ✅ FORÇA RE-RENDER do ícone
           sx={{
             '@keyframes pulse': {
               '0%': { opacity: 1 },

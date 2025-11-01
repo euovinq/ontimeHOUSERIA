@@ -1,0 +1,21 @@
+{
+  "name": "powerpoint-windows",
+  "version": "1.0.0",
+  "description": "Native module for PowerPoint integration on Windows",
+  "main": "index.js",
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "install": "node-gyp rebuild"
+  },
+  "dependencies": {
+    "node-addon-api": "^7.0.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.0.0"
+  }
+}
+
+
+
+
+
