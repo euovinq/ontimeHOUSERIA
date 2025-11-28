@@ -5,11 +5,11 @@ import { generateProjectCode } from 'houseriaapp-utils';
 
 import useProjectData, { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
 import { cx } from '../../../common/utils/styleUtils';
-import SupabaseControl from '../../app-settings/panel/general-panel/SupabaseControl';
 import PowerPointControl from '../../app-settings/panel/general-panel/PowerPointControl';
+import SupabaseControl from '../../app-settings/panel/general-panel/SupabaseControl';
 
-import ProjectLinksModal from './ProjectLinksModal';
 import PowerPointConfigModal from './PowerPointConfigModal';
+import ProjectLinksModal from './ProjectLinksModal';
 
 import style from './InputRow.module.scss';
 

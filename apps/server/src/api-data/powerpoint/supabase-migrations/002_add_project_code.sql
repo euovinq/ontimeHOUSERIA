@@ -27,3 +27,11 @@ COMMENT ON COLUMN powerpoint_realtime.updated_at IS 'Timestamp da última atuali
 
 
 
+
+
+
+
+
+
+
+

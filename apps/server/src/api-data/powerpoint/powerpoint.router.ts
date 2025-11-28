@@ -15,6 +15,10 @@ import {
   startOscController,
   stopOscController,
   getOscStatusController,
+  startDiscoveryBroadcastController,
+  stopDiscoveryBroadcastController,
+  discoverServersController,
+  getDiscoveryStatusController,
 } from './powerpoint.controller.js';
 
 export const router = express.Router();
@@ -70,4 +74,17 @@ console.log('✅ [POWERPOINT-ROUTER] Rota POST /osc/stop registrada');
 
 router.get('/osc/status', getOscStatusController);
 console.log('✅ [POWERPOINT-ROUTER] Rota GET /osc/status registrada');
+
+// Rotas para serviço de descoberta UDP
+router.post('/discovery/broadcast/start', startDiscoveryBroadcastController);
+console.log('✅ [POWERPOINT-ROUTER] Rota POST /discovery/broadcast/start registrada');
+
+router.post('/discovery/broadcast/stop', stopDiscoveryBroadcastController);
+console.log('✅ [POWERPOINT-ROUTER] Rota POST /discovery/broadcast/stop registrada');
+
+router.get('/discovery/servers', discoverServersController);
+console.log('✅ [POWERPOINT-ROUTER] Rota GET /discovery/servers registrada');
+
+router.get('/discovery/status', getDiscoveryStatusController);
+console.log('✅ [POWERPOINT-ROUTER] Rota GET /discovery/status registrada');
 

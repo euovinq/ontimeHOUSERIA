@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Button, useToast } from '@chakra-ui/react';
 
 import { socketSendJson } from '../../../../common/utils/socket';
@@ -11,7 +11,6 @@ export default function PowerPointControl() {
   const [status, setStatus] = useState<PowerPointStatus>({ enabled: false }); // Inicia como false (vermelho/desabilitado)
   const [isLoading, setIsLoading] = useState(false);
   const [lastToggleTime, setLastToggleTime] = useState<number>(0);
-  const [error, setError] = useState<string | null>(null);
   const toast = useToast();
   
   // Ref para acessar o estado atual sem criar dependência no useEffect
@@ -64,18 +63,16 @@ export default function PowerPointControl() {
                 console.log('PowerPointControl - setStatus chamado:', { prevStatus, newStatus });
                 return newStatus;
               });
-              setError(null);
             } else {
               console.log('PowerPointControl - Estado não mudou, ignorando atualização');
             }
           }
           if ('error' in payload && payload.error) {
             console.error('PowerPointControl - Erro recebido:', payload.error);
-            setError(payload.error);
             // Mostra toast de erro quando recebe erro
             toast({
-              title: 'Configuração Necessária',
-              description: payload.error || 'Configure o IP e a Porta do app Windows PowerPoint primeiro.',
+              title: 'Conexão Necessária',
+              description: payload.error || 'Não conectado ao app Python. Aguarde conexão automática ou verifique se o app Python está rodando.',
               status: 'error',
               duration: 4000,
               isClosable: true,
@@ -127,33 +124,32 @@ export default function PowerPointControl() {
   };
 
   return (
-    <Button
-      size='sm'
-      variant='ontime-subtle'
-      onClick={handleToggle}
-      isLoading={isLoading}
-      loadingText={!status.enabled ? 'Ativando...' : 'Desativando...'}
-      leftIcon={
-        <Box
-          w='8px'
-          h='8px'
-          borderRadius='50%'
-          bg={status.enabled ? 'green.400' : 'red.400'}
-          animation={status.enabled ? 'pulse 2s infinite' : 'none'}
+      <Button
+        size='sm'
+        variant='ontime-subtle'
+        onClick={handleToggle}
+        isLoading={isLoading}
+        loadingText={!status.enabled ? 'Ativando...' : 'Desativando...'}
+        leftIcon={
+          <Box
+            w='8px'
+            h='8px'
+            borderRadius='50%'
+            bg={status.enabled ? 'green.400' : 'red.400'}
+            animation={status.enabled ? 'pulse 2s infinite' : 'none'}
           key={`status-${status.enabled}`} // ✅ FORÇA RE-RENDER do ícone
-          sx={{
-            '@keyframes pulse': {
-              '0%': { opacity: 1 },
-              '50%': { opacity: 0.5 },
-              '100%': { opacity: 1 },
-            },
-          }}
-        />
-      }
+            sx={{
+              '@keyframes pulse': {
+                '0%': { opacity: 1 },
+                '50%': { opacity: 0.5 },
+                '100%': { opacity: 1 },
+              },
+            }}
+          />
+        }
       title={status.enabled ? 'Enviando dados para Supabase' : 'Não enviando dados para Supabase'}
-    >
-      PPT
-    </Button>
+      >
+        PPT
+      </Button>
   );
 }
-

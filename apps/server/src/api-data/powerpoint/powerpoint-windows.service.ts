@@ -4,6 +4,22 @@ import net from 'net';
 import { logger } from '../../classes/Logger.js';
 import { LogOrigin } from 'houseriaapp-types';
 
+// Tipo de informações de vídeo para um slide específico
+export type SlideVideoInfo = {
+  slideIndex: number; // Índice do slide (0-based)
+  duration: number; // Duração em segundos
+  hasVideo: boolean; // Se tem vídeo
+};
+
+// Tipo de informações de um slide completo
+export type SlideInfo = {
+  index: number; // Índice do slide (0-based)
+  title: string; // Título do slide
+  hidden: boolean; // Se está oculto
+  hasVideo: boolean; // Se tem vídeo
+  notes: string; // Notas do apresentador
+};
+
 // Tipo do status do PowerPoint (compatível com o existente)
 export type PowerPointStatus = {
   isAvailable: boolean;
@@ -13,6 +29,9 @@ export type PowerPointStatus = {
   isInSlideShow: boolean;
   slidesRemaining: number;
   hiddenSlides: number[];
+  slidesWithVideo?: number[]; // Lista de índices (0-based) dos slides que têm vídeo
+  videoItems?: SlideVideoInfo[]; // Lista de objetos com informações de vídeo por slide
+  slides?: SlideInfo[]; // Lista completa de slides com todas as informações (incluindo notes)
   video?: {
     hasVideo: boolean;
     isPlaying: boolean;
@@ -370,6 +389,12 @@ export class PowerPointWindowsService extends EventEmitter {
       this.reconnectDelay = 1000;
       this.lastStatus = normalized;
       this.lastUpdateTime = Date.now();
+      
+      // Log no console mostrando slide atual (ajusta para 1-based)
+      if (normalized.currentSlide >= 0 && normalized.slideCount > 0) {
+        const slideNumber = normalized.currentSlide + 1; // Converte de 0-based para 1-based
+        console.log(`📊 PowerPoint - Slide atual: ${slideNumber}/${normalized.slideCount}`);
+      }
       
       // Emite evento de mudança (sempre que receber dados válidos)
       const listenerCount = this.listenerCount('statusChange');

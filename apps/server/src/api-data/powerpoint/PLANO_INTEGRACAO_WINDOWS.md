@@ -315,3 +315,11 @@ Retorna dados normalizados no formato `PowerPointStatus`.
 
 
 
+
+
+
+
+
+
+
+

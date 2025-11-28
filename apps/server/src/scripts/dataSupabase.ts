@@ -5,7 +5,7 @@ export async function reenviarRundown() {
 
   setTimeout(async () => {
     try {
-      const dados = await axios.get('http://localhost:4001/data/rundown/normalised');
+      await axios.get('http://localhost:4001/data/rundown/normalised');
     } catch (err) {
       console.error('❌ Erro ao reenviar rundown:', err.message);
     }

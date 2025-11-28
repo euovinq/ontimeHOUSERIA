@@ -307,7 +307,7 @@ const actionHandlers: Record<string, ActionHandler> = {
     return { payload: 'success' };
   },
   togglesupabase: () => {
-    const isConnected = supabaseAdapter.toggleConnection();
+    supabaseAdapter.toggleConnection();
     const status = supabaseAdapter.getConnectionStatus();
     
     // Envia atualização via WebSocket para todos os clientes conectados
@@ -325,85 +325,98 @@ const actionHandlers: Record<string, ActionHandler> = {
   togglepowerpoint: async () => {
     // Importa dinamicamente para evitar dependência circular
     const module = await import('../api-data/powerpoint/powerpoint.controller.js');
-    let { supabaseService, initializeSupabaseService, windowsService: wsService } = module;
+    let { supabaseService } = module;
+    const { initializeSupabaseService, websocketService: wsSocketService } = module;
+    
+    // Verifica se WebSocket está conectado (único critério agora)
+    const hasWebSocket = wsSocketService && wsSocketService.isServiceConnected && wsSocketService.isServiceConnected();
+    
+    // Log de debug para entender o estado
+    if (wsSocketService) {
+      const isConnected = wsSocketService.isServiceConnected();
+      const hasStatus = wsSocketService.getStatus && wsSocketService.getStatus() !== null;
+      logger.info(LogOrigin.Server, `🔍 PowerPoint toggle - Debug: WebSocket existe=${!!wsSocketService}, isConnected=${isConnected}, hasStatus=${hasStatus}`);
+    } else {
+      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - websocketService não existe ainda');
+    }
+    
+    if (!hasWebSocket) {
+      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - WebSocket não conectado! Aguarde conexão com o app Python.');
+      socket.sendAsJson({
+        type: 'powerpoint-status',
+        payload: { enabled: false, error: 'Não conectado ao app Python. Aguarde conexão automática ou verifique se o app Python está rodando.' },
+      });
+      return { payload: { enabled: false, error: 'Não conectado ao app Python. Aguarde conexão automática ou verifique se o app Python está rodando.' } };
+    }
     
     // Se serviço não existe, tenta inicializar
     if (!supabaseService) {
       logger.info(LogOrigin.Server, '⚠️  PowerPoint toggle - Serviço não existe, tentando inicializar...');
       
-      // Verifica se windowsService existe e tem configuração
-      if (!wsService) {
-        logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - windowsService não existe! Configure IP/Porta via modal "Config" primeiro.');
-        socket.sendAsJson({
-          type: 'powerpoint-status',
-          payload: { enabled: false, error: 'Configure IP/Porta no servidor primeiro' },
-        });
-        return { payload: { enabled: false, error: 'Configure IP/Porta no servidor primeiro' } };
-      }
-      
-      const hasConfig = wsService.hasValidConfig && wsService.hasValidConfig();
-      const config = wsService.getConfig ? wsService.getConfig() : null;
-      
-      logger.info(LogOrigin.Server, `🔍 PowerPoint toggle - windowsService existe: ${!!wsService}, tem config válida: ${hasConfig}`);
-      if (config) {
-        logger.info(LogOrigin.Server, `🔍 PowerPoint toggle - Config atual: ${JSON.stringify(config)}`);
-      }
-      
-      // Se windowsService tem config válida, força inicialização
-      if (hasConfig) {
-        logger.info(LogOrigin.Server, '✅ PowerPoint toggle - windowsService tem config válida! Forçando inicialização do supabaseService...');
-        
-        try {
-          if (initializeSupabaseService) {
-            initializeSupabaseService();
-            // Espera um pouco para o serviço ser criado
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Aumentado para 1 segundo
+      try {
+        if (initializeSupabaseService) {
+          initializeSupabaseService();
+          // Espera um pouco para o serviço ser criado
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Importa novamente para pegar o serviço criado
+          const refreshedModule = await import('../api-data/powerpoint/powerpoint.controller.js');
+          supabaseService = refreshedModule.supabaseService;
+          
+          if (supabaseService) {
+            // Serviço foi criado - atualiza projectCode e faz toggle
+            logger.info(LogOrigin.Server, '✅ PowerPoint toggle - Serviço criado com sucesso após inicialização!');
             
-            // Importa novamente para pegar o serviço criado
-            const refreshedModule = await import('../api-data/powerpoint/powerpoint.controller.js');
-            supabaseService = refreshedModule.supabaseService;
-            
-            if (supabaseService) {
-              // Serviço foi criado - atualiza projectCode e faz toggle
-              logger.info(LogOrigin.Server, '✅ PowerPoint toggle - Serviço criado com sucesso após inicialização!');
-              
-              // Atualiza projectCode antes de fazer toggle
-              const projectData = getDataProvider().getProjectData();
-              const projectCode = projectData?.projectCode;
-              if (projectCode) {
-                supabaseService.setProjectCode(projectCode);
-                logger.info(LogOrigin.Server, `📌 PowerPoint toggle - Project code configurado: ${projectCode}`);
-              } else {
-                logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - Project code não encontrado');
-              }
-              
-              const enabled = await supabaseService.toggleEnabled();
-              socket.sendAsJson({
-                type: 'powerpoint-status',
-                payload: { enabled },
-              });
-              logger.info(LogOrigin.Server, `🔄 PowerPoint toggle (após inicialização): ${enabled ? 'Habilitado (verde)' : 'Desabilitado (vermelho)'}`);
-              return { payload: { enabled } };
+            // Atualiza projectCode antes de fazer toggle
+            const projectData = getDataProvider().getProjectData();
+            const projectCode = projectData?.projectCode;
+            if (projectCode) {
+              supabaseService.setProjectCode(projectCode);
+              logger.info(LogOrigin.Server, `📌 PowerPoint toggle - Project code configurado: ${projectCode}`);
             } else {
-              logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - Serviço não foi criado mesmo com config válida. Verificando logs de erro...');
+              logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - Project code não encontrado');
             }
-          }
-        } catch (err) {
-          logger.error(LogOrigin.Server, `❌ PowerPoint toggle - Erro ao inicializar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
-          if (err instanceof Error && err.stack) {
-            logger.error(LogOrigin.Server, `Stack: ${err.stack}`);
+            
+            const enabled = await supabaseService.toggleEnabled();
+            
+            // Busca informações do slide
+            const slideInfo: { currentSlide?: number; slideCount?: number } = {};
+            try {
+              const { websocketService: wsSvc } = refreshedModule;
+              if (wsSvc && wsSvc.isServiceConnected()) {
+                const status = wsSvc.getStatus();
+                if (status) {
+                  slideInfo.currentSlide = status.currentSlide;
+                  slideInfo.slideCount = status.slideCount;
+                }
+              }
+            } catch (error) {
+              // Ignora erro
+            }
+            
+            socket.sendAsJson({
+              type: 'powerpoint-status',
+              payload: { enabled, ...slideInfo },
+            });
+            logger.info(LogOrigin.Server, `🔄 PowerPoint toggle (após inicialização): ${enabled ? 'Habilitado (verde)' : 'Desabilitado (vermelho)'}`);
+            return { payload: { enabled, ...slideInfo } };
+          } else {
+            logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - Serviço não foi criado. Verificando logs de erro...');
           }
         }
-      } else {
-        logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - windowsService existe mas não tem configuração válida (IP/Porta). Configure via modal "Config".');
+      } catch (err) {
+        logger.error(LogOrigin.Server, `❌ PowerPoint toggle - Erro ao inicializar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+        if (err instanceof Error && err.stack) {
+          logger.error(LogOrigin.Server, `Stack: ${err.stack}`);
+        }
       }
       
-      // Se não conseguiu inicializar, retorna erro explicativo
+      // Se não conseguiu inicializar, retorna erro
       socket.sendAsJson({
         type: 'powerpoint-status',
-        payload: { enabled: false, error: hasConfig ? 'Erro ao inicializar serviço. Verifique logs do servidor.' : 'Configure IP/Porta no servidor primeiro' },
+        payload: { enabled: false, error: 'Erro ao inicializar serviço. Verifique logs do servidor.' },
       });
-      return { payload: { enabled: false, error: hasConfig ? 'Erro ao inicializar serviço. Verifique logs do servidor.' : 'Configure IP/Porta no servidor primeiro' } };
+      return { payload: { enabled: false, error: 'Erro ao inicializar serviço. Verifique logs do servidor.' } };
     }
     
     // Serviço existe - atualiza projectCode e faz toggle do estado enabled
@@ -416,23 +429,56 @@ const actionHandlers: Record<string, ActionHandler> = {
     }
     
     const enabled = await supabaseService.toggleEnabled();
+    
+    // Busca informações do slide do WebSocket (único serviço usado agora)
+    const slideInfo: { currentSlide?: number; slideCount?: number } = {};
+    try {
+      const { websocketService } = await import('../api-data/powerpoint/powerpoint.controller.js');
+      if (websocketService && websocketService.isServiceConnected()) {
+        const status = websocketService.getStatus();
+        if (status) {
+          slideInfo.currentSlide = status.currentSlide;
+          slideInfo.slideCount = status.slideCount;
+        }
+      }
+    } catch (error) {
+      // Ignora erro ao buscar slide info
+    }
+    
     // Envia evento para todos os clientes
     socket.sendAsJson({
       type: 'powerpoint-status',
-      payload: { enabled },
+      payload: { enabled, ...slideInfo },
     });
     logger.info(LogOrigin.Server, `🔄 PowerPoint toggle: ${enabled ? 'Habilitado (verde) - Enviando dados' : 'Desabilitado (vermelho) - Não enviando dados'}`);
-    return { payload: { enabled } };
+    return { payload: { enabled, ...slideInfo } };
   },
   getpowerpointstatus: async () => {
     // Importa dinamicamente para evitar dependência circular
-    const { supabaseService } = await import('../api-data/powerpoint/powerpoint.controller.js');
+    const { supabaseService, websocketService, windowsService } = await import('../api-data/powerpoint/powerpoint.controller.js');
+    
+    const payload: { enabled: boolean; currentSlide?: number; slideCount?: number } = { enabled: false };
+    
     if (supabaseService) {
-      const enabled = supabaseService.getEnabled();
-      return { payload: { enabled } };
-    } else {
-      return { payload: { enabled: false } };
+      payload.enabled = supabaseService.getEnabled();
+      
+      // Busca informações do slide do serviço ativo
+      if (websocketService && websocketService.isServiceConnected()) {
+        const status = websocketService.getStatus();
+        if (status) {
+          payload.currentSlide = status.currentSlide;
+          payload.slideCount = status.slideCount;
+        }
+      } else if (windowsService) {
+        const status = windowsService.getStatus ? windowsService.getStatus() : null;
+        if (status) {
+          payload.currentSlide = status.currentSlide;
+          payload.slideCount = status.slideCount;
+        }
+      }
     }
+    
+    return { payload };
   },
 };
 

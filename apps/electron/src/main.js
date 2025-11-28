@@ -48,23 +48,52 @@ async function startBackend() {
     return 3000; // Return dev port
   }
 
-  console.log('Production mode - loading server from:', nodePath);
-  const ontimeServer = require(nodePath);
-  const { initAssets, startServer, startIntegrations } = ontimeServer;
+  try {
+    console.log('Production mode - loading server from:', nodePath);
+    
+    // Verifica se o arquivo existe
+    const fs = require('fs');
+    if (!fs.existsSync(nodePath)) {
+      const errorMsg = `Server file not found at: ${nodePath}`;
+      console.error('ERROR:', errorMsg);
+      escalateError(errorMsg, true);
+      throw new Error(errorMsg);
+    }
+    
+    console.log('Server file found, requiring...');
+    const ontimeServer = require(nodePath);
+    
+    if (!ontimeServer) {
+      throw new Error('Failed to load server module - module is null/undefined');
+    }
+    
+    const { initAssets, startServer, startIntegrations } = ontimeServer;
+    
+    if (!initAssets || !startServer || !startIntegrations) {
+      throw new Error(`Server module missing required exports. Found: ${Object.keys(ontimeServer).join(', ')}`);
+    }
 
-  console.log('Initializing assets...');
-  await initAssets();
+    console.log('Initializing assets...');
+    await initAssets();
 
-  console.log('Starting server...');
-  const result = await startServer(escalateError);
-  loaded = result.message;
-  console.log('Server started, message:', loaded, 'port:', result.serverPort);
+    console.log('Starting server...');
+    const result = await startServer(escalateError);
+    loaded = result.message;
+    console.log('Server started, message:', loaded, 'port:', result.serverPort);
 
-  console.log('Starting integrations...');
-  await startIntegrations();
+    console.log('Starting integrations...');
+    await startIntegrations();
 
-  console.log('Backend initialization complete, returning port:', result.serverPort);
-  return result.serverPort;
+    console.log('Backend initialization complete, returning port:', result.serverPort);
+    return result.serverPort;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error && error.stack ? error.stack : '';
+    console.error('ERROR: Failed to start backend:', errorMsg);
+    console.error('Stack:', errorStack);
+    escalateError(`Failed to start backend: ${errorMsg}\n\nStack: ${errorStack}`, true);
+    throw error;
+  }
 }
 
 /**
@@ -240,11 +269,19 @@ app.whenReady().then(() => {
           }
         })
         .catch((error) => {
-          console.log('ERROR: Houseria failed to reach server', error);
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          console.error('ERROR: Houseria failed to reach server', errorMsg);
+          escalateError(`Failed to load client: ${errorMsg}`, false);
         });
     })
     .catch((error) => {
-      console.log('ERROR: Houseria failed to start', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('ERROR: Houseria failed to start', errorMsg);
+      // escalateError já foi chamado dentro de startBackend
+      // Apenas garante que a janela seja mostrada mesmo em caso de erro
+      if (win) {
+        win.show();
+      }
     });
 
   /**

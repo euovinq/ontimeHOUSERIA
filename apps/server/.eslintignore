@@ -1,0 +1,10 @@
+dist/**
+src/native/**
+scripts/**
+test-*.js
+test-db/**
+test-realtime-simple.js
+test-supabase.js
+debug-supabase.js
+disable-supabase.js
+nextjs-polling-example.js

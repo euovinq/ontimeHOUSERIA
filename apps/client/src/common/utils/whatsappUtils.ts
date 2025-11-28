@@ -79,7 +79,7 @@ export function formatBrazilianPhone(value: string): string {
  * @param country - País selecionado
  * @returns Número formatado
  */
-export function formatPhoneNumber(value: string, country: Country): string {
+export function formatPhoneNumber(value: string, _country: Country): string {
   // Por enquanto, usa formatação brasileira para todos
   // Pode ser expandido para outros países no futuro
   return formatBrazilianPhone(value);
@@ -115,4 +115,3 @@ export function isValidPhoneNumber(phoneNumber: string): boolean {
   // Mínimo: DDD (2 dígitos) + número (8 ou 9 dígitos) = 10 ou 11 dígitos
   return numbers.length >= 10 && numbers.length <= 11;
 }
-
