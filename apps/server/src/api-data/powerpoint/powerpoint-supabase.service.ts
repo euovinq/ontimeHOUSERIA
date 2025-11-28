@@ -1,12 +1,22 @@
 // Serviço para integrar dados do PowerPoint Windows com Supabase
 import { PowerPointWindowsService, PowerPointStatus } from './powerpoint-windows.service.js';
+import { PowerPointWebSocketService } from './powerpoint-websocket.service.js';
+import { EventEmitter } from 'events';
 import { SupabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { logger } from '../../classes/Logger.js';
 import { LogOrigin } from 'houseriaapp-types';
 import { createClient } from '@supabase/supabase-js';
 
+// Interface comum para serviços de PowerPoint
+interface IPowerPointService extends EventEmitter {
+  getStatus(): PowerPointStatus | null;
+  isServiceConnected(): boolean;
+}
+
 export class PowerPointSupabaseService {
-  private windowsService: PowerPointWindowsService;
+  private windowsService: PowerPointWindowsService | null;
+  private websocketService: PowerPointWebSocketService | null;
+  private service: IPowerPointService; // Serviço ativo (websocket ou windows)
   private supabaseAdapter: SupabaseAdapter | null;
   private supabaseClient: any = null; // Cliente Supabase direto (independente do adapter)
   private isRunning: boolean = false;
@@ -26,8 +36,22 @@ export class PowerPointSupabaseService {
   private supabaseUrl: string | null = null;
   private supabaseKey: string | null = null;
 
-  constructor(windowsService: PowerPointWindowsService, supabaseAdapter?: SupabaseAdapter | null) {
+  constructor(
+    windowsService: PowerPointWindowsService | null = null,
+    websocketService: PowerPointWebSocketService | null = null,
+    supabaseAdapter?: SupabaseAdapter | null
+  ) {
     this.windowsService = windowsService;
+    this.websocketService = websocketService;
+    
+    // Usa apenas WebSocket agora (único serviço)
+    if (websocketService) {
+      this.service = websocketService;
+      logger.info(LogOrigin.Server, 'PowerPoint Supabase - Usando serviço WebSocket');
+    } else {
+      throw new Error('É necessário fornecer websocketService');
+    }
+    
     this.supabaseAdapter = supabaseAdapter || null;
     
     // Tenta obter configuração do Supabase do adapter se disponível
@@ -191,19 +215,19 @@ export class PowerPointSupabaseService {
       logger.info(LogOrigin.Server, '✅ PowerPoint Supabase service iniciado - Supabase disponível');
     }
     
-    // Escuta mudanças do serviço Windows
-    const listenerCountBefore = this.windowsService.listenerCount('statusChange');
-    this.windowsService.on('statusChange', (status: PowerPointStatus) => {
+    // Escuta mudanças do serviço ativo (WebSocket ou Windows)
+    const listenerCountBefore = this.service.listenerCount('statusChange');
+    this.service.on('statusChange', (status: PowerPointStatus) => {
       logger.info(LogOrigin.Server, `🔔 PowerPoint Supabase - Evento statusChange recebido: Slide ${status.currentSlide}/${status.slideCount}`);
       this.onStatusChange(status);
     });
-    const listenerCountAfter = this.windowsService.listenerCount('statusChange');
+    const listenerCountAfter = this.service.listenerCount('statusChange');
     logger.info(LogOrigin.Server, `👂 PowerPoint Supabase - Listener registrado (${listenerCountBefore} → ${listenerCountAfter} listeners)`);
 
     // Envia status inicial se disponível E se estiver habilitado
     // Não envia se estiver desabilitado (botão vermelho)
     if (this.isEnabled) {
-      const currentStatus = this.windowsService.getStatus();
+      const currentStatus = this.service.getStatus();
       if (currentStatus) {
         logger.info(LogOrigin.Server, `📤 PowerPoint Supabase - Enviando status inicial: Slide ${currentStatus.currentSlide}/${currentStatus.slideCount}`);
         this.onStatusChange(currentStatus);
@@ -220,7 +244,9 @@ export class PowerPointSupabaseService {
    */
   stop(): void {
     this.isRunning = false;
-    this.windowsService.removeAllListeners('statusChange');
+    if (this.service) {
+      this.service.removeAllListeners('statusChange');
+    }
     this.isSending = false; // Reseta flag de envio
     this.pendingStatus = null; // Limpa status pendente
     logger.info(LogOrigin.Server, 'PowerPoint Supabase service parado');
@@ -249,11 +275,18 @@ export class PowerPointSupabaseService {
       return;
     }
 
+    // ✅ DEBUG: Log do slide atual antes de verificar mudanças
+    logger.info(LogOrigin.Server, `🔔 PowerPoint Supabase - statusChange recebido: Slide ${status.currentSlide + 1}/${status.slideCount} (0-based: ${status.currentSlide})`);
+    if (this.lastSentStatus) {
+      logger.info(LogOrigin.Server, `   Último slide enviado: ${this.lastSentStatus.currentSlide + 1}/${this.lastSentStatus.slideCount} (0-based: ${this.lastSentStatus.currentSlide})`);
+    }
+
     // Verifica se dados realmente mudaram comparando diretamente os valores
     const hasChanged = this.hasStatusChanged(status);
     
     if (!hasChanged) {
       // Dados não mudaram, ignora
+      logger.info(LogOrigin.Server, `⏭️  PowerPoint Supabase - Nenhuma mudança detectada, ignorando envio`);
       return;
     }
 
@@ -418,20 +451,79 @@ export class PowerPointSupabaseService {
       return true;
     }
 
-    // ✅ NOVO: Compara timestamp - se timestamp mudou significativamente, significa que houve atualização
-    // Isso garante que nunca perde uma atualização mesmo que outros campos não mudem
-    if (status.timestamp && last.timestamp && status.timestamp !== last.timestamp) {
-      // Só considera mudança relevante se passou tempo suficiente desde último envio
-      // (evita enviar múltiplas vezes para o mesmo timestamp)
-      const timeSinceLastSend = Date.now() - this.lastSendTime;
-      if (timeSinceLastSend > 50) { // Mínimo 50ms entre envios
-        logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: timestamp atualizado`);
-        return true;
-      }
+    // Compara arrays de slides ocultos
+    if (!this.arraysEqual(status.hiddenSlides || [], last.hiddenSlides || [])) {
+      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: hiddenSlides`);
+      return true;
     }
 
-    // Nenhuma mudança detectada
+    // Compara arrays de slides com vídeo
+    if (!this.arraysEqual(status.slidesWithVideo || [], last.slidesWithVideo || [])) {
+      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: slidesWithVideo`);
+      return true;
+    }
+
+    // Compara videoItems (array de objetos)
+    if (!this.videoItemsEqual(status.videoItems || [], last.videoItems || [])) {
+      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: videoItems`);
+      return true;
+    }
+
+    // Compara lista completa de slides
+    if (!this.slidesEqual(status.slides || [], last.slides || [])) {
+      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: slides`);
+      return true;
+    }
+
+    // Nenhuma mudança detectada - NÃO envia para Supabase
     return false;
+  }
+
+  /**
+   * Compara dois arrays de números
+   */
+  private arraysEqual(arr1: number[], arr2: number[]): boolean {
+    if (arr1.length !== arr2.length) {
+      return false;
+    }
+    const sorted1 = [...arr1].sort((a, b) => a - b);
+    const sorted2 = [...arr2].sort((a, b) => a - b);
+    return sorted1.every((val, idx) => val === sorted2[idx]);
+  }
+
+  /**
+   * Compara dois arrays de videoItems
+   */
+  private videoItemsEqual(items1: Array<{ slideIndex: number; duration: number; hasVideo: boolean }>, items2: Array<{ slideIndex: number; duration: number; hasVideo: boolean }>): boolean {
+    if (items1.length !== items2.length) {
+      return false;
+    }
+    // Ordena por slideIndex para comparação
+    const sorted1 = [...items1].sort((a, b) => a.slideIndex - b.slideIndex);
+    const sorted2 = [...items2].sort((a, b) => a.slideIndex - b.slideIndex);
+    return sorted1.every((item1, idx) => {
+      const item2 = sorted2[idx];
+      return item1.slideIndex === item2.slideIndex &&
+             item1.duration === item2.duration &&
+             item1.hasVideo === item2.hasVideo;
+    });
+  }
+
+  /**
+   * Compara duas listas de slides
+   */
+  private slidesEqual(slides1: Array<{ index: number; title: string; hidden: boolean; hasVideo: boolean; notes: string }>, slides2: Array<{ index: number; title: string; hidden: boolean; hasVideo: boolean; notes: string }>): boolean {
+    if (slides1.length !== slides2.length) {
+      return false;
+    }
+    return slides1.every((slide1, idx) => {
+      const slide2 = slides2[idx];
+      return slide1.index === slide2.index &&
+             slide1.title === slide2.title &&
+             slide1.hidden === slide2.hidden &&
+             slide1.hasVideo === slide2.hasVideo &&
+             slide1.notes === slide2.notes;
+    });
   }
 
   /**
@@ -470,12 +562,24 @@ export class PowerPointSupabaseService {
       const data = {
         id: this.projectCode, // Usa project_code como id
         data: {
-          currentSlide: status.currentSlide,
+          currentSlide: status.currentSlide + 1, // Converte de 0-based para 1-based (1, 2, 3...)
           slideCount: status.slideCount,
           visibleSlideCount: status.visibleSlideCount,
           isInSlideShow: status.isInSlideShow,
           slidesRemaining: status.slidesRemaining,
-          hiddenSlides: status.hiddenSlides,
+          hiddenSlides: status.hiddenSlides.map(idx => idx + 1), // Converte índices ocultos para 1-based
+          // Lista completa de slides com notes (convertido para 1-based)
+          slides: status.slides ? status.slides.map(slide => ({
+            index: slide.index + 1, // Converte para 1-based
+            title: slide.title,
+            hidden: slide.hidden,
+            hasVideo: slide.hasVideo,
+            notes: slide.notes,
+          })) : [],
+          videoItems: status.videoItems ? status.videoItems.map(item => ({
+            ...item,
+            slideIndex: item.slideIndex + 1, // Converte slideIndex para 1-based
+          })) : [], // Lista de objetos com informações de vídeo por slide
           video: status.video ? {
             hasVideo: status.video.hasVideo,
             isPlaying: status.video.isPlaying,
@@ -502,7 +606,7 @@ export class PowerPointSupabaseService {
       logger.info(LogOrigin.Server, `🔄 PowerPoint Supabase - Tentando upsert na tabela ${tableName}...`);
       logger.info(LogOrigin.Server, `📋 PowerPoint Supabase - Dados: ${JSON.stringify(data).substring(0, 200)}...`);
       
-      const { error, data: result } = await supabase
+      const { error } = await supabase
         .from(tableName)
         .upsert(data, {
           onConflict: 'id',
@@ -549,11 +653,23 @@ export class PowerPointSupabaseService {
         id: this.projectCode, // Usa project_code como id
         data: {
           powerpoint: {
-            currentSlide: status.currentSlide,
+            currentSlide: status.currentSlide + 1, // Converte de 0-based para 1-based (1, 2, 3...)
             slideCount: status.slideCount,
             visibleSlideCount: status.visibleSlideCount,
             isInSlideShow: status.isInSlideShow,
             slidesRemaining: status.slidesRemaining,
+            // Lista completa de slides com notes (convertido para 1-based)
+            slides: status.slides ? status.slides.map(slide => ({
+              index: slide.index + 1, // Converte para 1-based
+              title: slide.title,
+              hidden: slide.hidden,
+              hasVideo: slide.hasVideo,
+              notes: slide.notes,
+            })) : [],
+            videoItems: status.videoItems ? status.videoItems.map(item => ({
+              ...item,
+              slideIndex: item.slideIndex + 1, // Converte slideIndex para 1-based
+            })) : [], // Lista de objetos com informações de vídeo por slide
             video: status.video ? {
               hasVideo: status.video.hasVideo,
               isPlaying: status.video.isPlaying,
@@ -652,7 +768,7 @@ export class PowerPointSupabaseService {
       // Se habilitou, envia o último dado disponível
       logger.info(LogOrigin.Server, '🟢 PowerPoint Supabase - Envio habilitado, enviando último dado disponível');
       
-      const lastStatus = this.windowsService.getStatus();
+      const lastStatus = this.service.getStatus();
       if (lastStatus) {
         logger.info(LogOrigin.Server, `📤 PowerPoint Supabase - Enviando último status: Slide ${lastStatus.currentSlide}/${lastStatus.slideCount}`);
         // Envia imediatamente sem debounce ou hash check
@@ -748,4 +864,3 @@ export class PowerPointSupabaseService {
     }
   }
 }
-

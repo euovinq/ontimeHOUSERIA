@@ -93,3 +93,11 @@ A tabela já existe. Execute apenas as partes que faltam ou remova `IF NOT EXIST
 
 
 
+
+
+
+
+
+
+
+

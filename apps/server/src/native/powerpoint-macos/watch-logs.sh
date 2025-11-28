@@ -15,3 +15,11 @@ log stream --predicate 'processImagePath contains "node" OR senderImagePath cont
 
 
 
+
+
+
+
+
+
+
+

@@ -3,7 +3,7 @@ import { eventStore } from '../stores/EventStore.js';
 import { logger } from '../classes/Logger.js';
 import { LogOrigin } from 'houseriaapp-types';
 import { getDataProvider } from '../classes/data-provider/DataProvider.js';
-import { writeFile, readFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { publicDir } from '../setup/index.js';
 
@@ -1027,7 +1027,7 @@ export class SupabaseAdapter {
     try {
       console.log(`Sending ${payload.status} to Supabase for project: ${payload.projectCode}`);
 
-      const { data: result, error } = await this.supabase
+      const { error } = await this.supabase
         .from(this.config.tableName || 'ontime_realtime')
         .upsert({
           id: payload.projectCode,
@@ -1260,5 +1260,4 @@ export class SupabaseAdapter {
 
 // Export singleton instance
 export const supabaseAdapter = new SupabaseAdapter();
-
 

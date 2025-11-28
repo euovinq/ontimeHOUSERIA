@@ -11,7 +11,10 @@ export interface SupabaseConfigRequest {
   enabled: boolean;
 }
 
-export async function configureSupabase(req: Request<{}, {}, SupabaseConfigRequest>, res: Response) {
+export async function configureSupabase(
+  req: Request<Record<string, unknown>, Record<string, unknown>, SupabaseConfigRequest>,
+  res: Response
+) {
   try {
     const { url, anonKey, tableName, enabled } = req.body;
 
@@ -242,7 +245,6 @@ export async function getSupabaseToggleStatusController(
     });
   }
 }
-
 
 
 

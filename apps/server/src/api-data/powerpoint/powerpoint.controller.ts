@@ -6,13 +6,46 @@ import { fileURLToPath } from 'url';
 import { PowerPointWindowsService, PowerPointStatus as WindowsPowerPointStatus } from './powerpoint-windows.service.js';
 import { PowerPointSupabaseService } from './powerpoint-supabase.service.js';
 import { PowerPointOscService } from './powerpoint-osc.service.js';
+import { PowerPointWebSocketService } from './powerpoint-websocket.service.js';
+import { getDiscoveryService, PowerPointDiscoveryService, DiscoveredServer } from './powerpoint-discovery.service.js';
 import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 import { socket } from '../../adapters/WebsocketAdapter.js';
 
-// Para ES modules, precisamos obter __dirname desta forma
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Helper para obter __dirname que funciona tanto em ES modules quanto CommonJS
+function getDirname(): string {
+  try {
+    // Tenta usar import.meta.url (ES modules - desenvolvimento)
+    // @ts-expect-error - import.meta pode não existir em CommonJS
+    if (typeof import.meta !== 'undefined' && import.meta.url) {
+    // @ts-expect-error Uso de import.meta em ambiente CommonJS
+    return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {
+    // Ignora erro se import.meta não existir
+  }
+  
+  // Em CommonJS compilado (build do Electron), esbuild injeta __dirname
+  // Mas precisamos acessá-lo de forma diferente
+  // Vamos usar uma abordagem baseada em require.resolve se disponível
+  try {
+    // @ts-expect-error - require pode não existir em ES modules puros
+    if (typeof require !== 'undefined') {
+    // @ts-expect-error require não existe em ES modules puros
+      const modulePath = require.resolve('./powerpoint.controller.ts');
+      return path.dirname(modulePath);
+    }
+  } catch {
+    // Ignora erro se require não funcionar
+  }
+  
+  // Fallback final: usa caminho relativo baseado na estrutura do projeto
+  // No Electron build, o código está em extraResources/server/
+  // No desenvolvimento, está em apps/server/src/api-data/powerpoint
+  return path.join(process.cwd(), 'apps/server/src/api-data/powerpoint');
+}
+
+const __dirname = getDirname();
 
 // Tipo do status do PowerPoint
 type PowerPointStatus = {
@@ -45,13 +78,6 @@ type PowerPointStatus = {
 // Importa o módulo nativo do PowerPoint (apenas no macOS)
 let getPowerPointStatus: (() => PowerPointStatus) | null = null;
 
-// Cache para evitar chamadas muito frequentes ao módulo nativo
-// O módulo nativo é rápido, mas Accessibility API pode ser custosa se chamada muito frequentemente
-let cachedStatus: PowerPointStatus | null = null;
-let cacheTimestamp: number = 0;
-const CACHE_TTL_MS = 250; // Cache por 250ms (permite até 4 requisições por segundo)
-// Isso garante que mesmo com polling a cada 1 segundo, não há sobrecarga
-
 // Timer para estimar currentTime quando PowerPoint não expõe essa informação
 interface VideoTimerState {
   slideNumber: number;
@@ -62,16 +88,19 @@ interface VideoTimerState {
 
 let videoTimer: VideoTimerState | null = null;
 
-// Serviço Windows como fallback
+// Serviço Windows como fallback (mantido para compatibilidade)
 let windowsService: PowerPointWindowsService | null = null;
+// Serviço WebSocket (novo - substitui polling HTTP)
+let websocketService: PowerPointWebSocketService | null = null;
 let supabaseService: PowerPointSupabaseService | null = null;
 let oscService: PowerPointOscService | null = null;
+let discoveryService: PowerPointDiscoveryService | null = null;
 let lastSavedConfig: { ip: string; port: string } | null = null; // Rastreia última config salva para evitar loops
 let isSavingConfig = false; // Flag para evitar salvamentos simultâneos
 
-// Exporta supabaseService e windowsService para uso no integration.controller
+// Exporta supabaseService, windowsService e websocketService para uso no integration.controller
 // initializeSupabaseService é exportado na sua declaração abaixo
-export { supabaseService, windowsService };
+export { supabaseService, windowsService, websocketService };
 
 // Função assíncrona para carregar módulo nativo
 async function loadNativeModule() {
@@ -107,18 +136,32 @@ async function loadNativeModule() {
   }
 }
 
-// Carrega módulo nativo (não bloqueia)
-loadNativeModule().catch((error) => {
-      logger.warning(LogOrigin.Server, `Erro ao carregar módulo nativo: ${error}`);
-  initializeWindowsService();
-});
+// Carrega módulo nativo de forma segura e não bloqueante
+// Usa setTimeout para garantir que não bloqueie a inicialização do servidor
+setTimeout(() => {
+  loadNativeModule().catch((error) => {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    logger.warning(LogOrigin.Server, `⚠️  PowerPoint - Erro ao carregar módulo nativo: ${errorMsg}`);
+    // Não inicializa WindowsService aqui - isso será feito abaixo
+  });
+}, 1000); // Aguarda 1 segundo para garantir que o servidor está inicializado
 
 // SEMPRE inicializa serviço Windows também (para ter ambos funcionando)
 // Isso permite usar o app Windows mesmo quando há módulo nativo disponível
 // Carrega configuração salva se existir
-initializeWindowsService().catch((error) => {
-  logger.error(LogOrigin.Server, `Erro ao inicializar serviço Windows: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
-});
+// Usa setTimeout muito curto para não bloquear mas também não atrasar muito
+setTimeout(() => {
+  initializeWindowsService()
+    .then(() => {
+      // Após windowsService ser inicializado, tenta inicializar Supabase imediatamente
+      // Isso reduz o delay para envio de dados
+      initializeSupabaseService();
+    })
+    .catch((error) => {
+      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+      logger.error(LogOrigin.Server, `❌ PowerPoint - Erro ao inicializar serviço Windows: ${errorMsg}`);
+    });
+}, 100); // Reduzido de 500ms para 100ms para não atrasar muito a inicialização
 
 // Função para inicializar serviço Supabase (reutilizável)
 // O serviço PPT é independente e sempre deve estar ativo quando windowsService está rodando
@@ -128,35 +171,36 @@ export function initializeSupabaseService(): void {
   // Só loga na primeira verificação ou quando há mudanças importantes
   const shouldLog = !supabaseService;
   
-  if (!windowsService) {
-    if (shouldLog) {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint - windowsService não disponível ainda. Configure IP/Porta via modal "Config" primeiro.');
-    }
-    return;
-  }
+  // Verifica apenas WebSocket (único serviço usado agora)
+  const hasWebSocket = websocketService && websocketService.isServiceConnected();
   
-  // Verifica se windowsService tem configuração válida (IP/Porta configurados)
-  const hasValidConfig = windowsService.hasValidConfig && windowsService.hasValidConfig();
-  if (!hasValidConfig) {
-    // Sem IP/Porta configurados - não inicializa serviço Supabase ainda
+  if (!hasWebSocket) {
     if (shouldLog) {
-      const config = windowsService.getConfig ? windowsService.getConfig() : null;
-      logger.info(LogOrigin.Server, `⚠️  PowerPoint - windowsService existe mas não tem configuração válida (IP/Porta). Config atual: ${JSON.stringify(config)}. Configure via modal "Config".`);
+      logger.warning(LogOrigin.Server, '⚠️  PowerPoint - WebSocket não conectado. Aguardando conexão com app Python...');
     }
     return;
   }
   
   if (shouldLog) {
-    const config = windowsService.getConfig ? windowsService.getConfig() : null;
-    logger.info(LogOrigin.Server, `✅ PowerPoint - windowsService tem configuração válida: ${JSON.stringify(config)}`);
+    logger.info(LogOrigin.Server, '✅ PowerPoint - WebSocket service conectado, inicializando Supabase service...');
   }
   
-  // Serviço PPT é independente - sempre inicializa se windowsService existe e tem config válida
+  // Serviço PPT é independente - sempre inicializa se WebSocket está conectado
   // Não depende de supabaseAdapter estar conectado
   if (!supabaseService) {
     try {
+      // Só inicializa se WebSocket está conectado
+      if (!websocketService || !websocketService.isServiceConnected()) {
+        logger.warning(LogOrigin.Server, '⚠️  PowerPoint - WebSocket não conectado, não é possível inicializar Supabase service');
+        return;
+      }
+      
       logger.info(LogOrigin.Server, '🚀 PowerPoint - Inicializando serviço Supabase (independente do adapter)...');
-      supabaseService = new PowerPointSupabaseService(windowsService, supabaseAdapter || null);
+      supabaseService = new PowerPointSupabaseService(
+        null, // Não usa mais Windows service
+        websocketService, // Só usa WebSocket
+        supabaseAdapter || null
+      );
       
       // Configura projectCode se disponível
       const projectData = getDataProvider().getProjectData();
@@ -197,8 +241,9 @@ export function initializeSupabaseService(): void {
   
   // Se Supabase conectou e windowsService tem config, tenta salvar configuração pendente
   // MAS só salva se ainda não foi salva (evita loop)
-  if (supabaseAdapter?.isConnectedToSupabase() && hasValidConfig) {
-    const config = windowsService.getConfig ? windowsService.getConfig() : null;
+  const hasWindowsService = !!(windowsService?.hasValidConfig && windowsService.hasValidConfig());
+  if (supabaseAdapter?.isConnectedToSupabase() && hasWindowsService) {
+    const config = windowsService?.getConfig ? windowsService.getConfig() : null;
     if (config && config.url) {
       const urlMatch = config.url.match(/^http:\/\/([^:]+):(\d+)$/);
       if (urlMatch) {
@@ -222,6 +267,7 @@ export function initializeSupabaseService(): void {
 // Isso garante que quando o Supabase for conectado, a integração será iniciada
 // Mas só verifica se windowsService tem configuração válida (IP/Porta)
 // IMPORTANTE: Não atualiza cliente Supabase repetidamente - o refreshSupabaseClient tem throttle interno
+// Reduzido de 5 segundos para 2 segundos para verificação mais rápida
 setInterval(() => {
   // Só verifica se windowsService tem config válida
   if (windowsService && windowsService.hasValidConfig && windowsService.hasValidConfig()) {
@@ -231,15 +277,16 @@ setInterval(() => {
     // Isso evita loop de atualizações quando Supabase conecta
   }
   // Se não tem config válida, não verifica (evita logs desnecessários)
-}, 5000); // Verifica a cada 5 segundos
+}, 2000); // Reduzido de 5 segundos para 2 segundos para verificação mais rápida
 
 // Chama imediatamente também (só se tiver config válida)
+// Reduzido o delay para inicialização mais rápida
 setTimeout(() => {
   // Só inicializa se windowsService tem config válida
   if (windowsService && windowsService.hasValidConfig && windowsService.hasValidConfig()) {
     initializeSupabaseService();
   }
-}, 2000); // Aguarda 2 segundos para garantir que tudo foi inicializado
+}, 200); // Reduzido para verificação mais rápida após windowsService estar pronto
 
 /**
  * Salva configuração do PowerPoint (IP e Porta) no Supabase
@@ -550,6 +597,14 @@ async function initializeWindowsService(): Promise<void> {
   // O serviço PPT tem sua própria conexão com Supabase para a tabela powerpoint_realtime
   initializeSupabaseService();
   
+  // Inicializa serviço de descoberta UDP e conecta automaticamente ao servidor encontrado
+  setTimeout(() => {
+    initializeDiscoveryService().catch((error) => {
+      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+      logger.warning(LogOrigin.Server, `⚠️  PowerPoint Discovery - Não foi possível inicializar: ${errorMsg}`);
+    });
+  }, 300);
+  
   // Inicializa serviço OSC se windowsService estiver disponível
   if (windowsService && !oscService) {
     try {
@@ -694,10 +749,6 @@ export async function getPowerPointStatusController(
       // Não há vídeo - limpa timer
       videoTimer = null;
     }
-    
-    // Atualiza cache (sem timer para permitir atualização do timer)
-    cachedStatus = status;
-    cacheTimestamp = now;
     
     if (!status.isAvailable) {
       res.status(404).json({
@@ -1595,3 +1646,314 @@ export async function getOscStatusController(
   }
 }
 
+// ============================================
+// Controllers de Descoberta UDP
+// ============================================
+
+/**
+ * Inicializa o serviço de descoberta e conecta ao primeiro servidor encontrado
+ */
+async function initializeDiscoveryService(): Promise<void> {
+  if (discoveryService) {
+    return;
+  }
+
+  try {
+    discoveryService = getDiscoveryService();
+    
+    // Inicia escuta de broadcasts (modo passivo - muito leve)
+    discoveryService.startListening();
+    
+    // Configura callback para quando encontrar servidor (apenas uma vez por servidor único)
+    const connectedServers = new Set<string>();
+    discoveryService.setOnServerFoundCallback((server: DiscoveredServer) => {
+      const serverKey = `${server.ip}:${server.port}`;
+      
+      // Evita múltiplas conexões ao mesmo servidor
+      if (connectedServers.has(serverKey)) {
+        // Já conectado a este servidor, ignorando...
+        return;
+      }
+      
+      // Se já existe WebSocket conectado a algum servidor, não reconecta automaticamente
+      if (websocketService && websocketService.isServiceConnected()) {
+        // Já existe conexão WebSocket ativa, ignorando novos servidores...
+        return;
+      }
+      
+      logger.info(
+        LogOrigin.Server,
+        `🔍 PowerPoint Discovery - Servidor encontrado: ${server.device_name} em ${server.ip}:${server.port} - Conectando via WebSocket...`
+      );
+      
+      // Conecta automaticamente ao servidor encontrado
+      connectToDiscoveredServer(server);
+      connectedServers.add(serverKey);
+    });
+
+    // Busca ativa inicial (5 segundos)
+    logger.info(LogOrigin.Server, '🔍 PowerPoint Discovery - Buscando servidores na rede...');
+    const initialServers = await discoveryService.discoverServers(5000);
+    
+    if (initialServers.length > 0) {
+      logger.info(LogOrigin.Server, `✅ PowerPoint Discovery - ${initialServers.length} servidor(es) encontrado(s) na busca inicial`);
+      // Conecta ao primeiro servidor encontrado (callback já foi chamado durante discoverServers)
+      // Mas garantimos que conecta mesmo assim se ainda não conectou
+      if (!websocketService || !websocketService.isServiceConnected()) {
+        connectToDiscoveredServer(initialServers[0]);
+      } else {
+        // WebSocket já conectado, ignorando servidor da busca inicial
+      }
+    } else {
+      logger.info(LogOrigin.Server, '⚠️  PowerPoint Discovery - Nenhum servidor encontrado na busca inicial, continuando escuta passiva...');
+      // Inicia busca periódica (a cada 30 segundos) apenas se não encontrou servidor
+      discoveryService.startPeriodicSearch();
+    }
+
+    logger.info(LogOrigin.Server, '✅ PowerPoint Discovery - Serviço inicializado');
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    logger.error(LogOrigin.Server, `❌ PowerPoint Discovery - Erro ao inicializar: ${errorMsg}`);
+  }
+}
+
+/**
+ * Conecta ao servidor descoberto via WebSocket
+ */
+// Variável para evitar múltiplas tentativas de conexão ao mesmo servidor
+let lastConnectedServerUrl: string | null = null;
+let connectionAttemptTime: number = 0;
+const CONNECTION_COOLDOWN = 5000; // 5 segundos entre tentativas
+
+function connectToDiscoveredServer(server: DiscoveredServer): void {
+  const wsUrl = `http://${server.ip}:${server.port}`;
+  const now = Date.now();
+  
+  // Evita tentativas múltiplas muito rápidas ao mesmo servidor
+  if (lastConnectedServerUrl === wsUrl && (now - connectionAttemptTime) < CONNECTION_COOLDOWN) {
+        // Tentativa recente de conexão, aguardando cooldown...
+    return;
+  }
+  
+  // Se já existe conexão WebSocket ativa para o mesmo servidor, não reconecta
+  if (websocketService) {
+    const isConnected = websocketService.isServiceConnected();
+    const isConnecting = (websocketService as any).isConnecting || false;
+    const currentUrl = (websocketService as any).url || '';
+    
+    if (isConnected && currentUrl === wsUrl) {
+        // Já conectado ao mesmo servidor, ignorando...
+      // Mesmo assim, garante que Supabase service está inicializado
+      if (!supabaseService) {
+        setTimeout(() => {
+          initializeSupabaseService();
+        }, 500);
+      }
+      return;
+    }
+    
+    if (isConnecting && currentUrl === wsUrl) {
+        // Já está conectando ao servidor, aguardando...
+      return;
+    }
+    
+    // Se URL mudou, para conexão anterior
+    if (currentUrl !== wsUrl && (isConnected || isConnecting)) {
+      logger.info(LogOrigin.Server, `PowerPoint WebSocket - Servidor diferente detectado (${currentUrl} → ${wsUrl}), reconectando...`);
+      websocketService.stop();
+      // Aguarda um pouco antes de reconectar
+      setTimeout(() => {
+        connectToDiscoveredServer(server);
+      }, 1000);
+      return;
+    }
+  }
+  
+  // Atualiza timestamp da tentativa
+  lastConnectedServerUrl = wsUrl;
+  connectionAttemptTime = now;
+  
+  // Cria novo serviço WebSocket se não existir
+  if (!websocketService) {
+    websocketService = new PowerPointWebSocketService({ url: wsUrl });
+    
+    // Escuta quando WebSocket conectar
+    websocketService.on('connected', () => {
+      logger.info(LogOrigin.Server, '🚀 PowerPoint - WebSocket conectado, inicializando Supabase service...');
+      // Aguarda um pouco para garantir que recebeu primeiro status
+      setTimeout(() => {
+        if (!supabaseService && websocketService && websocketService.isServiceConnected()) {
+          initializeSupabaseService();
+        }
+      }, 1000);
+    });
+    
+    // Escuta eventos de mudança de status
+    websocketService.on('statusChange', (_status: WindowsPowerPointStatus) => {
+      // Propaga para supabaseService se existir
+      if (supabaseService) {
+        // O supabaseService já está escutando, mas garantimos que recebe
+        // Status atualizado via WebSocket
+      }
+    });
+    
+    logger.info(LogOrigin.Server, `✅ PowerPoint WebSocket - Serviço criado para ${wsUrl}`);
+  } else {
+    // Atualiza URL do serviço existente apenas se mudou
+    const currentUrl = (websocketService as any).url || '';
+    if (currentUrl !== wsUrl) {
+      websocketService.setUrl(wsUrl);
+    }
+  }
+
+  // Inicia conexão apenas se não estiver conectando ou conectado
+  const isConnected = websocketService.isServiceConnected();
+  const isConnecting = (websocketService as any).isConnecting || false;
+  
+  if (!isConnected && !isConnecting) {
+    logger.info(LogOrigin.Server, `🔌 PowerPoint WebSocket - Iniciando conexão a ${wsUrl}...`);
+    websocketService.start();
+  }
+  
+  // Para busca periódica já que encontramos servidor
+  if (discoveryService) {
+    discoveryService.stopPeriodicSearch();
+  }
+}
+
+/**
+ * Inicia broadcast deste servidor
+ */
+export async function startDiscoveryBroadcastController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    if (!discoveryService) {
+      await initializeDiscoveryService();
+    }
+
+    const { port, host } = req.body;
+    
+    if (!port || typeof port !== 'number') {
+      res.status(400).json({
+        success: false,
+        error: 'Porta do servidor é obrigatória',
+      });
+      return;
+    }
+
+    discoveryService!.startBroadcasting(port, host);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Broadcast de descoberta iniciado',
+      status: discoveryService!.getStatus(),
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    logger.error(LogOrigin.Server, `❌ PowerPoint Discovery broadcast start - Erro: ${errorMsg}`);
+    res.status(500).json({
+      success: false,
+      error: errorMsg,
+    });
+  }
+}
+
+/**
+ * Para broadcast deste servidor
+ */
+export async function stopDiscoveryBroadcastController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    if (!discoveryService) {
+      res.status(200).json({
+        success: true,
+        message: 'Serviço de descoberta não estava ativo',
+      });
+      return;
+    }
+
+    discoveryService.stopBroadcasting();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Broadcast de descoberta parado',
+      status: discoveryService.getStatus(),
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    logger.error(LogOrigin.Server, `❌ PowerPoint Discovery broadcast stop - Erro: ${errorMsg}`);
+    res.status(500).json({
+      success: false,
+      error: errorMsg,
+    });
+  }
+}
+
+/**
+ * Busca servidores na rede
+ */
+export async function discoverServersController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    if (!discoveryService) {
+      await initializeDiscoveryService();
+    }
+
+    const timeout = parseInt(req.query.timeout as string) || 5000;
+    
+    logger.info(LogOrigin.Server, `🔍 PowerPoint Discovery - Buscando servidores (timeout: ${timeout}ms)...`);
+    
+    const servers = await discoveryService!.discoverServers(timeout);
+    
+    res.status(200).json({
+      success: true,
+      servers,
+      count: servers.length,
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    logger.error(LogOrigin.Server, `❌ PowerPoint Discovery - Erro ao buscar servidores: ${errorMsg}`);
+    res.status(500).json({
+      success: false,
+      error: errorMsg,
+    });
+  }
+}
+
+/**
+ * Obtém status do serviço de descoberta
+ */
+export async function getDiscoveryStatusController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    if (!discoveryService) {
+      res.status(200).json({
+        success: true,
+        initialized: false,
+        status: null,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      initialized: true,
+      status: discoveryService.getStatus(),
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    logger.error(LogOrigin.Server, `❌ PowerPoint Discovery status - Erro: ${errorMsg}`);
+    res.status(500).json({
+      success: false,
+      error: errorMsg,
+    });
+  }
+}

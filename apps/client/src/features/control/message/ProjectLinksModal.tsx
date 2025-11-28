@@ -1,27 +1,32 @@
 import { useEffect, useState } from 'react';
-import { IoCopy, IoLink, IoCheckmark } from 'react-icons/io5';
+import { IoCheckmark, IoCopy, IoLink } from 'react-icons/io5';
 import {
   Button,
+  HStack as ChakraHStack,
+  HStack,
+  IconButton,
+  Input,
   Modal,
   ModalBody,
   ModalContent,
   ModalFooter,
   ModalHeader,
   ModalOverlay,
-  Input,
   Select,
-  HStack as ChakraHStack,
+  Text,
+  Tooltip,
+  useToast,
+  VStack,
 } from '@chakra-ui/react';
-import { HStack, IconButton, Text, Tooltip, useToast, VStack } from '@chakra-ui/react';
 import { ProjectData } from 'houseriaapp-types';
 
 import { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
 import {
+  type Country,
   countries,
   DEFAULT_COUNTRY,
-  formatPhoneNumber,
   formatCompleteWhatsApp,
-  type Country,
+  formatPhoneNumber,
 } from '../../../common/utils/whatsappUtils';
 
 interface ProjectLinksModalProps {
@@ -34,7 +39,7 @@ interface ProjectLinksModalProps {
 export default function ProjectLinksModal({ isOpen, onClose, projectCode, projectData }: ProjectLinksModalProps) {
   const toast = useToast();
   const { mutateAsync: updateProjectData, isPending: isSaving } = useProjectDataMutation();
-  
+
   // WhatsApp states
   const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -50,7 +55,7 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
       const dialCodeMatch = whatsapp.match(/^(\+\d+)\s/);
       if (dialCodeMatch) {
         const dialCode = dialCodeMatch[1];
-        const country = countries.find(c => c.dialCode === dialCode) || DEFAULT_COUNTRY;
+        const country = countries.find((c) => c.dialCode === dialCode) || DEFAULT_COUNTRY;
         setSelectedCountry(country);
         // Extrair número (tudo após o código do país + espaço)
         const numberPart = whatsapp.replace(/^\+\d+\s/, '');
@@ -69,7 +74,7 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
 
   const handleSaveWhatsApp = async () => {
     if (!projectData) return;
-    
+
     // Validar se o campo está vazio
     const cleanPhoneNumber = phoneNumber.replace(/\D/g, '');
     if (!cleanPhoneNumber || cleanPhoneNumber.length < 10) {
@@ -83,19 +88,19 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
       });
       return;
     }
-    
+
     try {
       const formattedWhatsApp = formatCompleteWhatsApp(selectedCountry, phoneNumber);
-      
+
       await updateProjectData({
         ...projectData,
         directorWhatsapp: formattedWhatsApp,
       });
-      
+
       // Atualizar o WhatsApp salvo e desabilitar botão
       setSavedWhatsApp(formattedWhatsApp);
       setHasChanges(false);
-      
+
       toast({
         title: 'WhatsApp salvo!',
         description: 'O WhatsApp do diretor foi salvo com sucesso',
@@ -117,7 +122,7 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
   };
 
   const handleCountryChange = (countryCode: string) => {
-    const country = countries.find(c => c.code === countryCode) || DEFAULT_COUNTRY;
+    const country = countries.find((c) => c.code === countryCode) || DEFAULT_COUNTRY;
     setSelectedCountry(country);
     // Verificar se houve mudança
     const currentFormatted = formatCompleteWhatsApp(country, phoneNumber);
@@ -233,7 +238,11 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
                     }}
                   >
                     {countries.map((country) => (
-                      <option key={country.code} value={country.code} style={{ backgroundColor: '#2D3748', color: 'white' }}>
+                      <option
+                        key={country.code}
+                        value={country.code}
+                        style={{ backgroundColor: '#2D3748', color: 'white' }}
+                      >
                         {country.dialCode}
                       </option>
                     ))}

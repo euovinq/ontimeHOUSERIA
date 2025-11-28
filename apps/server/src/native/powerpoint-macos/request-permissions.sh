@@ -33,3 +33,11 @@ echo "Abra o Console.app e filtre por 'ScreenCaptureKit' ou 'permissão'"
 
 
 
+
+
+
+
+
+
+
+
