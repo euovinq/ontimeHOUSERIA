@@ -39,7 +39,7 @@
   "scripts": {
     "addversion": "node -p \"'export const ONTIME_VERSION = ' + JSON.stringify(require('../../package.json').version) + ';'\" > src/ONTIME_VERSION.js",
     "postinstall": "pnpm addversion",
-    "dev": "cross-env BROWSER=none vite",
+    "dev": "cross-env BROWSER=none node wait-for-login.js",
     "build": "vite build",
     "build:local": "cross-env NODE_ENV=local vite build",
     "build:electron": "cross-env NODE_ENV=local vite build",
