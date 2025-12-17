@@ -284,13 +284,13 @@ async function waitForServer(port, maxAttempts = 60) {
       attempts++;
       console.log(`Checking if server is ready on port ${port} (attempt ${attempts}/${maxAttempts})...`);
       
-      const req = http.get(`http://localhost:${port}`, (res) => {
+      const req = http.get(`http://localhost:${port}`, () => {
         req.destroy(); // Close the request
         console.log(`Server is ready on port ${port}`);
         resolve();
       });
 
-      req.on('error', (err) => {
+      req.on('error', () => {
         req.destroy(); // Close the request
         if (attempts >= maxAttempts) {
           reject(new Error(`Server did not start after ${maxAttempts} attempts`));
