@@ -87,6 +87,7 @@ module.exports = {
   nodePath,
   getClientUrl,
   getServerUrl,
+  getAppDataPath,
   projectsPath,
   corruptProjectsPath,
   crashLogPath,
