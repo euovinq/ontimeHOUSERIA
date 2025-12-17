@@ -1,0 +1,107 @@
+#!/usr/bin/env node
+/**
+ * Script wrapper que espera pelo login antes de iniciar o Vite
+ * Isso garante que o servidor de desenvolvimento só inicie após o login
+ */
+
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+/**
+ * Retorna o caminho do AppDataPath dependendo do OS
+ */
+function getAppDataPath() {
+  if (process.env.ONTIME_DATA) {
+    return join(process.env.ONTIME_DATA);
+  }
+
+  switch (process.platform) {
+    case 'darwin': {
+      return join(process.env.HOME, 'Library', 'Application Support', 'Ontime');
+    }
+    case 'win32': {
+      return join(process.env.APPDATA, 'Ontime');
+    }
+    case 'linux': {
+      return join(process.env.HOME, '.Ontime');
+    }
+    default: {
+      throw new Error('Could not resolve public folder for platform');
+    }
+  }
+}
+
+/**
+ * Espera pelo arquivo de lock do login
+ */
+async function waitForLogin(maxAttempts = 300) {
+  const lockFilePath = join(getAppDataPath(), '.login-complete');
+  let attempts = 0;
+
+  // Em produção, não espera (o servidor é iniciado pelo Electron após o login)
+  if (process.env.NODE_ENV === 'production') {
+    return Promise.resolve();
+  }
+
+  console.log('\n');
+  console.log('⏳ Aguardando login antes de iniciar o Vite...');
+  console.log('   (A janela de login deve aparecer no Electron)');
+  console.log('   O servidor de desenvolvimento está pausado até que o login seja confirmado.\n');
+
+  return new Promise((resolve) => {
+    const checkLock = () => {
+      attempts++;
+
+      if (existsSync(lockFilePath)) {
+        console.log('✅ Login confirmado, iniciando Vite...\n');
+        resolve();
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        console.log('⚠️  Timeout: Login não foi confirmado após 5 minutos');
+        console.log('   Iniciando Vite mesmo assim (modo desenvolvimento)...\n');
+        resolve();
+        return;
+      }
+
+      // Verifica a cada segundo
+      setTimeout(checkLock, 1000);
+    };
+
+    checkLock();
+  });
+}
+
+/**
+ * Inicia o Vite após o login
+ */
+async function startVite() {
+  await waitForLogin();
+
+  // Inicia o Vite com os argumentos passados
+  // Usa npx para garantir que o vite está disponível
+  const viteArgs = process.argv.slice(2);
+  const viteProcess = spawn('npx', ['vite', ...viteArgs], {
+    stdio: 'inherit',
+    shell: true,
+  });
+
+  viteProcess.on('error', (error) => {
+    console.error('Erro ao iniciar Vite:', error);
+    process.exit(1);
+  });
+
+  viteProcess.on('exit', (code) => {
+    process.exit(code || 0);
+  });
+}
+
+startVite();
+
