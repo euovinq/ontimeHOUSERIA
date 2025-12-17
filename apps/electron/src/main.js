@@ -34,6 +34,7 @@ let isQuitting = false;
 // initialise
 let win;
 let splash;
+let loginWindow = null;
 let tray = null;
 
 /**
@@ -189,6 +190,45 @@ if (!lock) {
 }
 
 /**
+ * Creates the login window
+ */
+function createLoginWindow() {
+  loginWindow = new BrowserWindow({
+    width: 450,
+    height: 550,
+    minWidth: 400,
+    minHeight: 500,
+    backgroundColor: '#101010',
+    icon: appIcon,
+    show: false,
+    frame: false,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+
+  const loginPath = path.join('file://', __dirname, '/login/login.html');
+  loginWindow.loadURL(loginPath);
+
+  loginWindow.once('ready-to-show', () => {
+    loginWindow.show();
+    loginWindow.focus();
+    
+  });
+
+  // Fechar o app se a janela de login for fechada
+  loginWindow.on('closed', () => {
+    if (!win) {
+      app.quit();
+    }
+  });
+}
+
+/**
  * Coordinates creation of electron windows (splash and main)
  */
 function createWindow() {
@@ -228,67 +268,129 @@ function createWindow() {
   win.setMenu(null);
 }
 
-app.disableHardwareAcceleration();
-app.whenReady().then(() => {
-  // Set app title in windows
-  if (isWindows) {
-    app.setAppUserModelId(app.name);
+/**
+ * Waits for the server to be ready (only in dev mode)
+ */
+async function waitForServer(port, maxAttempts = 60) {
+  if (isProduction) {
+    return Promise.resolve();
   }
 
-  createWindow();
-  console.log('Starting backend...');
-  startBackend()
-    .then((port) => {
-      console.log('Backend started on port:', port);
-      const clientUrl = getClientUrl(port);
-      const serverUrl = getServerUrl(port);
-      console.log('Client URL:', clientUrl);
-      console.log('Server URL:', serverUrl);
+  const http = require('http');
+  let attempts = 0;
+
+  return new Promise((resolve, reject) => {
+    const checkServer = () => {
+      attempts++;
+      console.log(`Checking if server is ready on port ${port} (attempt ${attempts}/${maxAttempts})...`);
       
-      const menu = getApplicationMenu(askToQuit, clientUrl, serverUrl, redirectWindow, showDialog, (url) =>
-        win.webContents.downloadURL(url),
-      );
-      Menu.setApplicationMenu(menu);
+      const req = http.get(`http://localhost:${port}`, (res) => {
+        req.destroy(); // Close the request
+        console.log(`Server is ready on port ${port}`);
+        resolve();
+      });
 
-      console.log('Loading URL:', `${clientUrl}/editor`);
-      win
-        .loadURL(`${clientUrl}/editor`)
-        .then(() => {
-          console.log('URL loaded successfully');
-          win.webContents.setBackgroundThrottling(false);
+      req.on('error', (err) => {
+        req.destroy(); // Close the request
+        if (attempts >= maxAttempts) {
+          reject(new Error(`Server did not start after ${maxAttempts} attempts`));
+        } else {
+          setTimeout(checkServer, 1000); // Wait 1 second before retrying
+        }
+      });
 
-          win.show();
-          win.focus();
+      req.setTimeout(2000, () => {
+        req.destroy();
+        if (attempts >= maxAttempts) {
+          reject(new Error(`Server did not start after ${maxAttempts} attempts`));
+        } else {
+          setTimeout(checkServer, 1000);
+        }
+      });
+    };
 
-          splash.destroy();
+    checkServer();
+  });
+}
 
-          if (typeof loaded === 'string') {
-            tray.setToolTip(loaded);
-          } else {
-            tray.setToolTip('Initialising error: please restart Houseria');
-          }
-        })
-        .catch((error) => {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          console.error('ERROR: Houseria failed to reach server', errorMsg);
-          escalateError(`Failed to load client: ${errorMsg}`, false);
-        });
-    })
-    .catch((error) => {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('ERROR: Houseria failed to start', errorMsg);
-      // escalateError já foi chamado dentro de startBackend
-      // Apenas garante que a janela seja mostrada mesmo em caso de erro
-      if (win) {
-        win.show();
+/**
+ * Starts the application flow after login
+ */
+function startApplication() {
+  createWindow();
+  
+  // In dev mode, wait for server to be ready before continuing
+  const initializeApp = async () => {
+    if (!isProduction) {
+      console.log('Waiting for server to be ready...');
+      try {
+        await waitForServer(3000);
+        console.log('Server is ready, continuing...');
+      } catch (error) {
+        console.error('ERROR: Server did not start:', error);
+        escalateError('Server did not start. Please ensure the server is running.', false);
+        return;
       }
-    });
+    }
+
+    console.log('Starting backend...');
+    startBackend()
+      .then((port) => {
+        console.log('Backend started on port:', port);
+        const clientUrl = getClientUrl(port);
+        const serverUrl = getServerUrl(port);
+        console.log('Client URL:', clientUrl);
+        console.log('Server URL:', serverUrl);
+        
+        const menu = getApplicationMenu(askToQuit, clientUrl, serverUrl, redirectWindow, showDialog, (url) =>
+          win.webContents.downloadURL(url),
+        );
+        Menu.setApplicationMenu(menu);
+
+        console.log('Loading URL:', `${clientUrl}/editor`);
+        win
+          .loadURL(`${clientUrl}/editor`)
+          .then(() => {
+            console.log('URL loaded successfully');
+            win.webContents.setBackgroundThrottling(false);
+
+            win.show();
+            win.focus();
+
+            splash.destroy();
+
+            if (typeof loaded === 'string') {
+              tray.setToolTip(loaded);
+            } else {
+              tray.setToolTip('Initialising error: please restart Houseria');
+            }
+          })
+          .catch((error) => {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error('ERROR: Houseria failed to reach server', errorMsg);
+            escalateError(`Failed to load client: ${errorMsg}`, false);
+          });
+      })
+      .catch((error) => {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('ERROR: Houseria failed to start', errorMsg);
+        // escalateError já foi chamado dentro de startBackend
+        // Apenas garante que a janela seja mostrada mesmo em caso de erro
+        if (win) {
+          win.show();
+        }
+      });
+  };
+
+  initializeApp();
 
   /**
    * recreate window if no others open
    */
   app.on('activate', () => {
-    win.show();
+    if (win) {
+      win.show();
+    }
   });
 
   /**
@@ -306,6 +408,56 @@ app.whenReady().then(() => {
   tray = new Tray(trayIcon);
   const trayContextMenu = getTrayMenu(bringToFront, askToQuit);
   tray.setContextMenu(trayContextMenu);
+}
+
+/**
+ * Handles login submission
+ * Closes login window and starts the application
+ */
+ipcMain.on('login-submit', (_event, credentials) => {
+  console.log('🔐 Login submitted:', credentials.username ? 'with username' : 'without username');
+  
+  // Criar arquivo de lock para sinalizar ao servidor que o login foi feito
+  const fs = require('fs');
+  const path = require('path');
+  const { getAppDataPath } = require('./externals.js');
+  
+  try {
+    const appDataPath = getAppDataPath();
+    // Garantir que o diretório existe
+    if (!fs.existsSync(appDataPath)) {
+      fs.mkdirSync(appDataPath, { recursive: true });
+    }
+    
+    const lockFilePath = path.join(appDataPath, '.login-complete');
+    fs.writeFileSync(lockFilePath, JSON.stringify({ timestamp: Date.now() }), 'utf8');
+    console.log('✅ Login lock file created:', lockFilePath);
+  } catch (error) {
+    console.error('❌ Error creating login lock file:', error);
+  }
+  
+  // Fechar janela de login
+  if (loginWindow) {
+    console.log('🔒 Closing login window...');
+    loginWindow.close();
+    loginWindow = null;
+  }
+
+  // Iniciar aplicação normalmente
+  console.log('🚀 Starting application...');
+  startApplication();
+});
+
+app.disableHardwareAcceleration();
+app.whenReady().then(() => {
+  // Set app title in windows
+  if (isWindows) {
+    app.setAppUserModelId(app.name);
+  }
+
+  console.log('📱 Electron ready, creating login window...');
+  // Criar e mostrar janela de login primeiro
+  createLoginWindow();
 });
 
 /**
