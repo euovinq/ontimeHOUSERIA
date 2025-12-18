@@ -4,7 +4,7 @@
  * Isso garante que o servidor de desenvolvimento só inicie após o login
  */
 
-import { existsSync } from 'fs';
+import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -59,9 +59,36 @@ async function waitForLogin(maxAttempts = 300) {
       attempts++;
 
       if (existsSync(lockFilePath)) {
-        console.log('✅ Login confirmado, iniciando Vite...\n');
-        resolve();
-        return;
+        // Evita reaproveitar lock antigo de sessões anteriores
+        let isFresh = false;
+        try {
+          const raw = readFileSync(lockFilePath, 'utf8');
+          const data = JSON.parse(raw);
+          const ts = typeof data?.timestamp === 'number' ? data.timestamp : null;
+
+          if (ts) {
+            const ageMs = Date.now() - ts;
+            // Considera válido apenas se o lock tiver menos de 5 minutos
+            if (ageMs >= 0 && ageMs <= 5 * 60 * 1000) {
+              isFresh = true;
+            }
+          }
+        } catch {
+          // Se der erro ao ler/parsear, tratamos como lock inválido
+        }
+
+        if (!isFresh) {
+          // Lock antigo/inválido → remove e continua esperando
+          try {
+            unlinkSync(lockFilePath);
+          } catch {
+            // ignore
+          }
+        } else {
+          console.log('✅ Login confirmado, iniciando Vite...\n');
+          resolve();
+          return;
+        }
       }
 
       if (attempts >= maxAttempts) {

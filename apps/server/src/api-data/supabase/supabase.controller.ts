@@ -171,9 +171,18 @@ export async function toggleSupabaseController(
     
     const status = supabaseAdapter.getConnectionStatus();
     
-    logger.info(LogOrigin.Server, `📡 Supabase toggle REST - Status obtido após toggle:`, status);
-    logger.info(LogOrigin.Server, `📡 Supabase toggle REST - isConnected retornado:`, isConnected);
-    logger.info(LogOrigin.Server, `📡 Supabase toggle REST - Era conectado antes:`, wasConnected);
+    logger.info(
+      LogOrigin.Server,
+      `📡 Supabase toggle REST - Status obtido após toggle: ${JSON.stringify(status)}`
+    );
+    logger.info(
+      LogOrigin.Server,
+      `📡 Supabase toggle REST - isConnected retornado: ${String(isConnected)}`
+    );
+    logger.info(
+      LogOrigin.Server,
+      `📡 Supabase toggle REST - Era conectado antes: ${String(wasConnected)}`
+    );
     
     // O status final deve ser o oposto do que era antes (toggle)
     // Mas também verifica getConnectionStatus() que é mais confiável após o delay
@@ -189,7 +198,10 @@ export async function toggleSupabaseController(
       logger.info(LogOrigin.Server, `📡 Supabase toggle REST - Usando fallback: status baseado no toggle`);
     }
     
-    logger.info(LogOrigin.Server, `📡 Supabase toggle REST - Status final a ser enviado:`, finalStatus);
+    logger.info(
+      LogOrigin.Server,
+      `📡 Supabase toggle REST - Status final a ser enviado: ${JSON.stringify(finalStatus)}`
+    );
     
     // Envia atualização via WebSocket para todos os clientes conectados
     socket.sendAsJson({

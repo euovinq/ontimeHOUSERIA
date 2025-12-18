@@ -1106,8 +1106,9 @@ export class SupabaseAdapter {
 
   /**
    * Clean up old projects from Supabase
+   * Tornado: exposto publicamente para uso em controllers REST
    */
-  private async cleanupOldProjects() {
+  public async cleanupOldProjects() {
     if (!this.isConnected || !this.supabase || !this.config) {
       return;
     }

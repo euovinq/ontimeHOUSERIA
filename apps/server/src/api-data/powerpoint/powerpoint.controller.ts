@@ -16,10 +16,8 @@ import { socket } from '../../adapters/WebsocketAdapter.js';
 function getDirname(): string {
   try {
     // Tenta usar import.meta.url (ES modules - desenvolvimento)
-    // @ts-expect-error - import.meta pode não existir em CommonJS
     if (typeof import.meta !== 'undefined' && import.meta.url) {
-    // @ts-expect-error Uso de import.meta em ambiente CommonJS
-    return path.dirname(fileURLToPath(import.meta.url));
+      return path.dirname(fileURLToPath(import.meta.url));
     }
   } catch {
     // Ignora erro se import.meta não existir
@@ -29,9 +27,7 @@ function getDirname(): string {
   // Mas precisamos acessá-lo de forma diferente
   // Vamos usar uma abordagem baseada em require.resolve se disponível
   try {
-    // @ts-expect-error - require pode não existir em ES modules puros
     if (typeof require !== 'undefined') {
-    // @ts-expect-error require não existe em ES modules puros
       const modulePath = require.resolve('./powerpoint.controller.ts');
       return path.dirname(modulePath);
     }
@@ -827,8 +823,14 @@ export async function configureWindowsController(
   
   try {
     // Log do body recebido para debug
-    logger.info(LogOrigin.Server, `🔧 [CONTROLLER] PowerPoint Windows - Body recebido:`, JSON.stringify(req.body));
-    logger.info(LogOrigin.Server, `🔧 [CONTROLLER] PowerPoint Windows - Content-Type:`, req.headers['content-type']);
+    logger.info(
+      LogOrigin.Server,
+      `🔧 [CONTROLLER] PowerPoint Windows - Body recebido: ${JSON.stringify(req.body)}`
+    );
+    logger.info(
+      LogOrigin.Server,
+      `🔧 [CONTROLLER] PowerPoint Windows - Content-Type: ${String(req.headers['content-type'] ?? '')}`
+    );
     
     const { ip, port } = req.body || {};
     

@@ -58,30 +58,35 @@ export interface RealtimeData {
 
 export async function getRealtimeData(_req: Request, res: Response<RealtimeData>) {
   try {
-    const store = eventStore.poll();
+    const store = eventStore.poll() as any;
     
-    const timer = store.timer || {};
-    const currentEvent = store.eventNow;
-    const nextEvent = store.eventNext;
-    const runtime = store.runtime || {};
-    const clock = store.clock || 0;
-    const onAir = store.onAir || false;
+    const timer = (store.timer ?? {}) as Partial<RealtimeData['timer']>;
+    const currentEvent = store.eventNow as any;
+    const nextEvent = store.eventNext as any;
+    const runtime = (store.runtime ?? {}) as {
+      offset?: number;
+      relativeOffset?: number;
+      expectedEnd?: number | null;
+    };
+    const clock = (store.clock ?? 0) as number;
+    const onAir = Boolean(store.onAir);
 
     // Get rundown data
-    const rundown = getDataProvider().getRundown();
+    const rundownRaw = getDataProvider().getRundown();
+    const rundown = rundownRaw ? Array.from(rundownRaw) : [];
     const customFields = getDataProvider().getCustomFields();
 
     const response: RealtimeData = {
       timer: {
-        current: timer.current || null,
-        duration: timer.duration || null,
-        playback: timer.playback || 'Stop',
-        phase: timer.phase || 'Stopped',
-        elapsed: timer.elapsed || null,
-        expectedFinish: timer.expectedFinish || null,
-        startedAt: timer.startedAt || null,
-        finishedAt: timer.finishedAt || null,
-        addedTime: timer.addedTime || 0,
+        current: timer.current ?? null,
+        duration: timer.duration ?? null,
+        playback: timer.playback ?? 'Stop',
+        phase: timer.phase ?? 'Stopped',
+        elapsed: timer.elapsed ?? null,
+        expectedFinish: timer.expectedFinish ?? null,
+        startedAt: timer.startedAt ?? null,
+        finishedAt: timer.finishedAt ?? null,
+        addedTime: timer.addedTime ?? 0,
       },
       currentEvent: currentEvent ? {
         id: currentEvent.id,
@@ -108,22 +113,22 @@ export async function getRealtimeData(_req: Request, res: Response<RealtimeData>
         custom: nextEvent.custom || {},
       } : null,
       delay: {
-        offset: runtime.offset || 0,
-        relativeOffset: runtime.relativeOffset || 0,
-        expectedEnd: runtime.expectedEnd || null,
+        offset: runtime.offset ?? 0,
+        relativeOffset: runtime.relativeOffset ?? 0,
+        expectedEnd: runtime.expectedEnd ?? null,
       },
       clock,
       onAir,
       cuesheet: {
-        rundown: rundown || [],
+        rundown,
         customFields: customFields || {},
-        totalEvents: rundown ? rundown.length : 0,
-        totalDuration: rundown ? rundown.reduce((total, event) => {
+        totalEvents: rundown.length,
+        totalDuration: rundown.reduce((total, event) => {
           if (event.type === 'event' && event.duration) {
             return total + event.duration;
           }
           return total;
-        }, 0) : 0,
+        }, 0),
       },
     };
 
