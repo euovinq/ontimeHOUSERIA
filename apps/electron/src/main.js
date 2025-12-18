@@ -602,6 +602,62 @@ ipcMain.on('shutdown', () => {
 });
 
 /**
+ * Força logout quando o servidor indicar que a licença/período expirou.
+ * Evento originado do cliente React via window.ipcRenderer.send('auth-license-expired', ...)
+ */
+ipcMain.on('auth-license-expired', (_event, payload) => {
+  try {
+    console.log('🔒 Auth license expired IPC received:', payload);
+
+    const message =
+      (payload && payload.message) ||
+      'Seu período de acesso expirou ou foi alterado. Faça login novamente.';
+
+    // Fecha janela principal sem encerrar o app inteiro
+    if (win) {
+      isQuitting = true;
+      try {
+        win.destroy();
+      } catch (error) {
+        console.error('❌ Error destroying main window after license expiration:', error);
+      } finally {
+        isQuitting = false;
+        win = null;
+      }
+    }
+
+    // Reabre janela de login
+    if (!loginWindow) {
+      console.log('🪟 Creating login window after license expiration...');
+      createLoginWindow();
+    }
+
+    // Assim que o HTML de login carregar, mostra mensagem de erro amigável
+    if (loginWindow) {
+      const target = loginWindow;
+      const sendMessage = () => {
+        try {
+          target.webContents.send('login-error', message);
+        } catch (error) {
+          console.error('❌ Error sending login-error to login window:', error);
+        }
+      };
+
+      if (target.webContents.isLoading()) {
+        target.webContents.once('did-finish-load', sendMessage);
+      } else {
+        sendMessage();
+      }
+    }
+  } catch (error) {
+    console.error(
+      '❌ Unexpected error handling auth-license-expired IPC:',
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+});
+
+/**
  * Handles requests to set window properties
  */
 ipcMain.on('set-window', (_event, arg) => {

@@ -259,6 +259,27 @@ export const connectSocket = () => {
           }
           break;
         }
+        case 'auth-license-expired': {
+          // Licença / período de acesso expirado no Supabase
+          try {
+            // Notifica possíveis componentes React interessados
+            window.dispatchEvent(
+              new CustomEvent('auth-license-expired', {
+                detail: payload,
+              }),
+            );
+
+            // Em ambiente Electron, solicita ao processo principal que volte para a tela de login
+            const w = window as any;
+            if (w.ipcRenderer && typeof w.ipcRenderer.send === 'function') {
+              w.ipcRenderer.send('auth-license-expired', payload);
+            }
+          } catch (error) {
+            // eslint-disable-next-line no-console
+            console.error('Erro ao processar auth-license-expired:', error);
+          }
+          break;
+        }
         case 'powerpoint-status': {
           // Handle PowerPoint status broadcast (sent by server when status changes)
           if (typeof payload === 'object' && payload !== null) {
