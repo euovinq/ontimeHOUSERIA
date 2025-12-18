@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { getErrorMessage } from 'houseriaapp-utils';
 import { authenticateUser } from './auth.service.js';
+import { registerLoginSession } from './auth-realtime.service.js';
 
 export async function login(req: Request, res: Response) {
   try {
@@ -36,6 +37,9 @@ export async function login(req: Request, res: Response) {
     }
 
     const successResult = result as { success: true; isAdmin: boolean; userId: string | number };
+
+    // Cria/atualiza sessão de autenticação e inicia monitoramento do período (para não-admin)
+    registerLoginSession(successResult.userId, successResult.isAdmin);
     return res.status(200).json({
       message: 'Login efetuado com sucesso.',
       isAdmin: successResult.isAdmin,
