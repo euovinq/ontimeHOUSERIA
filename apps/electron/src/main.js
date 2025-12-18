@@ -37,16 +37,20 @@ let splash;
 let loginWindow = null;
 let tray = null;
 
+/** Promise com a porta do backend (para evitar múltiplos startBackend em produção) */
+let backendPortPromise = null;
+
 /**
  * Coordinates the node process startup
  * @returns {number} server port - the port at which the backend has been started at
  */
 async function startBackend() {
   console.log('startBackend called, isProduction:', isProduction);
-  // in dev mode, we expect both UI and server to be running
+  // in dev mode, não iniciamos o servidor pelo Electron
+  // Esperamos que o servidor (porta 4001) e o client (porta 3000) estejam rodando via scripts de dev
   if (!isProduction) {
-    console.log('Dev mode - returning port 3000');
-    return 3000; // Return dev port
+    console.log('Dev mode - startBackend não inicia servidor (usando portas 3000/4001 externas)');
+    return 3000; // Dev client port
   }
 
   try {
@@ -95,6 +99,31 @@ async function startBackend() {
     escalateError(`Failed to start backend: ${errorMsg}\n\nStack: ${errorStack}`, true);
     throw error;
   }
+}
+
+/**
+ * Garante que o backend foi iniciado (apenas em produção)
+ * Em dev, apenas devolve a porta 3000 para o client (servidor já deve estar rodando externamente)
+ * @returns {Promise<number>} Porta do servidor HTTP
+ */
+function ensureBackendStarted() {
+  if (backendPortPromise) {
+    return backendPortPromise;
+  }
+
+  if (!isProduction) {
+    backendPortPromise = Promise.resolve(3000);
+    return backendPortPromise;
+  }
+
+  backendPortPromise = (async () => {
+    console.log('ensureBackendStarted: iniciando backend em produção...');
+    const port = await startBackend();
+    console.log('ensureBackendStarted: backend iniciado na porta', port);
+    return port;
+  })();
+
+  return backendPortPromise;
 }
 
 /**
@@ -321,64 +350,70 @@ function startApplication() {
   
   // In dev mode, wait for server to be ready before continuing
   const initializeApp = async () => {
+    let port;
+
     if (!isProduction) {
-      console.log('Waiting for server to be ready...');
+      console.log('Waiting for dev client (React) on port 3000...');
       try {
         await waitForServer(3000);
-        console.log('Server is ready, continuing...');
+        console.log('Dev client is ready, continuing...');
+        port = 3000;
       } catch (error) {
-        console.error('ERROR: Server did not start:', error);
-        escalateError('Server did not start. Please ensure the server is running.', false);
+        console.error('ERROR: Dev client did not start:', error);
+        escalateError(
+          'Dev client did not start. Please ensure the React dev server is running on port 3000.',
+          false
+        );
+        return;
+      }
+    } else {
+      try {
+        port = await ensureBackendStarted();
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('ERROR: Backend failed to start in production', errorMsg);
+        escalateError(`Failed to start backend: ${errorMsg}`, true);
         return;
       }
     }
 
-    console.log('Starting backend...');
-    startBackend()
-      .then((port) => {
-        console.log('Backend started on port:', port);
-        const clientUrl = getClientUrl(port);
-        const serverUrl = getServerUrl(port);
-        console.log('Client URL:', clientUrl);
-        console.log('Server URL:', serverUrl);
-        
-        const menu = getApplicationMenu(askToQuit, clientUrl, serverUrl, redirectWindow, showDialog, (url) =>
-          win.webContents.downloadURL(url),
-        );
-        Menu.setApplicationMenu(menu);
+    const clientUrl = getClientUrl(port);
+    const serverUrl = getServerUrl(port);
+    console.log('Client URL:', clientUrl);
+    console.log('Server URL:', serverUrl);
+    
+    const menu = getApplicationMenu(
+      askToQuit,
+      clientUrl,
+      serverUrl,
+      redirectWindow,
+      showDialog,
+      (url) => win.webContents.downloadURL(url),
+    );
+    Menu.setApplicationMenu(menu);
 
-        console.log('Loading URL:', `${clientUrl}/editor`);
-        win
-          .loadURL(`${clientUrl}/editor`)
-          .then(() => {
-            console.log('URL loaded successfully');
-            win.webContents.setBackgroundThrottling(false);
+    console.log('Loading URL:', `${clientUrl}/editor`);
+    win
+      .loadURL(`${clientUrl}/editor`)
+      .then(() => {
+        console.log('URL loaded successfully');
+        win.webContents.setBackgroundThrottling(false);
 
-            win.show();
-            win.focus();
+        win.show();
+        win.focus();
 
-            splash.destroy();
+        splash.destroy();
 
-            if (typeof loaded === 'string') {
-              tray.setToolTip(loaded);
-            } else {
-              tray.setToolTip('Initialising error: please restart Houseria');
-            }
-          })
-          .catch((error) => {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            console.error('ERROR: Houseria failed to reach server', errorMsg);
-            escalateError(`Failed to load client: ${errorMsg}`, false);
-          });
+        if (typeof loaded === 'string') {
+          tray.setToolTip(loaded);
+        } else {
+          tray.setToolTip('Initialising error: please restart Houseria');
+        }
       })
       .catch((error) => {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error('ERROR: Houseria failed to start', errorMsg);
-        // escalateError já foi chamado dentro de startBackend
-        // Apenas garante que a janela seja mostrada mesmo em caso de erro
-        if (win) {
-          win.show();
-        }
+        console.error('ERROR: Houseria failed to reach server', errorMsg);
+        escalateError(`Failed to load client: ${errorMsg}`, false);
       });
   };
 
@@ -412,40 +447,127 @@ function startApplication() {
 
 /**
  * Handles login submission
- * Closes login window and starts the application
+ * Valida login no servidor (Supabase via backend) antes de iniciar o app
  */
-ipcMain.on('login-submit', (_event, credentials) => {
-  console.log('🔐 Login submitted:', credentials.username ? 'with username' : 'without username');
-  
-  // Criar arquivo de lock para sinalizar ao servidor que o login foi feito
-  const fs = require('fs');
-  const path = require('path');
-  const { getAppDataPath } = require('./externals.js');
-  
-  try {
-    const appDataPath = getAppDataPath();
-    // Garantir que o diretório existe
-    if (!fs.existsSync(appDataPath)) {
-      fs.mkdirSync(appDataPath, { recursive: true });
-    }
-    
-    const lockFilePath = path.join(appDataPath, '.login-complete');
-    fs.writeFileSync(lockFilePath, JSON.stringify({ timestamp: Date.now() }), 'utf8');
-    console.log('✅ Login lock file created:', lockFilePath);
-  } catch (error) {
-    console.error('❌ Error creating login lock file:', error);
-  }
-  
-  // Fechar janela de login
-  if (loginWindow) {
-    console.log('🔒 Closing login window...');
-    loginWindow.close();
-    loginWindow = null;
+ipcMain.on('login-submit', async (event, credentials) => {
+  const { username, password } = credentials || {};
+  console.log(
+    '🔐 Login submitted:',
+    username ? `for user "${username}"` : 'without username'
+  );
+
+  if (!username || !password) {
+    event.sender.send('login-error', 'Preencha usuário e senha.');
+    return;
   }
 
-  // Iniciar aplicação normalmente
-  console.log('🚀 Starting application...');
-  startApplication();
+  try {
+    let baseUrl;
+
+    if (isProduction) {
+      const port = await ensureBackendStarted();
+      baseUrl = getServerUrl(port);
+    } else {
+      // Em desenvolvimento, o servidor HTTP deve estar rodando em 4001
+      baseUrl = 'http://localhost:4001';
+    }
+
+    const loginUrl = `${baseUrl}/auth/login`;
+    console.log('🔐 Calling auth endpoint:', loginUrl);
+
+    const response = await fetch(loginUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: username,
+        password,
+      }),
+    });
+
+    let result = {};
+    try {
+      result = await response.json();
+    } catch (_) {
+      // ignore parse errors, handled below
+    }
+
+    if (!response.ok) {
+      const status = response.status;
+      const messageFromServer =
+        (result && result.message) || (result && result.error);
+
+      let friendlyMessage = messageFromServer;
+      if (!friendlyMessage) {
+        if (status === 401) {
+          friendlyMessage = 'Usuário ou senha inválidos.';
+        } else if (status === 403) {
+          friendlyMessage = 'Seu período de acesso expirou.';
+        } else {
+          friendlyMessage = 'Erro ao fazer login. Tente novamente.';
+        }
+      }
+
+      console.error(
+        '❌ Login failed:',
+        status,
+        messageFromServer || '(sem mensagem detalhada)'
+      );
+      event.sender.send('login-error', friendlyMessage);
+      return;
+    }
+
+    console.log('✅ Login successful. Starting application...');
+    event.sender.send('login-success');
+
+    // Criar arquivo de lock para sinalizar ao servidor/cliente que o login foi feito
+    // (usado pelos scripts de desenvolvimento para iniciar Vite/aplicações após o login)
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { getAppDataPath } = require('./externals.js');
+
+      const appDataPath = getAppDataPath();
+      if (appDataPath) {
+        if (!fs.existsSync(appDataPath)) {
+          fs.mkdirSync(appDataPath, { recursive: true });
+        }
+
+        const lockFilePath = path.join(appDataPath, '.login-complete');
+        fs.writeFileSync(
+          lockFilePath,
+          JSON.stringify({ timestamp: Date.now() }),
+          'utf8'
+        );
+        console.log('✅ Login lock file created:', lockFilePath);
+      } else {
+        console.warn(
+          '⚠️ Could not resolve AppDataPath when creating login lock file.'
+        );
+      }
+    } catch (lockError) {
+      console.error('❌ Error creating login lock file:', lockError);
+    }
+
+    // Fechar janela de login
+    if (loginWindow) {
+      console.log('🔒 Closing login window after successful login...');
+      loginWindow.close();
+      loginWindow = null;
+    }
+
+    // Iniciar aplicação normalmente
+    console.log('🚀 Starting application...');
+    startApplication();
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('❌ Error during login:', errorMsg);
+    event.sender.send(
+      'login-error',
+      'Erro ao conectar ao servidor de login. Verifique se o servidor está rodando.'
+    );
+  }
 });
 
 app.disableHardwareAcceleration();

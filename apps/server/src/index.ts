@@ -10,45 +10,11 @@ import { getAppDataPath } from './setup/index.js';
  * This ensures the server only starts after user login
  */
 async function waitForLogin(maxAttempts = 300) {
-  const lockFilePath = join(getAppDataPath(), '.login-complete');
-  let attempts = 0;
-
-  // In production mode, don't wait (server is started by Electron after login)
-  if (process.env.NODE_ENV === 'production') {
-    return;
-  }
-
-  console.log('\n');
-  consoleHighlight('⏳ Aguardando login...');
-  console.log('   (A janela de login deve aparecer no Electron)');
-  console.log('   O servidor está pausado até que o login seja confirmado.');
-  console.log('   As mensagens acima são apenas logs de inicialização de módulos.\n');
-
-  return new Promise<void>((resolve, reject) => {
-    const checkLock = () => {
-      attempts++;
-      
-      if (existsSync(lockFilePath)) {
-        console.log('✅ Login confirmado, iniciando servidor...\n');
-        resolve();
-        return;
-      }
-
-      if (attempts >= maxAttempts) {
-        consoleError('❌ Timeout: Login não foi confirmado após 5 minutos');
-        consoleError('   O servidor iniciará normalmente, mas isso não deveria acontecer.');
-        consoleError('   Certifique-se de que o Electron está rodando e faça login.\n');
-        // Em caso de timeout, continua mesmo assim (para não travar em desenvolvimento)
-        resolve();
-        return;
-      }
-
-      // Check every second
-      setTimeout(checkLock, 1000);
-    };
-
-    checkLock();
-  });
+  // A partir da integração com Supabase, o controle de login passa a ser feito
+  // diretamente pelo Electron chamando o endpoint /auth/login.
+  // Aqui não bloqueamos mais a inicialização do servidor em ambiente de desenvolvimento.
+  // maxAttempts é mantido apenas para compatibilidade de assinatura.
+  void maxAttempts;
 }
 
 async function startHouseriaAPP() {
