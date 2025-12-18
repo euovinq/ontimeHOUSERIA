@@ -18,6 +18,7 @@ import { consoleSuccess, consoleHighlight, consoleError } from './utils/console.
 import { bodyParser } from './middleware/bodyParser.js';
 import { compressedStatic } from './middleware/staticGZip.js';
 import { loginRouter, makeAuthenticateMiddleware } from './middleware/authenticate.js';
+import { router as authRouter } from './api-data/auth/auth.router.js';
 
 // Import Routers
 import { appRouter } from './api-data/index.js';
@@ -85,7 +86,8 @@ app.use(cookieParser());
 const { authenticate, authenticateAndRedirect } = makeAuthenticateMiddleware(prefix);
 
 // Implement route endpoints
-app.use(`${prefix}/login`, loginRouter); // router for login flow
+app.use(`${prefix}/login`, loginRouter); // router for login flow (HTML antigo)
+app.use(`${prefix}/auth`, authRouter); // router para autenticação via Supabase (sem cookie)
 app.use(`${prefix}/api/public`, publicRouter); // router for public endpoints (Stream Deck) - SEM autenticação
 app.use(`${prefix}/data`, authenticate, appRouter); // router for application data
 app.use(`${prefix}/api`, authenticate, integrationRouter); // router for integrations

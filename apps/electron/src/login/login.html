@@ -124,6 +124,22 @@
         outline: none;
         box-shadow: 0 0 0 2px rgba(255, 117, 151, 0.4);
       }
+
+      .error-message {
+        margin-bottom: 16px;
+        padding: 10px 12px;
+        border-radius: 3px;
+        font-size: 13px;
+        line-height: 1.4;
+        color: #ffd7dd;
+        background: rgba(255, 77, 109, 0.16);
+        border: 1px solid rgba(255, 77, 109, 0.5);
+      }
+
+      .login-button[disabled] {
+        opacity: 0.7;
+        cursor: default;
+      }
     </style>
   </head>
   <body>
@@ -133,6 +149,8 @@
         <h1>Houseria</h1>
         <p>Faça login para continuar</p>
       </div>
+
+      <div id="errorMessage" class="error-message" style="display: none"></div>
 
       <form id="loginForm">
         <div class="form-group">
@@ -169,22 +187,53 @@
         const form = document.getElementById('loginForm');
         const usernameInput = document.getElementById('username');
         const passwordInput = document.getElementById('password');
+        const errorBox = document.getElementById('errorMessage');
+        const submitButton = document.querySelector('.login-button');
+
+        function setLoading(isLoading) {
+          if (!submitButton) return;
+          submitButton.disabled = isLoading;
+          submitButton.textContent = isLoading ? 'Entrando...' : 'Entrar';
+        }
+
+        function showError(message) {
+          if (!errorBox) return;
+          errorBox.textContent = message || 'Erro ao fazer login.';
+          errorBox.style.display = 'block';
+        }
+
+        function clearError() {
+          if (!errorBox) return;
+          errorBox.textContent = '';
+          errorBox.style.display = 'none';
+        }
 
         form.addEventListener('submit', (e) => {
           e.preventDefault();
-          
+
+          clearError();
+
+          const username = usernameInput.value.trim();
+          const password = passwordInput.value;
+
+          if (!username || !password) {
+            showError('Preencha usuário e senha.');
+            return;
+          }
+
           console.log('📤 Sending login-submit event...');
-          
-          // Por enquanto, apenas envia o evento sem validar campos
+
           try {
+            setLoading(true);
             ipcRenderer.send('login-submit', {
-              username: usernameInput.value,
-              password: passwordInput.value,
+              username,
+              password,
             });
             console.log('✅ Login event sent successfully');
           } catch (error) {
             console.error('❌ Error sending login event:', error);
-            alert('Erro ao enviar login. Verifique o console para mais detalhes.');
+            setLoading(false);
+            showError('Erro ao enviar login. Verifique o console para mais detalhes.');
           }
         });
 
@@ -198,6 +247,18 @@
           if (e.key === 'Enter') {
             form.dispatchEvent(new Event('submit'));
           }
+        });
+
+        ipcRenderer.on('login-error', (_event, message) => {
+          console.log('❌ Login error received from main:', message);
+          setLoading(false);
+          showError(message);
+        });
+
+        ipcRenderer.on('login-success', () => {
+          console.log('✅ Login success received from main');
+          setLoading(false);
+          clearError();
         });
       } catch (error) {
         console.error('❌ Error loading IPC:', error);

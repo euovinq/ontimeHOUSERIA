@@ -263,6 +263,10 @@ importers:
         version: 3.2.1(@types/debug@4.1.12)(@types/node@22.15.26)(happy-dom@16.7.2)(jsdom@21.1.0)(sass@1.57.1)(tsx@4.19.2)
 
   apps/electron:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.39.0
+        version: 2.74.0
     devDependencies:
       electron:
         specifier: 36.3.1
