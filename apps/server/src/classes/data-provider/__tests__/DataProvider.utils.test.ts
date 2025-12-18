@@ -48,7 +48,7 @@ describe('safeMerge', () => {
       triggers: [],
       automations: {},
     },
-  } as DatabaseModel;
+  } as unknown as DatabaseModel;
 
   it('returns existing data if new data is not provided', () => {
     const mergedData = safeMerge(existing, {});
