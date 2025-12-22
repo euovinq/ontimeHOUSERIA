@@ -32,7 +32,7 @@ export function dispatchFromAdapter(type: string, payload: unknown, _source?: 'o
 
   if (handler) {
     const result = handler(payload);
-    
+
     // Trigger Supabase update for any button action
     if (supabaseAdapter && _source === 'ws') {
       // Add small delay to ensure state is updated
@@ -41,7 +41,7 @@ export function dispatchFromAdapter(type: string, payload: unknown, _source?: 'o
         supabaseAdapter.forceUpdate(currentData);
       }, 100);
     }
-    
+
     return result;
   } else {
     throw new Error(`Unhandled message ${type}`);
@@ -52,7 +52,8 @@ export function getLastRequest() {
   return lastRequest;
 }
 
-type ActionHandler = (payload: unknown) => { payload: unknown };
+type AsyncPayload = Promise<{ payload: unknown }>;
+type ActionHandler = (payload: unknown) => { payload: unknown } | AsyncPayload;
 
 const actionHandlers: Record<string, ActionHandler> = {
   /* General */

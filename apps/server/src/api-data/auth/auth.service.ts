@@ -26,6 +26,11 @@ export type LoginResult =
       success: true;
       isAdmin: boolean;
       userId: string | number;
+      /**
+       * Data de expiração da licença (YYYY-MM-DD) baseada no timestamp_final máximo de sales,
+       * ou null se não aplicável.
+       */
+      licenseExpiresAt: string | null;
     }
   | {
       success: false;
@@ -129,17 +134,9 @@ export async function authenticateUser(
       success: true,
       isAdmin: true,
       userId: user.id,
+      licenseExpiresAt: null,
     };
   }
-
-  // Verificação de período de acesso via tabela sales
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfTomorrow = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1
-  );
 
   const {
     data: sales,
@@ -148,8 +145,9 @@ export async function authenticateUser(
     .from('sales')
     .select('id, timestamp_inicio, timestamp_final')
     .eq('id_usuario', user.id)
-    .lte('timestamp_inicio', startOfTomorrow.toISOString())
-    .gte('timestamp_final', startOfToday.toISOString());
+    // Agora deve estar dentro da janela exata: timestamp_inicio <= agora <= timestamp_final
+    .lte('timestamp_inicio', new Date().toISOString())
+    .gte('timestamp_final', new Date().toISOString());
 
   if (salesError) {
     console.error('[AUTH] Erro ao consultar tabela sales:', {
@@ -175,8 +173,8 @@ export async function authenticateUser(
       location: 'auth.service.ts:authenticateUser:salesCheck',
       message: 'Result of sales date window check',
       data: {
-        startOfToday: startOfToday.toISOString(),
-        startOfTomorrow: startOfTomorrow.toISOString(),
+        startOfToday: null,
+        startOfTomorrow: null,
         salesCount: sales?.length ?? 0,
         userId: user.id,
       },
@@ -193,10 +191,28 @@ export async function authenticateUser(
     };
   }
 
+  // Calcula a maior data de expiração entre os registros válidos
+  type SaleRow = { id: string | number; timestamp_inicio: string | null; timestamp_final: string | null };
+  const typedSales = sales as SaleRow[];
+
+  const rawLicenseTs =
+    typedSales
+      .map((s) => s.timestamp_final)
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+      .sort()
+      .at(-1) ?? null;
+
+  // Normaliza para data simples (YYYY-MM-DD), ignorando detalhes de fuso horário
+  const licenseExpiresAt =
+    rawLicenseTs && typeof rawLicenseTs === 'string'
+      ? rawLicenseTs.split('T')[0] ?? null
+      : null;
+
   return {
     success: true,
     isAdmin: false,
     userId: user.id,
+    licenseExpiresAt,
   };
 }
 

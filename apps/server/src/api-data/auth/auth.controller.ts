@@ -1,7 +1,15 @@
 import type { Request, Response } from 'express';
 import { getErrorMessage } from 'houseriaapp-utils';
-import { authenticateUser } from './auth.service.js';
+import { authenticateUser, type LoginResult } from './auth.service.js';
 import { registerLoginSession } from './auth-realtime.service.js';
+
+interface LicenseInfo {
+  userId: string | number;
+  isAdmin: boolean;
+  licenseExpiresAt: string | null;
+}
+
+let lastLicenseInfo: LicenseInfo | null = null;
 
 export async function login(req: Request, res: Response) {
   try {
@@ -36,14 +44,22 @@ export async function login(req: Request, res: Response) {
         .json({ message: errorResult.message || 'Erro ao fazer login.' });
     }
 
-    const successResult = result as { success: true; isAdmin: boolean; userId: string | number };
+    const successResult = result as Extract<LoginResult, { success: true }>;
 
     // Cria/atualiza sessão de autenticação e inicia monitoramento do período (para não-admin)
     registerLoginSession(successResult.userId, successResult.isAdmin);
+
+    // Guarda última info de licença para exibir no front
+    lastLicenseInfo = {
+      userId: successResult.userId,
+      isAdmin: successResult.isAdmin,
+      licenseExpiresAt: successResult.licenseExpiresAt ?? null,
+    };
     return res.status(200).json({
       message: 'Login efetuado com sucesso.',
       isAdmin: successResult.isAdmin,
       userId: successResult.userId,
+      licenseExpiresAt: successResult.licenseExpiresAt ?? null,
     });
   } catch (error) {
     const message = getErrorMessage(error);
@@ -51,4 +67,13 @@ export async function login(req: Request, res: Response) {
   }
 }
 
+export function getLicenseInfo(_req: Request, res: Response) {
+  if (!lastLicenseInfo) {
+    return res.status(404).json({
+      message: 'Nenhuma sessão autenticada no momento.',
+    });
+  }
+
+  return res.status(200).json(lastLicenseInfo);
+}
 
