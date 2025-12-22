@@ -65,9 +65,12 @@ class OscServer implements IAdapter {
         transformedPayload = integrationPayloadFromPath(params, args);
       }
 
-      dispatchFromAdapter(command, transformedPayload, 'osc').catch((error) => {
+      try {
+        // dispatchFromAdapter pode lançar erro; resposta não é usada para OSC
+        dispatchFromAdapter(command, transformedPayload, 'osc');
+      } catch (error) {
         logger.error(LogOrigin.Rx, `OSC IN: ${error}`);
-      });
+      }
     });
     this.udpSocket.bind(port);
   }

@@ -144,14 +144,6 @@ async function ensureUserHasValidSalesWindow(userId: string | number): Promise<v
   const session = getAuthSession(userId);
   if (!session) return;
 
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfTomorrow = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1
-  );
-
   const {
     data: sales,
     error: salesError,
@@ -159,8 +151,9 @@ async function ensureUserHasValidSalesWindow(userId: string | number): Promise<v
     .from('sales')
     .select('id, timestamp_inicio, timestamp_final')
     .eq('id_usuario', userId)
-    .lte('timestamp_inicio', startOfTomorrow.toISOString())
-    .gte('timestamp_final', startOfToday.toISOString());
+    // Mesma lógica do login: agora deve estar dentro da janela de acesso
+    .lte('timestamp_inicio', new Date().toISOString())
+    .gte('timestamp_final', new Date().toISOString());
 
   if (salesError) {
     logger.error(
