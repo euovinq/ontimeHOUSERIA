@@ -47,6 +47,11 @@ export class SupabaseAdapter {
   private readonly GLOBAL_THROTTLE_MS = 200; // Max 5 sends per second
   private readonly DELAY_DEBOUNCE_MS = 2000; // Increased from 500ms to 2s
 
+  // Realtime listener properties
+  private realtimeChannel: any = null;
+  private isProcessingExternalUpdate = false;
+  private lastReceivedTimestamp = 0;
+
   constructor() {
     console.log('🏗️ SupabaseAdapter constructor called');
     console.log('🔍 Initial state - isConnected:', this.isConnected);
@@ -64,6 +69,18 @@ export class SupabaseAdapter {
       console.log('🔄 Setting up eventStore listener...');
       this.setupEventStoreListener();
     }, 1000);
+    
+    // Cleanup on process termination (useful for dev mode)
+    if (typeof process !== 'undefined') {
+      const cleanup = () => {
+        if (this.realtimeChannel && this.supabase) {
+          this.supabase.removeChannel(this.realtimeChannel).catch(() => {});
+          this.realtimeChannel = null;
+        }
+      };
+      process.once('SIGTERM', cleanup);
+      process.once('SIGINT', cleanup);
+    }
     
     console.log('🏗️ SupabaseAdapter constructor completed - Final Status:', {
       isConnected: this.isConnected,
@@ -140,8 +157,25 @@ export class SupabaseAdapter {
         console.log(`🌐 URL: ${config.url}`);
         console.log(`🔑 Key: ${config.anonKey.substring(0, 20)}...`);
         
+        // Clean up previous channel if exists (for dev mode hot reload)
+        if (this.realtimeChannel) {
+          try {
+            await this.supabase.removeChannel(this.realtimeChannel);
+            logger.info(LogOrigin.Server, '[Supabase] Canal Realtime anterior removido');
+          } catch (error) {
+            logger.warning(
+              LogOrigin.Server,
+              `[Supabase] Erro ao remover canal anterior: ${error}`
+            );
+          }
+          this.realtimeChannel = null;
+        }
+        
         // Save configuration
         this.saveConfig(config);
+        
+        // Setup Realtime listener to receive changes from Supabase
+        this.setupRealtimeListener();
         
         // Send initial data
         console.log('📤 Sending initial data to Supabase...');
@@ -664,9 +698,21 @@ export class SupabaseAdapter {
    * Disconnect from Supabase
    */
   private disconnect() {
+    // Remove Realtime channel if exists (fire and forget)
+    if (this.realtimeChannel && this.supabase) {
+      this.supabase.removeChannel(this.realtimeChannel).catch((error) => {
+        logger.error(
+          LogOrigin.Server,
+          `[Supabase] Erro ao remover canal Realtime: ${error}`
+        );
+      });
+      logger.info(LogOrigin.Server, '[Supabase] Canal Realtime removido');
+      this.realtimeChannel = null;
+    }
+    
     this.isConnected = false;
-    this.supabase = null;
-    // Keep config so we can reconnect later
+    this.isProcessingExternalUpdate = false;
+    // Keep config and supabase client so we can reconnect later
   }
 
   /**
@@ -1017,10 +1063,240 @@ export class SupabaseAdapter {
   }
 
   /**
+   * Setup Realtime listener to receive changes from Supabase
+   */
+  private setupRealtimeListener() {
+    if (!this.isConnected || !this.supabase || !this.config) {
+      return;
+    }
+
+    const tableName = this.config.tableName || 'ontime_realtime';
+    
+    logger.info(
+      LogOrigin.Server,
+      `[Supabase] Configurando listener Realtime para tabela ${tableName}...`
+    );
+
+    // Create unique channel ID to avoid conflicts
+    const channelId = `ontime-realtime-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create Realtime channel
+    this.realtimeChannel = this.supabase
+      .channel(channelId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: tableName,
+        },
+        (payload: any) => {
+          logger.info(
+            LogOrigin.Server,
+            `[Supabase] Evento Realtime recebido: ${payload.eventType || 'unknown'}`
+          );
+          this.handleRealtimeUpdate(payload).catch((error) => {
+            logger.error(
+              LogOrigin.Server,
+              `[Supabase] Erro ao processar atualização Realtime: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+            if (error instanceof Error && error.stack) {
+              logger.error(LogOrigin.Server, `[Supabase] Stack trace: ${error.stack}`);
+            }
+          });
+        }
+      )
+      .subscribe((status: string) => {
+        logger.info(
+          LogOrigin.Server,
+          `[Supabase] Canal Realtime '${channelId}' status: ${status}`
+        );
+        if (status === 'SUBSCRIBED') {
+          logger.info(
+            LogOrigin.Server,
+            `[Supabase] ✅ Listener Realtime ativo e escutando mudanças na tabela ${tableName}`
+          );
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          logger.error(
+            LogOrigin.Server,
+            `[Supabase] ❌ Erro no canal Realtime de ${tableName} (status: ${status}). Verifique se o Realtime está habilitado na tabela no Supabase.`
+          );
+        }
+      });
+  }
+
+  /**
+   * Handle Realtime updates received from Supabase
+   */
+  private async handleRealtimeUpdate(payload: any): Promise<void> {
+    if (this.isProcessingExternalUpdate) {
+      // Avoid processing updates while already processing one
+      return;
+    }
+
+    try {
+      const eventType = payload.eventType; // 'INSERT', 'UPDATE', 'DELETE'
+      const newRow = payload.new;
+      const oldRow = payload.old;
+
+      // Ignore DELETE (no data to update)
+      if (eventType === 'DELETE' || !newRow) {
+        return;
+      }
+
+      // Validate data structure
+      const data = newRow.data;
+      if (!data || typeof data !== 'object') {
+        logger.warning(
+          LogOrigin.Server,
+          '[Supabase] Dados recebidos do Realtime não têm formato válido'
+        );
+        return;
+      }
+
+      // Check if it's for the current project
+      const projectData = getDataProvider().getProjectData();
+      const currentProjectCode = projectData?.projectCode || '';
+      const incomingProjectCode = newRow.id || newRow.project_code;
+
+      if (incomingProjectCode && incomingProjectCode !== currentProjectCode) {
+        // Data from another project, ignore
+        logger.debug(
+          LogOrigin.Server,
+          `[Supabase] Ignorando atualização de outro projeto: ${incomingProjectCode} (atual: ${currentProjectCode})`
+        );
+        return;
+      }
+
+      // Check timestamp to ignore old updates
+      const updatedAt = newRow.updated_at ? new Date(newRow.updated_at).getTime() : 0;
+      if (updatedAt > 0 && updatedAt <= this.lastReceivedTimestamp) {
+        logger.info(
+          LogOrigin.Server,
+          `[Supabase] Ignorando atualização antiga (timestamp: ${updatedAt}, último: ${this.lastReceivedTimestamp}, diferença: ${this.lastReceivedTimestamp - updatedAt}ms)`
+        );
+        return;
+      }
+      
+      // Log timestamp info for debugging
+      logger.info(
+        LogOrigin.Server,
+        `[Supabase] Timestamp da atualização: ${updatedAt} (último recebido: ${this.lastReceivedTimestamp})`
+      );
+
+      logger.info(
+        LogOrigin.Server,
+        `[Supabase] Recebendo atualização Realtime: ${eventType} para projeto ${incomingProjectCode || 'atual'}`
+      );
+
+      // Mark flag to prevent loop
+      this.isProcessingExternalUpdate = true;
+      this.lastReceivedTimestamp = updatedAt || Date.now();
+
+      // Only process cuesheet data (rundown and customFields)
+      // Timer, runtime, delay, and events are NOT synced from Supabase
+      
+      // Debug: log estrutura completa dos dados recebidos
+      logger.info(
+        LogOrigin.Server,
+        `[Supabase] DEBUG - Estrutura dos dados recebidos: ${JSON.stringify(Object.keys(data))}`
+      );
+      
+      if (data.cuesheet) {
+        logger.info(
+          LogOrigin.Server,
+          `[Supabase] DEBUG - cuesheet encontrado. Chaves: ${JSON.stringify(Object.keys(data.cuesheet))}`
+        );
+        
+        // Update rundown if provided
+        if (data.cuesheet.rundown && Array.isArray(data.cuesheet.rundown)) {
+          logger.info(
+            LogOrigin.Server,
+            `[Supabase] Atualizando rundown com ${data.cuesheet.rundown.length} eventos`
+          );
+          
+          // Get current customFields (they might have been updated separately)
+          const currentCustomFields = getDataProvider().getCustomFields();
+          const customFieldsToUse = data.cuesheet.customFields || currentCustomFields;
+          
+          // Update the entire rundown - this will include all custom fields from events
+          await getDataProvider().setRundown(data.cuesheet.rundown);
+          
+          // Reinitialize the rundown cache with the new data and notify all services
+          // This ensures the UI is updated and runtime service knows about changes
+          try {
+            const { initRundown } = await import('../services/rundown-service/RundownService.js');
+            await initRundown(data.cuesheet.rundown, customFieldsToUse);
+            logger.info(
+              LogOrigin.Server,
+              '[Supabase] Rundown recarregado e serviços notificados sobre mudanças'
+            );
+          } catch (error) {
+            logger.error(
+              LogOrigin.Server,
+              `[Supabase] Erro ao recarregar rundown: ${error instanceof Error ? error.message : String(error)}`
+            );
+            // Fallback: at least try to notify runtime
+            try {
+              const { updateRuntimeOnChange } = await import('../services/rundown-service/RundownService.js');
+              updateRuntimeOnChange();
+            } catch (e) {
+              // Ignore fallback errors
+            }
+          }
+        }
+
+        // Update customFields if provided
+        if (data.cuesheet.customFields && typeof data.cuesheet.customFields === 'object') {
+          logger.info(
+            LogOrigin.Server,
+            `[Supabase] Atualizando customFields: ${JSON.stringify(Object.keys(data.cuesheet.customFields))}`
+          );
+          await getDataProvider().setCustomFields(data.cuesheet.customFields);
+          logger.info(
+            LogOrigin.Server,
+            '[Supabase] customFields atualizado com sucesso'
+          );
+        } else {
+          logger.warning(
+            LogOrigin.Server,
+            `[Supabase] customFields não encontrado ou formato inválido. Tipo: ${typeof data.cuesheet.customFields}`
+          );
+        }
+
+        logger.info(
+          LogOrigin.Server,
+          '[Supabase] Cuesheet atualizado com dados do Supabase Realtime'
+        );
+      } else {
+        logger.warning(
+          LogOrigin.Server,
+          `[Supabase] Dados recebidos não contêm cuesheet. Estrutura disponível: ${JSON.stringify(Object.keys(data))}`
+        );
+      }
+
+      // Reset flag after delay to avoid processing too fast
+      setTimeout(() => {
+        this.isProcessingExternalUpdate = false;
+      }, 1000);
+    } catch (error) {
+      this.isProcessingExternalUpdate = false;
+      throw error;
+    }
+  }
+
+  /**
    * Send optimized data to Supabase
    */
   private async sendOptimizedData(payload: any) {
     if (!this.isConnected || !this.supabase || !this.config) {
+      return;
+    }
+
+    // Don't send while processing external update (avoid loop)
+    if (this.isProcessingExternalUpdate) {
       return;
     }
 

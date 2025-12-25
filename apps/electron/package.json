@@ -33,6 +33,7 @@
     "productName": "HouseriaAPP",
     "appId": "no.lightdev.houseriaapp",
     "asar": true,
+    "publish": null,
     "dmg": {
       "artifactName": "houseriaapp-macOS-${arch}.dmg",
       "icon": "icon.icns"
