@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { IoLink, IoRefresh, IoSettingsOutline } from 'react-icons/io5';
-import { Button, Input, useDisclosure } from '@chakra-ui/react';
-import { generateProjectCode } from 'houseriaapp-utils';
+import { IoLink, IoArrowDown, IoSettingsOutline } from 'react-icons/io5';
+import { Button, Input, useDisclosure, useToast } from '@chakra-ui/react';
 
 import useProjectData, { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
 import { cx } from '../../../common/utils/styleUtils';
+import { loadProjectFromSupabase } from '../../../common/api/project';
 import PowerPointControl from '../../app-settings/panel/general-panel/PowerPointControl';
 import SupabaseControl from '../../app-settings/panel/general-panel/SupabaseControl';
 
@@ -14,12 +14,14 @@ import ProjectLinksModal from './ProjectLinksModal';
 import style from './InputRow.module.scss';
 
 export default function ProjectCodeInput() {
-  const { data: projectData } = useProjectData();
+  const { data: projectData, refetch: refetchProjectData } = useProjectData();
   const { mutateAsync: updateProjectData } = useProjectDataMutation();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isConfigOpen, onOpen: onConfigOpen, onClose: onConfigClose } = useDisclosure();
+  const toast = useToast();
 
   const [projectCode, setProjectCode] = useState(projectData?.projectCode || '');
+  const [isLoading, setIsLoading] = useState(false);
 
   // Sync with external data
   useEffect(() => {
@@ -28,31 +30,55 @@ export default function ProjectCodeInput() {
     }
   }, [projectData?.projectCode]);
 
-  const handleGenerateNewCode = async () => {
-    const newCode = generateProjectCode();
-    setProjectCode(newCode);
-
-    if (projectData) {
-      await updateProjectData({
-        ...projectData,
-        projectCode: newCode,
-      });
-    }
-  };
-
-  const handleCodeChange = async (newValue: string) => {
-    // Only allow alphanumeric characters and limit to 5 characters
+  const handleCodeChange = (newValue: string) => {
+    // Only allow alphanumeric characters
+    // Don't save automatically - only update local state
     const sanitizedValue = newValue
       .replace(/[^A-Z0-9]/gi, '')
-      .toUpperCase()
-      .slice(0, 5);
+      .toUpperCase();
     setProjectCode(sanitizedValue);
+  };
 
-    if (projectData) {
-      await updateProjectData({
-        ...projectData,
-        projectCode: sanitizedValue,
+  const handleLoadProject = async () => {
+    if (!projectCode || projectCode.trim().length === 0) {
+      toast({
+        title: 'Código vazio',
+        description: 'Por favor, digite um código de projeto',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+        position: 'top',
       });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await loadProjectFromSupabase(projectCode);
+      
+      // Refetch project data to update the UI
+      await refetchProjectData();
+
+      toast({
+        title: 'Projeto carregado!',
+        description: `Projeto ${projectCode} carregado com sucesso`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+        position: 'top',
+      });
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.error || error?.message || 'Erro ao carregar projeto';
+      toast({
+        title: 'Erro ao carregar',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+        position: 'top',
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -69,18 +95,19 @@ export default function ProjectCodeInput() {
             variant='ontime-filled'
             value={projectCode}
             onChange={(e) => handleCodeChange(e.target.value)}
-            placeholder='A1B2C'
-            maxLength={5}
+            placeholder='Digite o código do projeto'
             textTransform='uppercase'
           />
           <Button
             size='sm'
             variant='ontime-subtle'
-            onClick={handleGenerateNewCode}
-            aria-label='Generate new project code'
-            leftIcon={<IoRefresh size='14px' />}
+            onClick={handleLoadProject}
+            aria-label='Carregar projeto do Supabase'
+            leftIcon={<IoArrowDown size='14px' />}
+            isLoading={isLoading}
+            isDisabled={isLoading || !projectCode || projectCode.trim().length === 0}
           >
-            New
+            Carregar
           </Button>
         </div>
         {projectCode && (

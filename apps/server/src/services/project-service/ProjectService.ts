@@ -396,6 +396,65 @@ export async function editCurrentProjectData(newData: Partial<ProjectData>) {
   }
   
   const updatedProjectData = await getDataProvider().setProjectData(newData);
+}
+
+/**
+ * Loads project data from Supabase and applies it to the current project
+ * @param supabaseData - The data object from Supabase (format: { project, cuesheet: { rundown, customFields }, ... })
+ */
+export async function loadProjectFromSupabaseData(supabaseData: any) {
+  if (!supabaseData) {
+    throw new Error('No data provided from Supabase');
+  }
+
+  logger.info(LogOrigin.Server, 'Loading project from Supabase data');
+
+  // Stop runtime service before applying changes
+  runtimeService.stop();
+
+  // Extract project data
+  const projectData = supabaseData.project || {};
+  const cuesheet = supabaseData.cuesheet || {};
+  const rundown = cuesheet.rundown || [];
+  const customFields = cuesheet.customFields || {};
+
+  // Validate that we have essential data
+  if (!projectData.projectCode) {
+    throw new Error('Project code is missing in Supabase data');
+  }
+
+  logger.info(LogOrigin.Server, `Loading project with code: ${projectData.projectCode}`);
+
+  // Update project data (title, projectCode, directorWhatsapp, etc.)
+  const updatedProjectData = await getDataProvider().setProjectData({
+    title: projectData.title || '',
+    projectCode: projectData.projectCode,
+    directorWhatsapp: projectData.directorWhatsapp || null,
+  });
+
+  logger.info(LogOrigin.Server, `Project data updated: ${JSON.stringify(updatedProjectData)}`);
+
+  // Apply rundown and customFields
+  if (rundown.length > 0 || Object.keys(customFields).length > 0) {
+    logger.info(LogOrigin.Server, `Applying rundown with ${rundown.length} events and ${Object.keys(customFields).length} custom fields`);
+    
+    // Parse and validate rundown
+    const parsedData = {
+      rundown,
+      customFields,
+    };
+    
+    const result = parseRundown(parsedData);
+    await initRundown(result.rundown, result.customFields);
+    
+    logger.info(LogOrigin.Server, `Rundown applied successfully with ${result.rundown.length} events`);
+  } else {
+    logger.warning(LogOrigin.Server, 'No rundown or customFields found in Supabase data');
+  }
+
+  logger.info(LogOrigin.Server, `Project ${projectData.projectCode} loaded successfully from Supabase`);
+  
+  return updatedProjectData;
 
   // Delete the old logo if the logo has been removed
   if (!updatedProjectData.projectLogo && currentProjectData.projectLogo) {

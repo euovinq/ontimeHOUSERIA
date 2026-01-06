@@ -155,6 +155,56 @@ export async function getProjectData(req: Request, res: Response) {
 }
 
 /**
+ * Loads a project from Supabase by project code and applies it to the current project
+ */
+export async function loadProjectFromSupabase(req: Request, res: Response) {
+  try {
+    const { projectCode } = req.params;
+    
+    if (!projectCode) {
+      return res.status(400).json({ 
+        error: 'Project code is required' 
+      });
+    }
+
+    logger.info(LogOrigin.Server, `Loading project from Supabase: ${projectCode}`);
+    
+    // Check if Supabase is connected
+    if (!supabaseAdapter.isConnectedToSupabase()) {
+      return res.status(503).json({ 
+        error: 'Supabase is not connected. Please configure and connect Supabase first.' 
+      });
+    }
+    
+    // Get project data from Supabase
+    const projectData = await supabaseAdapter.getProjectData(projectCode);
+    
+    if (!projectData) {
+      return res.status(404).json({ 
+        error: `Project with code "${projectCode}" not found in Supabase`,
+        projectCode 
+      });
+    }
+
+    // Load and apply the project data
+    const { loadProjectFromSupabaseData } = await import('../../services/project-service/ProjectService.js');
+    await loadProjectFromSupabaseData(projectData);
+    
+    logger.info(LogOrigin.Server, `Project ${projectCode} loaded successfully from Supabase`);
+    
+    res.status(200).json({ 
+      message: `Project ${projectCode} loaded successfully`
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(LogOrigin.Server, `Error loading project from Supabase: ${errorMessage}`);
+    res.status(500).json({ 
+      error: `Failed to load project: ${errorMessage}`
+    });
+  }
+}
+
+/**
  * Controller para toggle do Supabase via REST API (Stream Deck)
  */
 export async function toggleSupabaseController(

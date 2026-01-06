@@ -1,9 +1,10 @@
 import axios, { AxiosResponse } from 'axios';
-import { ProjectData, ProjectLogoResponse } from 'houseriaapp-types';
+import { ProjectData, ProjectLogoResponse, MessageResponse } from 'houseriaapp-types';
 
 import { apiEntryUrl } from './constants';
 
 const projectPath = `${apiEntryUrl}/project`;
+const supabasePath = `${apiEntryUrl}/supabase`;
 
 /**
  * HTTP request to fetch project data
@@ -33,4 +34,12 @@ export async function uploadProjectLogo(file: File): Promise<AxiosResponse<Proje
   });
 
   return response;
+}
+
+/**
+ * HTTP request to load a project from Supabase by project code
+ */
+export async function loadProjectFromSupabase(projectCode: string): Promise<MessageResponse> {
+  const res = await axios.post(`${supabasePath}/load/${projectCode}`);
+  return res.data;
 }
