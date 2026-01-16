@@ -172,14 +172,7 @@ export function initializeSupabaseService(): void {
   const hasWebSocket = websocketService && websocketService.isServiceConnected();
   
   if (!hasWebSocket) {
-    if (shouldLog) {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint - WebSocket não conectado. Aguardando conexão com HouseriaPPT...');
-    }
     return;
-  }
-  
-  if (shouldLog) {
-    logger.info(LogOrigin.Server, '✅ PowerPoint - WebSocket service conectado, inicializando Supabase service...');
   }
   
   // Serviço PPT é independente - sempre inicializa se WebSocket está conectado
@@ -188,7 +181,6 @@ export function initializeSupabaseService(): void {
     try {
       // Só inicializa se WebSocket está conectado
       if (!websocketService || !websocketService.isServiceConnected()) {
-        logger.warning(LogOrigin.Server, '⚠️  PowerPoint - WebSocket não conectado, não é possível inicializar Supabase service');
         return;
       }
       
@@ -204,13 +196,9 @@ export function initializeSupabaseService(): void {
       const projectCode = projectData?.projectCode;
       if (projectCode) {
         supabaseService.setProjectCode(projectCode);
-        logger.info(LogOrigin.Server, `📌 PowerPoint - Project code configurado: ${projectCode}`);
-      } else {
-        logger.warning(LogOrigin.Server, '⚠️  PowerPoint - Project code não encontrado - será necessário configurar antes de enviar dados');
       }
       
       supabaseService.start();
-      logger.info(LogOrigin.Server, '✅ PowerPoint - Integração Supabase iniciada com sucesso!');
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
       logger.error(LogOrigin.Server, `❌ PowerPoint - Erro ao inicializar integração Supabase: ${errorMsg}`);
@@ -454,7 +442,6 @@ async function savePendingPowerPointConfig(): Promise<void> {
  */
 async function loadPowerPointConfig(): Promise<{ ip: string; port: string } | null> {
   if (!supabaseAdapter?.isConnectedToSupabase()) {
-    logger.info(LogOrigin.Server, 'ℹ️  PowerPoint - Supabase não conectado - não é possível carregar configuração');
     return null;
   }
 
@@ -576,9 +563,6 @@ async function initializeWindowsService(): Promise<void> {
     
     if (savedConfig && savedConfig.ip && savedConfig.port) {
       initialUrl = `http://${savedConfig.ip}:${savedConfig.port}`;
-      logger.info(LogOrigin.Server, `Serviço PowerPoint Windows criado - Carregou configuração do Supabase: ${initialUrl}`);
-    } else {
-      logger.info(LogOrigin.Server, 'Serviço PowerPoint Windows criado (sem configuração - aguardando IP/Porta)');
     }
     
     // Cria serviço com configuração salva (ou vazio se não houver)
@@ -606,7 +590,6 @@ async function initializeWindowsService(): Promise<void> {
   if (windowsService && !oscService) {
     try {
       oscService = new PowerPointOscService(windowsService, '127.0.0.1', 8000);
-      logger.info(LogOrigin.Server, '📡 PowerPoint OSC - Serviço criado (não iniciado por padrão)');
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
       logger.warning(LogOrigin.Server, `Não foi possível criar serviço PowerPoint OSC: ${errorMsg}`);
@@ -1670,25 +1653,18 @@ async function initializeDiscoveryService(): Promise<void> {
     });
 
     // Busca ativa inicial (5 segundos)
-    logger.info(LogOrigin.Server, '🔍 PowerPoint Discovery - Buscando servidores na rede...');
     const initialServers = await discoveryService.discoverServers(5000);
     
     if (initialServers.length > 0) {
-      logger.info(LogOrigin.Server, `✅ PowerPoint Discovery - ${initialServers.length} servidor(es) encontrado(s) na busca inicial`);
       // Conecta ao primeiro servidor encontrado (callback já foi chamado durante discoverServers)
       // Mas garantimos que conecta mesmo assim se ainda não conectou
       if (!websocketService || !websocketService.isServiceConnected()) {
         connectToDiscoveredServer(initialServers[0]);
-      } else {
-        // WebSocket já conectado, ignorando servidor da busca inicial
       }
     } else {
-      logger.info(LogOrigin.Server, '⚠️  PowerPoint Discovery - Nenhum servidor encontrado na busca inicial, continuando escuta passiva...');
       // Inicia busca periódica (a cada 30 segundos) apenas se não encontrou servidor
       discoveryService.startPeriodicSearch();
     }
-
-    logger.info(LogOrigin.Server, '✅ PowerPoint Discovery - Serviço inicializado');
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
     logger.error(LogOrigin.Server, `❌ PowerPoint Discovery - Erro ao inicializar: ${errorMsg}`);
@@ -1812,8 +1788,6 @@ function connectToDiscoveredServer(server: DiscoveredServer): void {
         // Status atualizado via WebSocket
       }
     });
-    
-    logger.info(LogOrigin.Server, `✅ PowerPoint WebSocket - Serviço criado para ${wsUrl}`);
   } else {
     // Atualiza URL do serviço existente apenas se mudou
     const currentUrl = (websocketService as any).url || '';
@@ -1827,7 +1801,6 @@ function connectToDiscoveredServer(server: DiscoveredServer): void {
   const isConnecting = (websocketService as any).isConnecting || false;
   
   if (!isConnected && !isConnecting) {
-    logger.info(LogOrigin.Server, `🔌 PowerPoint WebSocket - Iniciando conexão a ${wsUrl}...`);
     websocketService.start();
   }
   

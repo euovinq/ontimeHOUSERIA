@@ -1,8 +1,6 @@
 import axios from 'axios';
 
 export async function reenviarRundown() {
-  console.log('🧩 reenviarRundown iniciado...');
-
   setTimeout(async () => {
     try {
       await axios.get('http://localhost:4001/data/rundown/normalised');

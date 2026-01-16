@@ -18,7 +18,6 @@ export function parseAutomationSettings(data: LegacyData, emitError?: ErrorEmitt
    */
   if (data.http || data.osc) {
     emitError?.('Found legacy integrations');
-    console.log('Found legacy integrations...');
     if (data.osc) {
       return {
         enabledAutomations: dbModel.automation.enabledAutomations,
@@ -36,7 +35,6 @@ export function parseAutomationSettings(data: LegacyData, emitError?: ErrorEmitt
     emitError?.('No data found to import');
     return { ...dbModel.automation };
   }
-  console.log('Found Automation settings, importing...');
 
   return {
     enabledAutomations: data.automation.enabledAutomations ?? dbModel.automation.enabledAutomations,

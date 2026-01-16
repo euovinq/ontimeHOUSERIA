@@ -181,11 +181,7 @@ export class PowerPointSupabaseService {
       this.isSending = false; // Reseta flag de envio
       this.pendingStatus = null; // Limpa status pendente
       
-      if (projectCode) {
-        logger.info(LogOrigin.Server, `📌 PowerPoint Supabase - Project code definido: ${projectCode}`);
-      } else {
-        logger.warning(LogOrigin.Server, '⚠️  PowerPoint Supabase - Project code removido (null)');
-      }
+      // Project code atualizado
     }
   }
 
@@ -208,12 +204,7 @@ export class PowerPointSupabaseService {
     this.isRunning = true;
     
     // Verifica se Supabase está disponível (adapter ou cliente direto)
-    if (!this.isSupabaseAvailable()) {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint Supabase service iniciado mas Supabase não está configurado - aguardando configuração');
-      // Continua rodando mesmo sem Supabase - o botão PPT controla se envia ou não
-    } else {
-      logger.info(LogOrigin.Server, '✅ PowerPoint Supabase service iniciado - Supabase disponível');
-    }
+    // Continua rodando mesmo sem Supabase - o botão PPT controla se envia ou não
     
     // ✅ CORREÇÃO CRÍTICA: Remove listeners existentes antes de adicionar novo
     // Isso evita listeners duplicados que causam processamento múltiplo do mesmo evento
@@ -232,14 +223,9 @@ export class PowerPointSupabaseService {
     if (this.isEnabled) {
       const currentStatus = this.service.getStatus();
       if (currentStatus) {
-        logger.info(LogOrigin.Server, `📤 PowerPoint Supabase - Enviando status inicial: Slide ${currentStatus.currentSlide}/${currentStatus.slideCount}`);
         this.onStatusChange(currentStatus);
       }
-    } else {
-      logger.info(LogOrigin.Server, '⚠️  PowerPoint Supabase - Serviço iniciado mas DESABILITADO (botão vermelho) - não enviará dados até ser habilitado');
     }
-
-    logger.info(LogOrigin.Server, '✅ PowerPoint Supabase service iniciado e escutando eventos');
   }
 
   /**

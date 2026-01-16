@@ -52,15 +52,9 @@ import { serverTryDesiredPort, getNetworkInterfaces } from './utils/network.js';
 
 import {reenviarRundown} from './scripts/dataSupabase.js';
 
-console.log('\n');
 consoleHighlight(`Starting Ontime version ${ONTIME_VERSION}`);
 
 const canLog = isProduction;
-if (!canLog) {
-  console.log(`Ontime running in ${environment} environment`);
-  console.log(`Ontime source directory at ${srcDir.root} `);
-  console.log(`Ontime public directory at ${publicDir.root} `);
-}
 
 /**
  * When running in Ontime cloud, the client is not at the root segment
@@ -96,10 +90,6 @@ app.options(
 
 // Middleware de debug para todas as requisições
 app.use((req, res, next) => {
-  // Log apenas requisições da API para não poluir logs
-  if (req.path.startsWith('/api') || req.path.startsWith('/data')) {
-    console.log(`📥 [REQUEST] ${req.method} ${req.path} | IP: ${req.ip} | Origin: ${req.headers.origin || 'N/A'} | User-Agent: ${req.headers['user-agent']?.substring(0, 50) || 'N/A'}`);
-  }
   next();
 });
 
@@ -142,7 +132,6 @@ app.use((error: Error, req: express.Request, res: express.Response, next: expres
 
 // Catch all para rotas não encontradas
 app.use((req: express.Request, res: express.Response) => {
-  console.log(`⚠️  [404] Rota não encontrada: ${req.method} ${req.path}`);
   res.status(404).json({ error: 'Route not found', path: req.path });
 });
 

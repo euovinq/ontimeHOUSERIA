@@ -95,13 +95,7 @@ export class PowerPointDiscoveryService extends EventEmitter {
             
             this.discoveredServers.set(key, discoveredServer);
 
-            // Só loga se for um servidor novo (não atualizações repetidas)
-            if (isNewServer) {
-              logger.info(
-                LogOrigin.Server,
-                `🔍 PowerPoint Discovery - Servidor encontrado: ${discoveredServer.device_name} em ${discoveredServer.ip}:${discoveredServer.port}`
-              );
-            }
+            // Servidor encontrado (não loga para evitar spam)
 
             // Emite evento para quem está escutando (sempre, para listeners gerais)
             this.emit('serverFound', discoveredServer);
@@ -119,7 +113,6 @@ export class PowerPointDiscoveryService extends EventEmitter {
 
       this.udpSocket.bind(this.DISCOVERY_PORT, () => {
         this.isListening = true;
-        logger.info(LogOrigin.Server, `📡 PowerPoint Discovery - Escutando broadcasts na porta ${this.DISCOVERY_PORT}`);
         
         // Permite receber broadcasts (aguarda um pouco para garantir que socket está pronto)
         if (this.udpSocket) {
@@ -355,8 +348,6 @@ export class PowerPointDiscoveryService extends EventEmitter {
         });
       }
     }, this.ACTIVE_SEARCH_INTERVAL);
-
-    logger.info(LogOrigin.Server, `PowerPoint Discovery - Busca periódica iniciada (a cada ${this.ACTIVE_SEARCH_INTERVAL}ms)`);
   }
 
   /**

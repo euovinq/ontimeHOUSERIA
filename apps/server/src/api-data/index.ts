@@ -17,9 +17,6 @@ import { router as realtimeRouter } from './realtime/realtime.router.js';
 import { router as supabaseRouter } from './supabase/supabase.router.js';
 import { router as powerpointRouter } from './powerpoint/powerpoint.router.js';
 
-// Debug: Verificar se router foi importado
-console.log('✅ [APP-ROUTER] PowerPoint router importado:', !!powerpointRouter);
-
 export const appRouter = express.Router();
 
 appRouter.use('/automations', automationsRouter);
@@ -38,7 +35,6 @@ appRouter.use('/assets', assetsRouter);
 appRouter.use('/realtime', realtimeRouter);
 appRouter.use('/supabase', supabaseRouter);
 appRouter.use('/powerpoint', powerpointRouter);
-console.log('✅ [APP-ROUTER] PowerPoint router registrado em /powerpoint');
 
 //we don't want to redirect to react index when using api routes
 appRouter.all('/*', (_req, res) => {
