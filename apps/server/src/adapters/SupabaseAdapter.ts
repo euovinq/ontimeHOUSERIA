@@ -951,32 +951,470 @@ export class SupabaseAdapter {
         return;
       }
 
+      // Obter userId do usuário logado (via sessão de autenticação)
+      let userId: string | number | null = null;
+      try {
+        const { getAllSessions } = await import('../api-data/auth/auth-session.service.js');
+        const sessions = getAllSessions();
+        if (sessions.length > 0) {
+          // Pega a sessão mais recente
+          const latestSession = sessions
+            .slice()
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+            .at(0);
+          if (latestSession) {
+            userId = latestSession.userId;
+          }
+        }
+      } catch (error) {
+        // Se não conseguir obter userId, continua sem user_id (modo legacy)
+        logger.warning(LogOrigin.Server, `Could not get userId for Supabase save: ${error}`);
+      }
+
       // Garantir que o payload também tenha o projectCode sanitizado
+      // IMPORTANTE: Remover qualquer campo 'id' do payload (id é auto-incremento na tabela)
+      const payloadWithoutId = { ...payload };
+      if ('id' in payloadWithoutId) {
+        delete payloadWithoutId.id;
+      }
+      if (payloadWithoutId.project && 'id' in payloadWithoutId.project) {
+        delete payloadWithoutId.project.id;
+      }
+      
       const sanitizedPayload = {
-        ...payload,
+        ...payloadWithoutId,
         projectCode: sanitizedProjectCode,
         project: {
-          ...payload.project,
+          ...payloadWithoutId.project,
           projectCode: sanitizedProjectCode
         }
       };
 
-      const { error } = await this.supabase
+      // Buscar por project_code na tabela ontime_realtime
+      // Buscar até 5 registros para encontrar o correto (pode haver múltiplos com mesmo project_code)
+      logger.info(LogOrigin.Server, `Searching for existing record with project_code: ${sanitizedProjectCode}${userId ? `, user_id: ${userId}` : ''}`);
+      const { data: existingList, error: searchError } = await this.supabase
         .from(this.config.tableName || 'ontime_realtime')
-        .upsert({
-          id: sanitizedProjectCode,
+        .select('id, user_id, project_code')
+        .eq('project_code', sanitizedProjectCode)
+        .limit(5);
+      
+      let error: any = null;
+      let existingRecord: any = null;
+
+      if (searchError && searchError.code !== 'PGRST116') {
+        logger.warning(LogOrigin.Server, `Error searching for existing record: ${searchError.message} (code: ${searchError.code})`);
+      } else if (existingList && existingList.length > 0) {
+        logger.info(LogOrigin.Server, `Found ${existingList.length} record(s) with project_code: ${sanitizedProjectCode}`);
+        // Achou registro(s) - verificar user_id se disponível
+        if (userId !== null) {
+          // Tentar encontrar registro com mesmo user_id
+          const matchingUser = existingList.find((r: any) => r.user_id === userId);
+          existingRecord = matchingUser || existingList[0];
+        } else {
+          existingRecord = existingList[0];
+        }
+        logger.info(LogOrigin.Server, `Found existing record: id=${existingRecord.id}, user_id=${existingRecord.user_id || 'null'} (total found: ${existingList.length})`);
+        
+        // Preparar dados para atualização
+        const updateData: any = {
           data: sanitizedPayload,
           project_code: sanitizedProjectCode,
           updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'project_code'  // Sempre verifica por project_code para evitar duplicatas
-        });
+        };
+
+        // Incluir user_id se disponível (FK para users.id)
+        if (userId !== null) {
+          updateData.user_id = userId;
+        }
+
+        // Atualizar registro existente
+        logger.info(LogOrigin.Server, `Updating existing record with id: ${existingRecord.id} for project_code: ${sanitizedProjectCode}`);
+        const { data: updateResult, error: updateError, count } = await this.supabase
+          .from(this.config.tableName || 'ontime_realtime')
+          .update(updateData)
+          .eq('id', existingRecord.id)
+          .select();
+        
+        const rowsAffected = count !== null ? count : (updateResult ? updateResult.length : 0);
+        
+        if (updateError) {
+          logger.error(LogOrigin.Server, `Update error for id ${existingRecord.id}: ${updateError.message} (code: ${updateError.code})`);
+          error = updateError;
+        } else if (rowsAffected === 0) {
+          logger.warning(LogOrigin.Server, `Update affected 0 rows for id ${existingRecord.id}. Record may have been deleted. Attempting insert...`);
+          // Se não afetou nenhuma linha, tentar inserir
+          const { error: insertError } = await this.supabase
+            .from(this.config.tableName || 'ontime_realtime')
+            .insert(updateData);
+          
+          if (insertError) {
+            logger.error(LogOrigin.Server, `Insert after failed update also failed: ${insertError.message}`);
+            error = insertError;
+          } else {
+            logger.info(LogOrigin.Server, `Successfully inserted record after update affected 0 rows`);
+            error = null;
+          }
+        } else {
+          logger.info(LogOrigin.Server, `Successfully updated existing record (rows affected: ${rowsAffected})`);
+          error = null;
+        }
+      } else {
+        // Não achou - criar novo registro
+        logger.info(LogOrigin.Server, `No record found for project_code: ${sanitizedProjectCode}, creating new record`);
+        
+        // Buscar id do usuário na tabela users pelo email logado
+        let userDbId: string | number | null = null;
+        if (userId !== null) {
+          try {
+            // Buscar o email do usuário logado na tabela users
+            const { getAllSessions } = await import('../api-data/auth/auth-session.service.js');
+            const { supabase: authSupabase } = await import('../api-data/auth/auth.service.js');
+            
+            const sessions = getAllSessions();
+            if (sessions.length > 0) {
+              const latestSession = sessions
+                .slice()
+                .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+                .at(0);
+              
+              if (latestSession && latestSession.userId === userId) {
+                // Buscar email do usuário na tabela users pelo id
+                const { data: userRecord, error: userError } = await authSupabase
+                  .from('users')
+                  .select('id, email')
+                  .eq('id', userId)
+                  .maybeSingle();
+                
+                if (userError) {
+                  logger.warning(LogOrigin.Server, `Error searching for user in users table: ${userError.message}`);
+                } else if (userRecord && userRecord.email) {
+                  // Buscar o id do usuário na tabela users pelo email logado
+                  const { data: userByEmail, error: emailError } = await this.supabase
+                    .from('users')
+                    .select('id')
+                    .eq('email', userRecord.email)
+                    .maybeSingle();
+                  
+                  if (emailError) {
+                    logger.warning(LogOrigin.Server, `Error searching for user by email: ${emailError.message}`);
+                  } else if (userByEmail) {
+                    userDbId = userByEmail.id;
+                    logger.info(LogOrigin.Server, `Found user id in users table by email: ${userDbId} (email: ${userRecord.email})`);
+                  }
+                } else {
+                  logger.warning(LogOrigin.Server, `User not found in users table for userId: ${userId}`);
+                }
+              }
+            }
+          } catch (err) {
+            logger.warning(LogOrigin.Server, `Error getting user id: ${err}`);
+          }
+        }
+
+        // Preparar dados para inserção
+        // IMPORTANTE: Não incluir campo 'id' - ele é auto-incremento (PK)
+        const insertData: any = {
+          data: sanitizedPayload,
+          project_code: sanitizedProjectCode,
+          updated_at: new Date().toISOString()
+        };
+
+        // Incluir user_id (FK) se encontrado
+        if (userDbId !== null) {
+          insertData.user_id = userDbId;
+        }
+        
+        // Garantir que não há campo 'id' no insertData (id é auto-incremento)
+        if ('id' in insertData) {
+          delete insertData.id;
+        }
+        
+        // Log do que será inserido (sem dados sensíveis)
+        logger.info(LogOrigin.Server, `Preparing to insert: project_code="${insertData.project_code}", user_id=${insertData.user_id || 'null'}, has_data=${!!insertData.data}, updated_at=${insertData.updated_at}`);
+        logger.info(LogOrigin.Server, `Insert data keys: ${Object.keys(insertData).join(', ')}`);
+        
+        // Verificação final: garantir que NÃO há campo 'id' em nenhum lugar
+        // (id é auto-incremento, não deve ser passado)
+        const hasId = 'id' in insertData || (insertData.data && typeof insertData.data === 'object' && 'id' in insertData.data);
+        if (hasId) {
+          logger.error(LogOrigin.Server, `❌ ERROR: Found 'id' field in insertData! Removing it...`);
+          delete insertData.id;
+          if (insertData.data && typeof insertData.data === 'object' && 'id' in insertData.data) {
+            const dataCopy = { ...insertData.data };
+            delete dataCopy.id;
+            insertData.data = dataCopy;
+          }
+        }
+
+        // Criar novo registro
+        const { error: insertError } = await this.supabase
+          .from(this.config.tableName || 'ontime_realtime')
+          .insert(insertData);
+        
+        if (insertError) {
+          logger.error(LogOrigin.Server, `Insert error: ${insertError.message} (code: ${insertError.code})`);
+          logger.error(LogOrigin.Server, `Insert error details: ${JSON.stringify(insertError)}`);
+          logger.error(LogOrigin.Server, `Insert data that failed: ${JSON.stringify({ ...insertData, data: '[omitted]' })}`);
+          
+          // Se der erro de duplicata, significa que o registro foi criado por outra thread
+          // Buscar novamente e atualizar
+          if (insertError.code === '23505') {
+            logger.warning(LogOrigin.Server, `⚠️ Duplicate key error on PK (id is auto-increment). This should not happen unless id is being passed explicitly.`);
+            logger.info(LogOrigin.Server, `Insert failed due to duplicate key. Trying UPDATE directly by project_code + user_id...`);
+            
+            // Tentar fazer UPDATE diretamente (o registro pode existir mas a busca não encontra por RLS)
+            const updateDataForRetry: any = {
+              data: sanitizedPayload,
+              project_code: sanitizedProjectCode,
+              updated_at: new Date().toISOString()
+            };
+            if (userDbId !== null) {
+              updateDataForRetry.user_id = userDbId;
+            }
+            
+            let updateQuery = this.supabase
+              .from(this.config.tableName || 'ontime_realtime')
+              .update(updateDataForRetry)
+              .eq('project_code', sanitizedProjectCode);
+            
+            if (userDbId !== null) {
+              updateQuery = updateQuery.eq('user_id', userDbId);
+            }
+            
+            const { data: updateResult, error: updateError, count } = await updateQuery.select();
+            const rowsAffected = count !== null ? count : (updateResult ? updateResult.length : 0);
+            
+            if (!updateError && rowsAffected > 0) {
+              logger.info(LogOrigin.Server, `✅ Successfully updated existing record via direct UPDATE (rows affected: ${rowsAffected})`);
+              error = null;
+            } else {
+              logger.warning(LogOrigin.Server, `Direct UPDATE did not affect any rows. Searching for record...`);
+              // Aguardar mais tempo para garantir que o registro foi commitado
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              // Tentar buscar o registro por project_code
+              logger.info(LogOrigin.Server, `Searching for record with project_code: "${sanitizedProjectCode}" after duplicate error...`);
+            let { data: newRecordList, error: searchError } = await this.supabase
+              .from(this.config.tableName || 'ontime_realtime')
+              .select('id, user_id, project_code')
+              .eq('project_code', sanitizedProjectCode)
+              .limit(5);
+            
+            if (searchError) {
+              logger.warning(LogOrigin.Server, `Error searching for record after duplicate insert: ${searchError.message} (code: ${searchError.code})`);
+              // Se houver erro de busca, pode ser RLS - tentar buscar todos os registros (sem filtro)
+              logger.info(LogOrigin.Server, `Attempting to search all records (no filter) to check RLS...`);
+              const { data: allRecords, error: allError } = await this.supabase
+                .from(this.config.tableName || 'ontime_realtime')
+                .select('id, user_id, project_code')
+                .limit(10);
+              
+              if (allError) {
+                logger.warning(LogOrigin.Server, `Error searching all records: ${allError.message} (code: ${allError.code})`);
+              } else {
+                logger.info(LogOrigin.Server, `Found ${allRecords?.length || 0} total record(s) in table (RLS check)`);
+                if (allRecords && allRecords.length > 0) {
+                  const matching = allRecords.filter((r: any) => r.project_code === sanitizedProjectCode);
+                  logger.info(LogOrigin.Server, `  Records matching project_code "${sanitizedProjectCode}": ${matching.length}`);
+                  if (matching.length > 0) {
+                    logger.warning(LogOrigin.Server, `  ⚠️ Found matching record but RLS may be blocking filtered search!`);
+                    matching.forEach((r: any, idx: number) => {
+                      logger.info(LogOrigin.Server, `    Match ${idx + 1}: id=${r.id}, user_id=${r.user_id || 'null'}, project_code="${r.project_code}"`);
+                    });
+                    // Usar o primeiro match encontrado
+                    newRecordList = matching;
+                  }
+                }
+              }
+            } else {
+              logger.info(LogOrigin.Server, `Search result: found ${newRecordList?.length || 0} record(s) with project_code "${sanitizedProjectCode}"`);
+              if (newRecordList && newRecordList.length > 0) {
+                newRecordList.forEach((r: any, idx: number) => {
+                  logger.info(LogOrigin.Server, `  Record ${idx + 1}: id=${r.id}, user_id=${r.user_id || 'null'}, project_code="${r.project_code}"`);
+                });
+              }
+            }
+            
+            if (newRecordList && newRecordList.length > 0) {
+              // Encontrar o registro que corresponde ao user_id se disponível
+              let recordToUpdate = newRecordList[0];
+              if (userDbId !== null) {
+                const matchingUser = newRecordList.find((r: any) => r.user_id === userDbId);
+                if (matchingUser) {
+                  recordToUpdate = matchingUser;
+                }
+              }
+              
+              logger.info(LogOrigin.Server, `Found record after duplicate insert: id=${recordToUpdate.id}, user_id=${recordToUpdate.user_id || 'null'}`);
+              
+              const updateData: any = {
+                data: sanitizedPayload,
+                project_code: sanitizedProjectCode,
+                updated_at: new Date().toISOString()
+              };
+              if (userDbId !== null) {
+                updateData.user_id = userDbId;
+              }
+              
+              const { error: updateError } = await this.supabase
+                .from(this.config.tableName || 'ontime_realtime')
+                .update(updateData)
+                .eq('id', recordToUpdate.id);
+              
+              if (updateError) {
+                logger.error(LogOrigin.Server, `Update error after duplicate insert: ${updateError.message} (code: ${updateError.code})`);
+                // Se o update falhar, tentar atualizar por project_code + user_id
+                if (userDbId !== null) {
+                  logger.info(LogOrigin.Server, `Trying update by project_code and user_id as fallback...`);
+                  const { error: fallbackError } = await this.supabase
+                    .from(this.config.tableName || 'ontime_realtime')
+                    .update(updateData)
+                    .eq('project_code', sanitizedProjectCode)
+                    .eq('user_id', userDbId);
+                  
+                  if (fallbackError) {
+                    logger.error(LogOrigin.Server, `Fallback update also failed: ${fallbackError.message}`);
+                    error = fallbackError;
+                  } else {
+                    logger.info(LogOrigin.Server, `Successfully updated record using fallback method`);
+                    error = null;
+                  }
+                } else {
+                  error = updateError;
+                }
+              } else {
+                logger.info(LogOrigin.Server, `Successfully updated record after duplicate insert`);
+                error = null;
+              }
+            } else {
+              // Não encontrou o registro após busca - tentar buscar novamente com mais tempo
+              logger.warning(LogOrigin.Server, `Record not found after duplicate insert. Waiting longer and searching again...`);
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              // Tentar buscar novamente
+              logger.info(LogOrigin.Server, `Retry search for project_code: "${sanitizedProjectCode}"...`);
+              const { data: retryRecordList, error: retrySearchError } = await this.supabase
+                .from(this.config.tableName || 'ontime_realtime')
+                .select('id, user_id, project_code')
+                .eq('project_code', sanitizedProjectCode)
+                .limit(5);
+              
+              if (retrySearchError) {
+                logger.warning(LogOrigin.Server, `Error in retry search: ${retrySearchError.message} (code: ${retrySearchError.code})`);
+              } else {
+                logger.info(LogOrigin.Server, `Retry search result: found ${retryRecordList?.length || 0} record(s)`);
+                if (retryRecordList && retryRecordList.length > 0) {
+                  retryRecordList.forEach((r: any, idx: number) => {
+                    logger.info(LogOrigin.Server, `  Retry Record ${idx + 1}: id=${r.id}, user_id=${r.user_id || 'null'}, project_code="${r.project_code}"`);
+                  });
+                }
+              }
+              
+              if (retryRecordList && retryRecordList.length > 0) {
+                // Encontrou agora - atualizar
+                let recordToUpdate = retryRecordList[0];
+                if (userDbId !== null) {
+                  const matchingUser = retryRecordList.find((r: any) => r.user_id === userDbId);
+                  if (matchingUser) {
+                    recordToUpdate = matchingUser;
+                  }
+                }
+                
+                logger.info(LogOrigin.Server, `Found record on retry: id=${recordToUpdate.id}, user_id=${recordToUpdate.user_id || 'null'}`);
+                
+                const updateData: any = {
+                  data: sanitizedPayload,
+                  project_code: sanitizedProjectCode,
+                  updated_at: new Date().toISOString()
+                };
+                if (userDbId !== null) {
+                  updateData.user_id = userDbId;
+                }
+                
+                const { error: updateError } = await this.supabase
+                  .from(this.config.tableName || 'ontime_realtime')
+                  .update(updateData)
+                  .eq('id', recordToUpdate.id);
+                
+                if (updateError) {
+                  logger.error(LogOrigin.Server, `Update error on retry: ${updateError.message}`);
+                  error = updateError;
+                } else {
+                  logger.info(LogOrigin.Server, `Successfully updated record on retry`);
+                  error = null;
+                }
+              } else {
+                // Ainda não encontrou - tentar fazer update direto por project_code
+                logger.warning(LogOrigin.Server, `Record still not found. Trying direct update by project_code...`);
+                const updateData: any = {
+                  data: sanitizedPayload,
+                  project_code: sanitizedProjectCode,
+                  updated_at: new Date().toISOString()
+                };
+                if (userDbId !== null) {
+                  updateData.user_id = userDbId;
+                }
+                
+                let updateQuery = this.supabase
+                  .from(this.config.tableName || 'ontime_realtime')
+                  .update(updateData)
+                  .eq('project_code', sanitizedProjectCode);
+                
+                if (userDbId !== null) {
+                  updateQuery = updateQuery.eq('user_id', userDbId);
+                }
+                
+                // Usar select() para verificar quantas linhas foram afetadas
+                const { data: updateResult, error: directUpdateError, count } = await updateQuery.select();
+                const rowsAffected = count !== null ? count : (updateResult ? updateResult.length : 0);
+                
+                if (directUpdateError) {
+                  logger.error(LogOrigin.Server, `Direct update failed: ${directUpdateError.message}`);
+                  error = directUpdateError;
+                } else if (rowsAffected === 0) {
+                  // Nenhuma linha foi afetada - o registro realmente não existe
+                  // Tentar inserir novamente (pode ter sido deletado entre as tentativas)
+                  logger.warning(LogOrigin.Server, `Direct update affected 0 rows. Record may not exist. Attempting insert again...`);
+                  const { error: retryInsertError } = await this.supabase
+                    .from(this.config.tableName || 'ontime_realtime')
+                    .insert(insertData);
+                  
+                  if (retryInsertError) {
+                    if (retryInsertError.code === '23505') {
+                      // Ainda duplicata - registro existe mas não conseguimos atualizar
+                      // Isso é uma condição de corrida - ignorar
+                      logger.warning(LogOrigin.Server, `Retry insert also failed with duplicate key. This is a race condition - ignoring.`);
+                      error = null;
+                    } else {
+                      logger.error(LogOrigin.Server, `Retry insert failed: ${retryInsertError.message}`);
+                      error = retryInsertError;
+                    }
+                  } else {
+                    logger.info(LogOrigin.Server, `Successfully inserted record on retry`);
+                    error = null;
+                  }
+                } else {
+                  logger.info(LogOrigin.Server, `Successfully updated record using direct update method (rows affected: ${rowsAffected})`);
+                  error = null;
+                }
+              }
+            }
+            }
+          } else {
+            error = insertError;
+          }
+        } else {
+          logger.info(LogOrigin.Server, `Successfully created new record for project_code: ${sanitizedProjectCode}${userDbId ? ` with user_id: ${userDbId}` : ''}`);
+          error = null;
+        }
+      }
 
       if (error) {
         logger.error(LogOrigin.Server, `Supabase upsert error: ${error.message} (code: ${error.code})`);
         console.error(`Supabase upsert error: ${error.message}`);
       } else {
-        logger.info(LogOrigin.Server, `Dados salvos no Supabase para projeto: ${sanitizedProjectCode}`);
+        logger.info(LogOrigin.Server, `Dados salvos no Supabase para projeto: ${sanitizedProjectCode}${userId ? ` (user_id: ${userId})` : ''}`);
         this.lastSendTime = Date.now();
       }
     } catch (error) {
@@ -1087,7 +1525,7 @@ export class SupabaseAdapter {
     }
 
     try {
-      const { data, error } = await this.supabase
+      const { error } = await this.supabase
         .from(this.config?.tableName || 'ontime_realtime')
         .select('id')
         .limit(1);
@@ -1312,6 +1750,124 @@ export class SupabaseAdapter {
       return true;
     } catch (error) {
       logger.error(LogOrigin.Server, `Error deleting project record: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a projectCode already exists for a given user email
+   * Verifies via FK: ontime_realtime.user_id -> users.id -> users.email
+   */
+  async checkProjectCodeExists(userEmail: string, projectCode: string): Promise<boolean> {
+    if (!this.isConnected || !this.supabase) {
+      return false;
+    }
+
+    try {
+      // Sanitizar projectCode
+      const sanitizedCode = (projectCode || '').trim().toUpperCase();
+      
+      if (!sanitizedCode) {
+        return false;
+      }
+
+      // Busca na tabela ontime_realtime por project_code
+      const { data: projectRecord, error: projectError } = await this.supabase
+        .from(this.config?.tableName || 'ontime_realtime')
+        .select('user_id')
+        .eq('project_code', sanitizedCode)
+        .maybeSingle();
+
+      if (projectError) {
+        logger.warning(LogOrigin.Server, `Error checking project code existence: ${projectError.message}`);
+        return false;
+      }
+
+      // Se não encontrou registro, projectCode não existe
+      if (!projectRecord || !projectRecord.user_id) {
+        return false;
+      }
+
+      // Busca na tabela users pelo id (FK)
+      const { data: userRecord, error: userError } = await this.supabase
+        .from('users')
+        .select('email')
+        .eq('id', projectRecord.user_id)
+        .maybeSingle();
+
+      if (userError) {
+        logger.warning(LogOrigin.Server, `Error checking user email: ${userError.message}`);
+        return false;
+      }
+
+      // Compara email do usuário encontrado com o email fornecido
+      if (userRecord && userRecord.email === userEmail) {
+        logger.info(LogOrigin.Server, `Project code ${sanitizedCode} already exists for user ${userEmail}`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      logger.error(LogOrigin.Server, `Error in checkProjectCodeExists: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a project exists in the database for a given user email
+   * Verifies via FK: ontime_realtime.user_id -> users.id -> users.email
+   */
+  async projectExistsForUser(userEmail: string, projectCode: string): Promise<boolean> {
+    if (!this.isConnected || !this.supabase) {
+      return false;
+    }
+
+    try {
+      // Sanitizar projectCode
+      const sanitizedCode = (projectCode || '').trim().toUpperCase();
+      
+      if (!sanitizedCode) {
+        return false;
+      }
+
+      // Busca na tabela ontime_realtime por project_code
+      const { data: projectRecord, error: projectError } = await this.supabase
+        .from(this.config?.tableName || 'ontime_realtime')
+        .select('user_id')
+        .eq('project_code', sanitizedCode)
+        .maybeSingle();
+
+      if (projectError) {
+        logger.warning(LogOrigin.Server, `Error checking if project exists: ${projectError.message}`);
+        return false;
+      }
+
+      // Se não encontrou registro, projeto não existe
+      if (!projectRecord || !projectRecord.user_id) {
+        return false;
+      }
+
+      // Busca na tabela users pelo id (FK)
+      const { data: userRecord, error: userError } = await this.supabase
+        .from('users')
+        .select('email')
+        .eq('id', projectRecord.user_id)
+        .maybeSingle();
+
+      if (userError) {
+        logger.warning(LogOrigin.Server, `Error checking user email: ${userError.message}`);
+        return false;
+      }
+
+      // Compara email do usuário encontrado com o email fornecido
+      if (userRecord && userRecord.email === userEmail) {
+        logger.info(LogOrigin.Server, `Project ${sanitizedCode} exists for user ${userEmail}`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      logger.error(LogOrigin.Server, `Error in projectExistsForUser: ${error}`);
       return false;
     }
   }
