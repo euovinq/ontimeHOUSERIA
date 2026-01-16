@@ -29,8 +29,6 @@ import { getErrorMessage } from 'houseriaapp-utils';
 
 export const publicRouter = express.Router();
 
-console.log('✅ [PUBLIC-ROUTER] Router público criado para Stream Deck/Companion');
-
 // ============================================
 // Endpoints públicos básicos de controle do timer (para Companion)
 // ============================================
@@ -40,8 +38,6 @@ console.log('✅ [PUBLIC-ROUTER] Router público criado para Stream Deck/Compani
  */
 const handlePublicControlAction = async (req: Request, res: Response, action: string) => {
   try {
-    console.log(`🔍 [PUBLIC-ROUTER] Processando ação: ${action} | Path: ${req.path} | IP: ${req.ip} | Origin: ${req.headers.origin || 'N/A'}`);
-    
     const query = isEmptyObject(req.query) ? undefined : (req.query as object);
     let payload: unknown = undefined;
     
@@ -55,7 +51,6 @@ const handlePublicControlAction = async (req: Request, res: Response, action: st
     }
     
     const reply = await dispatchFromAdapter(action, payload, 'http');
-    console.log(`✅ [PUBLIC-ROUTER] Ação ${action} processada com sucesso`);
     res.status(202).json(reply);
   } catch (error) {
     const errorMessage = getErrorMessage(error);
@@ -67,7 +62,6 @@ const handlePublicControlAction = async (req: Request, res: Response, action: st
 
 // Health check (deve ser registrado primeiro para não ser capturado pelo fallback)
 publicRouter.get('/', (req: Request, res: Response) => {
-  console.log(`✅ [PUBLIC-ROUTER] Health check capturado: GET /api/public/`);
   res.status(200).json({ 
     message: 'Ontime Public API - Stream Deck/Companion endpoints',
     endpoints: {
@@ -99,73 +93,54 @@ publicRouter.get('/', (req: Request, res: Response) => {
     },
   });
 });
-console.log('✅ [PUBLIC-ROUTER] Rota GET / (health check) registrada');
 
 // PowerPoint endpoints (rotas específicas antes do fallback genérico)
 publicRouter.post('/powerpoint/toggle', togglePowerPointController);
-console.log('✅ [PUBLIC-ROUTER] Rota POST /powerpoint/toggle registrada');
 
 publicRouter.get('/powerpoint/toggle', togglePowerPointController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /powerpoint/toggle registrada');
 
 publicRouter.get('/powerpoint/toggle/status', getPowerPointStatusRESTController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /powerpoint/toggle/status registrada');
 
 publicRouter.get('/powerpoint/status/complete', getPowerPointCompleteStatusController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /powerpoint/status/complete registrada');
 
 publicRouter.get('/powerpoint/status/slide', getPowerPointSlideStatusController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /powerpoint/status/slide registrada');
 
 publicRouter.get('/powerpoint/status/slide/query', getPowerPointSlideQueryParamsController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /powerpoint/status/slide/query registrada');
 
 publicRouter.get('/powerpoint/status/video', getPowerPointVideoStatusController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /powerpoint/status/video registrada');
 
 // Rotas OSC para Companion
 publicRouter.post('/powerpoint/osc/config', configureOscController);
-console.log('✅ [PUBLIC-ROUTER] Rota POST /powerpoint/osc/config registrada');
 
 publicRouter.post('/powerpoint/osc/start', startOscController);
-console.log('✅ [PUBLIC-ROUTER] Rota POST /powerpoint/osc/start registrada');
 
 publicRouter.post('/powerpoint/osc/stop', stopOscController);
-console.log('✅ [PUBLIC-ROUTER] Rota POST /powerpoint/osc/stop registrada');
 
 publicRouter.get('/powerpoint/osc/status', getOscStatusController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /powerpoint/osc/status registrada');
 
 // Supabase endpoints
 publicRouter.post('/supabase/toggle', toggleSupabaseController);
-console.log('✅ [PUBLIC-ROUTER] Rota POST /supabase/toggle registrada');
 
 publicRouter.get('/supabase/toggle', toggleSupabaseController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /supabase/toggle registrada');
 
 publicRouter.get('/supabase/toggle/status', getSupabaseToggleStatusController);
-console.log('✅ [PUBLIC-ROUTER] Rota GET /supabase/toggle/status registrada');
 
 // Rotas GET públicas para toggle via integration handlers (para Companion)
 publicRouter.get('/togglesupabase', async (req, res) => {
   await handlePublicControlAction(req, res, 'togglesupabase');
 });
-console.log('✅ [PUBLIC-ROUTER] Rota GET /togglesupabase registrada');
 
 publicRouter.get('/togglepowerpoint', async (req, res) => {
   await handlePublicControlAction(req, res, 'togglepowerpoint');
 });
-console.log('✅ [PUBLIC-ROUTER] Rota GET /togglepowerpoint registrada');
 
 publicRouter.get('/getsupabasestatus', async (req, res) => {
   await handlePublicControlAction(req, res, 'getsupabasestatus');
 });
-console.log('✅ [PUBLIC-ROUTER] Rota GET /getsupabasestatus registrada');
 
 publicRouter.get('/getpowerpointstatus', async (req, res) => {
   await handlePublicControlAction(req, res, 'getpowerpointstatus');
 });
-console.log('✅ [PUBLIC-ROUTER] Rota GET /getpowerpointstatus registrada');
 
 // Endpoints básicos de controle do timer (GET) - fallback genérico
 // Processa qualquer ação de controle (start, pause, stop, poll, load, roll, reload, addtime, etc.)
@@ -192,6 +167,4 @@ publicRouter.get('/*', async (req: Request, res: Response) => {
   
   await handlePublicControlAction(req, res, action);
 });
-
-console.log('✅ [PUBLIC-ROUTER] Endpoints públicos de controle do timer registrados (start, pause, stop, poll, load, roll, reload, addtime, etc.)');
 

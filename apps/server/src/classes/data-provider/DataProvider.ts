@@ -27,11 +27,6 @@ export async function initPersistence(filePath: string, fallbackData: DatabaseMo
   DEV: shouldCrashDev(!isPath(filePath), 'initPersistence should be called with a path');
   const newDb = await JSONFilePreset<DatabaseModel>(filePath, fallbackData);
 
-  // Debug: Log projectCode being saved
-  if (fallbackData.project?.projectCode) {
-    console.log(`[DEBUG] initPersistence saving projectCode: ${fallbackData.project.projectCode} to file: ${filePath}`);
-  }
-
   // Read the database to initialize it
   newDb.data = fallbackData;
   await newDb.write();

@@ -45,28 +45,14 @@ export default function CSVExportModal({ isOpen, onClose, filename }: CSVExportM
     setLoading(true);
     setError(null);
     try {
-      console.log('🔄 Carregando dados do projeto:', filename);
       const response = await getDb(filename);
       const { project, rundown, customFields } = response.data;
       const table = makeTable(project, rundown, customFields);
-
-      console.log('📊 Dados carregados:', {
-        project: project?.title,
-        rundownLength: rundown?.length,
-        tableRows: table.length,
-        headers: table[0]
-      });
 
       // Filtrar apenas os dados do rundown (pular metadados)
       // makeTable retorna: [metadata], [project info], [headers], [data rows...]
       const headerRowIndex = table.findIndex(row => row.includes('Time Start'));
       const rundownData = headerRowIndex >= 0 ? table.slice(headerRowIndex) : table;
-      
-      console.log('📋 Dados do rundown:', {
-        headerRow: rundownData[0],
-        dataRows: rundownData.length - 1,
-        sampleRow: rundownData[1]
-      });
 
       setTableData(rundownData);
       

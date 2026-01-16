@@ -85,7 +85,6 @@ export class PowerPointWebSocketService extends EventEmitter {
     }
 
     if (!this.url || this.url.trim() === '') {
-      logger.info(LogOrigin.Server, '⚠️  PowerPoint WebSocket - URL não configurada, aguardando descoberta...');
       return;
     }
 
@@ -170,7 +169,6 @@ export class PowerPointWebSocketService extends EventEmitter {
     const wsUrl = this.url.replace(/^http/, 'ws');
     
     this.isConnecting = true;
-    logger.info(LogOrigin.Server, `🔌 PowerPoint WebSocket - Conectando em ${wsUrl}...`);
 
     try {
       this.ws = new WebSocket(wsUrl);
@@ -179,7 +177,6 @@ export class PowerPointWebSocketService extends EventEmitter {
         this.isConnected = true;
         this.isConnecting = false;
         this.reconnectDelay = 1000; // Reset delay em caso de sucesso
-        logger.info(LogOrigin.Server, `✅ PowerPoint WebSocket - Conectado em ${wsUrl}`);
         
         // Emite evento quando conecta para que outros serviços possam reagir
         this.emit('connected');
@@ -224,7 +221,6 @@ export class PowerPointWebSocketService extends EventEmitter {
   private handleMessage(message: WebSocketMessage): void {
     switch (message.type) {
       case 'connected':
-        logger.info(LogOrigin.Server, `✅ PowerPoint WebSocket - ${(message as any).message || 'Conectado ao servidor PowerPoint'}`);
         break;
 
       case 'slides_info':

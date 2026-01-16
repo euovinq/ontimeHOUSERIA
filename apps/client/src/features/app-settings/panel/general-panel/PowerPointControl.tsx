@@ -21,11 +21,6 @@ export default function PowerPointControl() {
   const lastErrorToastTime = useRef<number>(0);
   const ERROR_TOAST_DEBOUNCE_MS = 2000; // 2 segundos entre toasts de erro
 
-  // Log do estado sempre que mudar
-  useEffect(() => {
-    console.log('PowerPointControl - Estado atualizado:', status.enabled);
-  }, [status.enabled]);
-
   // Get real status from server
   const getRealStatus = useCallback(() => {
     socketSendJson('getpowerpointstatus');
@@ -44,18 +39,14 @@ export default function PowerPointControl() {
     const handlePowerPointStatus = (event: CustomEvent) => {
       const { type, payload } = event.detail;
 
-      console.log('PowerPointControl - Evento recebido:', { type, payload });
-
       if (type === 'togglepowerpoint' || type === 'getpowerpointstatus' || type === 'powerpoint-status') {
         if (payload && typeof payload === 'object') {
           // Se há erro, SEMPRE força enabled para false (desconectado)
           if ('error' in payload && payload.error) {
-            console.error('PowerPointControl - Erro recebido:', payload.error);
             const currentEnabled = statusRef.current.enabled;
             
             // SEMPRE força desabilitar (vermelho) quando há erro, mesmo se já estava false
             // Isso garante que o estado visual seja atualizado
-            console.log('PowerPointControl - Erro detectado, forçando botão para vermelho (desconectado)...');
             setStatus({ enabled: false });
             
             // Mostra toast de erro apenas se passou tempo suficiente desde o último toast
@@ -73,8 +64,6 @@ export default function PowerPointControl() {
                 isClosable: true,
                 position: 'top-right',
               });
-            } else {
-              console.log(`PowerPointControl - Toast de erro suprimido (último toast há ${timeSinceLastToast}ms)`);
             }
             
             // Se há erro, não processa enabled do payload (erro tem prioridade)
@@ -85,24 +74,14 @@ export default function PowerPointControl() {
           if ('enabled' in payload) {
             const newEnabled = Boolean(payload.enabled);
             const currentEnabled = statusRef.current.enabled;
-            console.log('PowerPointControl - Atualizando status:', {
-              de: currentEnabled,
-              para: newEnabled,
-              tipo: type,
-              payload: payload
-            });
             
             // Só atualiza se realmente mudou
             if (currentEnabled !== newEnabled) {
-              console.log('PowerPointControl - Estado mudou, atualizando...');
               // Força atualização usando função de atualização
               setStatus(prevStatus => {
                 const newStatus = { enabled: newEnabled };
-                console.log('PowerPointControl - setStatus chamado:', { prevStatus, newStatus });
                 return newStatus;
               });
-            } else {
-              console.log('PowerPointControl - Estado não mudou, ignorando atualização');
             }
           }
         } else {
@@ -113,12 +92,9 @@ export default function PowerPointControl() {
 
     // Add custom event listener
     window.addEventListener('powerpoint-status', handlePowerPointStatus as EventListener);
-    
-    console.log('PowerPointControl - Event listener registrado');
 
     return () => {
       window.removeEventListener('powerpoint-status', handlePowerPointStatus as EventListener);
-      console.log('PowerPointControl - Event listener removido');
     };
   }, []); // Sem dependências - usa ref para acessar estado atual
 
@@ -134,7 +110,6 @@ export default function PowerPointControl() {
     setIsLoading(true);
 
     const currentEnabled = status.enabled;
-    console.log('PowerPointControl - Enviando toggle, status atual:', currentEnabled);
 
     // Atualiza estado otimisticamente (antes da resposta do servidor)
     setStatus({ enabled: !currentEnabled });

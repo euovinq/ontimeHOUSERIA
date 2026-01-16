@@ -17,11 +17,6 @@ export default function SupabaseControl() {
   const statusRef = useRef(status);
   statusRef.current = status;
 
-  // Log do estado sempre que mudar
-  useEffect(() => {
-    console.log('SupabaseControl - Estado atualizado:', status.connected, status.enabled);
-  }, [status.connected, status.enabled]);
-
   // Get real status from server
   const getRealStatus = useCallback(() => {
     socketSendJson('getsupabasestatus');
@@ -43,8 +38,6 @@ export default function SupabaseControl() {
     const handleSupabaseStatus = (event: CustomEvent) => {
       const { type, payload } = event.detail;
 
-      console.log('SupabaseControl - Evento recebido:', { type, payload });
-
       if (type === 'togglesupabase' || type === 'getsupabasestatus') {
         if (payload && typeof payload === 'object') {
           const currentStatus = statusRef.current;
@@ -53,27 +46,16 @@ export default function SupabaseControl() {
             enabled: Boolean(payload.enabled ?? payload.connected),
           };
           
-          console.log('SupabaseControl - Atualizando status:', {
-            de: currentStatus,
-            para: newStatus,
-            tipo: type,
-            payload: payload
-          });
-          
           // Só atualiza se realmente mudou
           if (currentStatus.connected !== newStatus.connected || currentStatus.enabled !== newStatus.enabled) {
-            console.log('SupabaseControl - Estado mudou, atualizando...');
             // Força atualização usando função de atualização
             setStatus(prevStatus => {
               const updatedStatus = {
                 connected: Boolean(payload.connected),
                 enabled: Boolean(payload.enabled ?? payload.connected),
               };
-              console.log('SupabaseControl - setStatus chamado:', { prevStatus, updatedStatus });
               return updatedStatus;
             });
-          } else {
-            console.log('SupabaseControl - Estado não mudou, ignorando atualização');
           }
         } else {
           console.warn('SupabaseControl - Payload inválido:', payload);
@@ -83,12 +65,9 @@ export default function SupabaseControl() {
 
     // Add custom event listener
     window.addEventListener('supabase-status', handleSupabaseStatus as EventListener);
-    
-    console.log('SupabaseControl - Event listener registrado');
 
     return () => {
       window.removeEventListener('supabase-status', handleSupabaseStatus as EventListener);
-      console.log('SupabaseControl - Event listener removido');
     };
   }, []); // Sem dependências - usa ref para acessar estado atual
 

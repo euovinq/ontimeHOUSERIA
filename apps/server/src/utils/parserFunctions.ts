@@ -36,8 +36,6 @@ export function parseRundown(
     return { customFields: parsedCustomFields, rundown: [] };
   }
 
-  console.log('Found rundown, importing...');
-
   const rundown: OntimeRundown = [];
   let eventIndex = 0;
   let previousId: string | null = null;
@@ -91,7 +89,6 @@ export function parseRundown(
     }
   }
 
-  console.log(`Uploaded rundown with ${rundown.length} entries`);
   return { customFields: parsedCustomFields, rundown };
 }
 
@@ -103,8 +100,6 @@ export function parseProject(data: Partial<DatabaseModel>, emitError?: ErrorEmit
     emitError?.('No data found to import');
     return { ...dbModel.project };
   }
-
-  console.log('Found project data, importing...');
 
   return {
     title: data.project.title ?? dbModel.project.title,
@@ -127,8 +122,6 @@ export function parseSettings(data: Partial<DatabaseModel>): Settings {
   if (!data.settings || data.settings?.app !== 'ontime' || data.settings?.version == null) {
     throw new Error('ERROR: unable to parse settings, missing app or version');
   }
-
-  console.log('Found settings, importing...');
 
   return {
     app: dbModel.settings.app,
@@ -171,8 +164,6 @@ export function parseUrlPresets(data: Partial<DatabaseModel>, emitError?: ErrorE
     return [];
   }
 
-  console.log('Found URL presets, importing...');
-
   const newPresets: URLPreset[] = [];
 
   for (const preset of data.urlPresets) {
@@ -183,8 +174,6 @@ export function parseUrlPresets(data: Partial<DatabaseModel>, emitError?: ErrorE
     };
     newPresets.push(newPreset);
   }
-
-  console.log(`Uploaded ${newPresets.length} preset(s)`);
 
   return newPresets;
 }
@@ -197,7 +186,6 @@ export function parseCustomFields(data: Partial<DatabaseModel>, emitError?: Erro
     emitError?.('No data found to import');
     return {};
   }
-  console.log('Found Custom Fields, importing...');
 
   const customFields = sanitiseCustomFields(data.customFields);
   if (Object.keys(customFields).length !== Object.keys(data.customFields).length) {

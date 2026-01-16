@@ -72,7 +72,6 @@ export function makeAuthenticateMiddleware(prefix: string) {
       req.path.startsWith('/data/rundowns') ||
       req.path.startsWith('/auth')
     ) {
-      console.log(`✅ [AUTH] Rota pública permitida sem autenticação: ${req.path}`);
       return next();
     }
 
@@ -80,19 +79,9 @@ export function makeAuthenticateMiddleware(prefix: string) {
     if (req.path.startsWith('/supabase')) {
       return next();
     }
-
-    // Log apenas para rotas PowerPoint para debug
-    if (req.path.includes('powerpoint')) {
-      console.log('🔐 [AUTH] Autenticando requisição PowerPoint:', req.method, req.path);
-      console.log('🔐 [AUTH] Token do query:', req.query.token);
-      console.log('🔐 [AUTH] Token do cookie:', req.cookies?.token);
-    }
     
     const token = req.query.token || req.cookies?.token;
     if (token && token === hashedPassword) {
-      if (req.path.includes('powerpoint')) {
-        console.log('✅ [AUTH] Autenticação OK para PowerPoint');
-      }
       return next();
     }
 

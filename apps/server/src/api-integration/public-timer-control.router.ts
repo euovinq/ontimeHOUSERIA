@@ -43,7 +43,6 @@ const handlePublicTimerAction = async (req: Request, res: Response, action: stri
 
 // Health check na raiz do /api (deve vir ANTES do catch-all)
 publicTimerControlRouter.get('/', (req: Request, res: Response) => {
-  console.log(`✅ [PUBLIC-TIMER] Health check capturado: GET /api/`);
   res.status(200).json({ 
     message: 'You have reached Ontime API server',
     public: true,
@@ -66,15 +65,10 @@ publicTimerControlRouter.get('/*', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'No action found' });
   }
   
-  console.log(`✅ [PUBLIC-TIMER] Requisição pública capturada: GET /api${req.path} | Ação: ${action} | IP: ${req.ip} | Origin: ${req.headers.origin || 'N/A'}`);
-  
   try {
     await handlePublicTimerAction(req, res, action);
   } catch (error) {
-    console.error(`❌ [PUBLIC-TIMER] Erro ao processar ação ${action}:`, error);
     const errorMessage = getErrorMessage(error);
     res.status(500).json({ message: errorMessage, action });
   }
 });
-
-console.log('✅ [PUBLIC-TIMER-ROUTER] TODAS as rotas de controle estão públicas (catch-all ativado)');
