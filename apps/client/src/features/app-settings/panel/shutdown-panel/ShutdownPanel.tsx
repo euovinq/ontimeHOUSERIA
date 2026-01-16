@@ -28,7 +28,7 @@ export default function ShutdownPanel() {
 
   return (
     <>
-      <Panel.Header>Shutdown Ontime</Panel.Header>
+      <Panel.Header>Sair do HouseriaAPP</Panel.Header>
       <Panel.Section>
         {isOntimeCloud ? (
           <Panel.Highlight>
@@ -41,7 +41,7 @@ export default function ShutdownPanel() {
           </Panel.Paragraph>
         )}
         <Button colorScheme='red' onClick={onOpen} maxWidth='350px' isDisabled={!(isElectron || isLocalhost)}>
-          Shutdown ontime
+          Sair do HouseriaAPP
         </Button>
         {!canShutdown && (
           <Panel.Description>Note: Ontime can only be shutdown from the machine it is running in.</Panel.Description>
@@ -50,7 +50,7 @@ export default function ShutdownPanel() {
           <AlertDialogOverlay>
             <AlertDialogContent>
               <AlertDialogHeader fontSize='lg' fontWeight='bold'>
-                Ontime Shutdown
+                Sair do HouseriaAPP
               </AlertDialogHeader>
               <AlertDialogBody>
                 This will shutdown the Ontime server. <br /> Are you sure?
@@ -60,7 +60,7 @@ export default function ShutdownPanel() {
                   Cancel
                 </Button>
                 <Button colorScheme='red' onClick={sendShutdown} disabled={!canShutdown}>
-                  Shutdown
+                  Sair
                 </Button>
               </AlertDialogFooter>
             </AlertDialogContent>

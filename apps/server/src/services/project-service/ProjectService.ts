@@ -351,10 +351,17 @@ export async function deleteProjectFile(filename: string) {
  * applies a partial database model
  */
 export async function patchCurrentProject(data: Partial<DatabaseModel>) {
-  runtimeService.stop();
-
   // eslint-disable-next-line @typescript-eslint/no-unused-vars  -- we need to remove the fields before merging
-  const { rundown, customFields, ...rest } = data;
+  const { rundown, customFields, settings, automation, ...rest } = data;
+  
+  // Only stop timer if settings or automation are being updated (they can affect timer behavior)
+  // If updating rundown/customFields/project/viewSettings/urlPresets, preserve timer state
+  const shouldStopTimer = settings != null || automation != null;
+  
+  if (shouldStopTimer) {
+    runtimeService.stop();
+  }
+
   // we can pass some stuff straight to the data provider
   const newData = await getDataProvider().mergeIntoData(rest);
 

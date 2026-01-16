@@ -81,7 +81,7 @@ const staticOptions = [
   },
   {
     id: 'shutdown',
-    label: 'Shutdown',
+    label: 'Sair do HouseriaAPP',
     split: true,
   },
 ] as const;

@@ -4,7 +4,9 @@ import { Button, Input, useDisclosure, useToast } from '@chakra-ui/react';
 
 import { patchData } from '../../../common/api/db';
 import { fetchSupabaseProject } from '../../../common/api/supabase';
-import { invalidateAllCaches, maybeAxiosError } from '../../../common/api/utils';
+import { maybeAxiosError } from '../../../common/api/utils';
+import { CUSTOM_FIELDS, PROJECT_DATA, RUNDOWN } from '../../../common/api/constants';
+import { ontimeQueryClient } from '../../../common/queryClient';
 import useProjectData from '../../../common/hooks-query/useProjectData';
 import { cx } from '../../../common/utils/styleUtils';
 import PowerPointControl from '../../app-settings/panel/general-panel/PowerPointControl';
@@ -66,28 +68,36 @@ export default function ProjectCodeInput() {
       if (supabaseData.cuesheet?.customFields) {
         patchPayload.customFields = supabaseData.cuesheet.customFields;
       }
-      if (supabaseData.settings) {
-        patchPayload.settings = supabaseData.settings;
-      }
+      // Não atualizar settings e automation para não parar o timer
+      // Esses campos podem afetar o comportamento do timer em execução
+      // if (supabaseData.settings) {
+      //   patchPayload.settings = supabaseData.settings;
+      // }
       if (supabaseData.viewSettings) {
         patchPayload.viewSettings = supabaseData.viewSettings;
       }
       if (supabaseData.urlPresets) {
         patchPayload.urlPresets = supabaseData.urlPresets;
       }
-      if (supabaseData.automation) {
-        patchPayload.automation = supabaseData.automation;
-      }
+      // if (supabaseData.automation) {
+      //   patchPayload.automation = supabaseData.automation;
+      // }
 
       await patchData(patchPayload as any);
-      await invalidateAllCaches();
+      
+      // Invalidar apenas caches relacionados ao projeto e cuesheet (não timer/runtime)
+      await Promise.all([
+        ontimeQueryClient.invalidateQueries({ queryKey: RUNDOWN }),
+        ontimeQueryClient.invalidateQueries({ queryKey: CUSTOM_FIELDS }),
+        ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA }),
+      ]);
 
       const loadedCode = supabaseData.project?.projectCode || code;
       setProjectCode(loadedCode);
 
       toast({
         title: 'Projeto carregado',
-        description: `Código ${code} carregado do Supabase`,
+        description: `Código ${code} carregado do Supabase (timers preservados)`,
         status: 'success',
         duration: 3500,
         isClosable: true,
