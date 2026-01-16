@@ -14,21 +14,21 @@ import {
 type Json = Record<string, any>;
 
 let isInitialised = false;
-let checkInterval: NodeJS.Timeout | null = null;
+let _checkInterval: NodeJS.Timeout | null = null; // lint: used only for potential future clearInterval
 
 /**
  * Registra uma sessão de login e garante que o monitoramento realtime esteja ativo.
  * Chamado após login bem-sucedido para usuários não-admin.
  */
 export function registerLoginSession(userId: string | number, isAdmin: boolean): AuthSession | null {
+  const session = createAuthSession(userId, isAdmin);
+
   if (isAdmin) {
-    // Admin não precisa de monitoramento de período
-    return null;
+    // Admin não precisa de monitoramento do período, mas mantém sessão para identificar o usuário
+    return session;
   }
 
   initialiseAuthRealtime();
-
-  const session = createAuthSession(userId, isAdmin);
 
   // Faz uma verificação imediata assim que o usuário loga
   void ensureUserHasValidSalesWindow(userId);
@@ -80,7 +80,7 @@ function initialiseAuthRealtime() {
     });
 
   // Timer periódico – checa todas as sessões ativas a cada 60 minutos
-  checkInterval = setInterval(() => {
+  _checkInterval = setInterval(() => {
     void checkAllSessions();
   }, 60 * 60 * 1000);
 

@@ -3,6 +3,8 @@ import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { logger } from '../../classes/Logger.js';
 import { LogOrigin } from 'houseriaapp-types';
 import { socket } from '../../adapters/WebsocketAdapter.js';
+import { AuthSession } from '../auth/auth-session.service.js';
+import { RequestWithAuthUser } from './supabase.auth.middleware.js';
 
 export interface SupabaseConfigRequest {
   url: string;
@@ -91,9 +93,15 @@ export async function getSupabaseStatus(_req: Request, res: Response) {
   }
 }
 
-export async function getActiveProjects(_req: Request, res: Response) {
+export async function getActiveProjects(req: Request, res: Response) {
   try {
-    const projects = await supabaseAdapter.getActiveProjects();
+    const authUser = (req as RequestWithAuthUser).authUser as AuthSession | undefined;
+
+    if (!authUser) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const projects = await supabaseAdapter.getActiveProjects(authUser);
     
     res.status(200).json({ 
       projects,
@@ -134,17 +142,35 @@ export async function getProjectData(req: Request, res: Response) {
       });
     }
     
-    const projectData = await supabaseAdapter.getProjectData(projectCode);
+    const authUser = (req as RequestWithAuthUser).authUser as AuthSession | undefined;
+
+    if (!authUser) {
+      return res.status(401).json({ 
+        error: 'Unauthorized' 
+      });
+    }
     
-    if (!projectData) {
+    const projectRecord = await supabaseAdapter.getProjectData(projectCode);
+    
+    if (!projectRecord) {
       return res.status(404).json({ 
         error: 'Project not found',
         projectCode 
       });
     }
+
+    const isAdmin = Boolean(authUser.isAdmin);
+    const isOwner = projectRecord.user_id != null && projectRecord.user_id === authUser.userId;
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({
+        error: 'not_owner',
+        message: 'Você não é o proprietário deste projeto.',
+      });
+    }
     
     res.status(200).json({ 
-      project: projectData
+      project: projectRecord.data
     });
   } catch (error) {
     logger.error(LogOrigin.Server, `Error getting project data: ${error}`);

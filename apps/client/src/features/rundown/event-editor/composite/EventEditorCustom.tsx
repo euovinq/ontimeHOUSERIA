@@ -4,6 +4,7 @@ import { CustomFields, OntimeEvent } from 'houseriaapp-types';
 import { getAccessibleColour } from '../../../../common/utils/styleUtils';
 import { EditorUpdateFields } from '../EventEditor';
 
+import EventCustomFieldHTML from './EventCustomFieldHTML';
 import EventEditorImage from './EventEditorImage';
 import EventTextArea from './EventTextArea';
 import EventTextInput from './EventTextInput';
@@ -29,7 +30,7 @@ export default function EventEditorCustom(props: EventEditorCustomProps) {
 
         if (customFields[fieldKey].type === 'string') {
           return (
-            <EventTextArea
+            <EventCustomFieldHTML
               key={key}
               field={fieldName}
               label={labelText}

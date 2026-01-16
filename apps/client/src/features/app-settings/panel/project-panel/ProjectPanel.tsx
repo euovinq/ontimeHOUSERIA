@@ -1,11 +1,12 @@
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+
 import useScrollIntoView from '../../../../common/hooks/useScrollIntoView';
+import { serverURL } from '../../../../externals';
 import type { PanelBaseProps } from '../../panel-list/PanelList';
 import * as Panel from '../../panel-utils/PanelUtils';
 import QuickStart from '../../quick-start/QuickStart';
 import type { SettingsOptionId } from '../../useAppSettingsMenu';
-import axios from 'axios';
-import { useEffect, useState } from 'react';
-import { serverURL } from '../../../../externals';
 
 import ManageProjects from './ManageProjects';
 import ProjectData from './ProjectData';
@@ -25,9 +26,7 @@ export default function ProjectPanel({ location, setLocation }: ProjectPanelProp
 
     async function fetchLicense() {
       try {
-        const res = await axios.get<{ licenseExpiresAt: string | null; isAdmin: boolean }>(
-          `${serverURL}/auth/license`
-        );
+        const res = await axios.get<{ licenseExpiresAt: string | null; isAdmin: boolean }>(`${serverURL}/auth/license`);
 
         if (cancelled) return;
 
@@ -44,9 +43,7 @@ export default function ProjectPanel({ location, setLocation }: ProjectPanelProp
         }
 
         // licenseExpiresAt vem do backend como 'YYYY-MM-DD'
-        const datePart = licenseExpiresAt.includes('T')
-          ? licenseExpiresAt.split('T')[0]
-          : licenseExpiresAt;
+        const datePart = licenseExpiresAt.includes('T') ? licenseExpiresAt.split('T')[0] : licenseExpiresAt;
 
         const [yearStr, monthStr, dayStr] = datePart.split('-');
         const year = Number(yearStr);
@@ -58,10 +55,7 @@ export default function ProjectPanel({ location, setLocation }: ProjectPanelProp
           return;
         }
 
-        const formatted = `${String(day).padStart(2, '0')}/${String(month).padStart(
-          2,
-          '0'
-        )}/${year}`;
+        const formatted = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
 
         setLicenseLabel(`Licença até ${formatted}`);
       } catch {
@@ -87,9 +81,7 @@ export default function ProjectPanel({ location, setLocation }: ProjectPanelProp
       <Panel.Header>
         Project
         {licenseLabel && (
-          <span style={{ marginLeft: '0.75rem', fontSize: '0.85em', opacity: 0.8 }}>
-            {licenseLabel}
-          </span>
+          <span style={{ marginLeft: '0.75rem', fontSize: '0.85em', opacity: 0.8 }}>{licenseLabel}</span>
         )}
       </Panel.Header>
       <QuickStart isOpen={location === 'create'} onClose={handleQuickClose} />

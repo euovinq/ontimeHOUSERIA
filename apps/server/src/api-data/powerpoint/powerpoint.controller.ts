@@ -11,6 +11,7 @@ import { getDiscoveryService, PowerPointDiscoveryService, DiscoveredServer } fro
 import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 import { socket } from '../../adapters/WebsocketAdapter.js';
+import { dispatchFromAdapter } from '../../api-integration/integration.controller.js';
 
 // Helper para obter __dirname que funciona tanto em ES modules quanto CommonJS
 function getDirname(): string {
@@ -172,7 +173,7 @@ export function initializeSupabaseService(): void {
   
   if (!hasWebSocket) {
     if (shouldLog) {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint - WebSocket não conectado. Aguardando conexão com app Python...');
+      logger.warning(LogOrigin.Server, '⚠️  PowerPoint - WebSocket não conectado. Aguardando conexão com HouseriaPPT...');
     }
     return;
   }
@@ -1053,79 +1054,54 @@ export async function stopWindowsController(
 }
 
 /**
- * Controller para toggle do PowerPoint via REST API (Stream Deck)
+ * Controller para toggle do PowerPoint via REST API (Stream Deck/Companion)
+ * Usa o mesmo handler do botão PPT na interface para garantir consistência
  */
 export async function togglePowerPointController(
   req: Request,
   res: Response
 ): Promise<void> {
   try {
-    // Garante que o serviço está inicializado
-    await initializeSupabaseService();
+    logger.info(LogOrigin.Server, '🔄 PowerPoint toggle REST - Chamando handler de integração');
     
-    if (!supabaseService) {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle REST - Serviço não disponível');
-      const errorPayload = {
-        success: false,
-        error: 'Serviço PowerPoint não disponível. Configure IP/Porta primeiro.',
-        enabled: false,
-      };
+    // Usa o mesmo handler que o botão PPT usa (via WebSocket)
+    // Isso garante que ambos usam exatamente a mesma lógica
+    const result = dispatchFromAdapter('togglepowerpoint', undefined, 'http');
+    
+    // O handler pode retornar uma Promise ou um objeto direto
+    const resolvedResult = result instanceof Promise ? await result : result;
+    
+    if (resolvedResult && resolvedResult.payload) {
+      const payload = resolvedResult.payload as { enabled?: boolean; error?: string; currentSlide?: number; slideCount?: number };
       
-      // Envia atualização via WebSocket mesmo em caso de erro
-      socket.sendAsJson({
-        type: 'powerpoint-status',
-        payload: { enabled: false, error: errorPayload.error },
+      if (payload.error) {
+        logger.warning(LogOrigin.Server, `⚠️  PowerPoint toggle REST - Erro: ${payload.error}`);
+        res.status(503).json({
+          success: false,
+          enabled: false,
+          error: payload.error,
+        });
+        return;
+      }
+      
+      const enabled = Boolean(payload.enabled);
+      logger.info(LogOrigin.Server, `✅ PowerPoint toggle REST: ${enabled ? 'Habilitado (verde)' : 'Desabilitado (vermelho)'}`);
+      
+      res.status(200).json({
+        success: true,
+        enabled,
+        message: enabled ? 'PowerPoint habilitado' : 'PowerPoint desabilitado',
+        currentSlide: payload.currentSlide,
+        slideCount: payload.slideCount,
       });
-      
-      res.status(503).json(errorPayload);
-      return;
-    }
-    
-    // Verifica se tem configuração válida
-    if (windowsService && !windowsService.hasValidConfig()) {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle REST - Configuração não válida');
-      const errorPayload = {
+    } else {
+      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle REST - Resposta inválida do handler');
+      res.status(500).json({
         success: false,
-        error: 'Configure IP/Porta do Windows primeiro',
         enabled: false,
-      };
-      
-      // Envia atualização via WebSocket mesmo em caso de erro
-      socket.sendAsJson({
-        type: 'powerpoint-status',
-        payload: { enabled: false, error: errorPayload.error },
+        error: 'Resposta inválida do servidor',
       });
-      
-      res.status(400).json(errorPayload);
-      return;
     }
-    
-    // Atualiza projectCode antes de fazer toggle
-    const projectData = getDataProvider().getProjectData();
-    const projectCode = projectData?.projectCode;
-    if (projectCode && supabaseService) {
-      supabaseService.setProjectCode(projectCode);
-      logger.info(LogOrigin.Server, `📌 PowerPoint toggle REST - Project code atualizado: ${projectCode}`);
-    }
-    
-    // Faz toggle do estado enabled
-    const enabled = await supabaseService.toggleEnabled();
-    
-    // Envia atualização via WebSocket para todos os clientes conectados
-    logger.info(LogOrigin.Server, `📡 PowerPoint toggle REST - Enviando atualização via WebSocket: enabled=${enabled}`);
-    socket.sendAsJson({
-      type: 'powerpoint-status',
-      payload: { enabled },
-    });
-    logger.info(LogOrigin.Server, `✅ PowerPoint toggle REST - Mensagem WebSocket enviada`);
-    
-    logger.info(LogOrigin.Server, `🔄 PowerPoint toggle REST: ${enabled ? 'Habilitado (verde)' : 'Desabilitado (vermelho)'}`);
-    
-    res.status(200).json({
-      success: true,
-      enabled,
-      message: enabled ? 'PowerPoint habilitado' : 'PowerPoint desabilitado',
-    });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
     logger.error(LogOrigin.Server, `❌ PowerPoint toggle REST - Erro: ${errorMsg}`);
@@ -1726,6 +1702,9 @@ async function initializeDiscoveryService(): Promise<void> {
 let lastConnectedServerUrl: string | null = null;
 let connectionAttemptTime: number = 0;
 const CONNECTION_COOLDOWN = 5000; // 5 segundos entre tentativas
+// ✅ CORREÇÃO: Adiciona proteção contra loops infinitos de reconexão
+let reconnectAttempts: number = 0;
+const MAX_RECONNECT_ATTEMPTS = 5; // Máximo de tentativas recursivas
 
 function connectToDiscoveredServer(server: DiscoveredServer): void {
   const wsUrl = `http://${server.ip}:${server.port}`;
@@ -1733,7 +1712,13 @@ function connectToDiscoveredServer(server: DiscoveredServer): void {
   
   // Evita tentativas múltiplas muito rápidas ao mesmo servidor
   if (lastConnectedServerUrl === wsUrl && (now - connectionAttemptTime) < CONNECTION_COOLDOWN) {
-        // Tentativa recente de conexão, aguardando cooldown...
+    return;
+  }
+  
+  // ✅ CORREÇÃO: Proteção contra loops infinitos
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    logger.error(LogOrigin.Server, `❌ PowerPoint WebSocket - Máximo de tentativas de reconexão atingido (${MAX_RECONNECT_ATTEMPTS}), parando...`);
+    reconnectAttempts = 0; // Reset após um tempo
     return;
   }
   
@@ -1744,7 +1729,8 @@ function connectToDiscoveredServer(server: DiscoveredServer): void {
     const currentUrl = (websocketService as any).url || '';
     
     if (isConnected && currentUrl === wsUrl) {
-        // Já conectado ao mesmo servidor, ignorando...
+      // Já conectado ao mesmo servidor, ignorando...
+      reconnectAttempts = 0; // Reset contador quando conectado com sucesso
       // Mesmo assim, garante que Supabase service está inicializado
       if (!supabaseService) {
         setTimeout(() => {
@@ -1755,13 +1741,14 @@ function connectToDiscoveredServer(server: DiscoveredServer): void {
     }
     
     if (isConnecting && currentUrl === wsUrl) {
-        // Já está conectando ao servidor, aguardando...
+      // Já está conectando ao servidor, aguardando...
       return;
     }
     
     // Se URL mudou, para conexão anterior
     if (currentUrl !== wsUrl && (isConnected || isConnecting)) {
       logger.info(LogOrigin.Server, `PowerPoint WebSocket - Servidor diferente detectado (${currentUrl} → ${wsUrl}), reconectando...`);
+      reconnectAttempts++; // Incrementa contador de tentativas
       websocketService.stop();
       // Aguarda um pouco antes de reconectar
       setTimeout(() => {
@@ -1770,6 +1757,9 @@ function connectToDiscoveredServer(server: DiscoveredServer): void {
       return;
     }
   }
+  
+  // Reset contador quando conecta com sucesso
+  reconnectAttempts = 0;
   
   // Atualiza timestamp da tentativa
   lastConnectedServerUrl = wsUrl;
@@ -1788,6 +1778,30 @@ function connectToDiscoveredServer(server: DiscoveredServer): void {
           initializeSupabaseService();
         }
       }, 1000);
+    });
+    
+    // Escuta quando WebSocket desconectar
+    websocketService.on('disconnected', () => {
+      logger.info(LogOrigin.Server, '🔌 PowerPoint - WebSocket desconectado, notificando clientes...');
+      
+      // Se supabaseService existe e está habilitado, desabilita automaticamente
+      // pois não há como enviar dados sem conexão WebSocket
+      if (supabaseService && supabaseService.getEnabled()) {
+        logger.info(LogOrigin.Server, '🔌 PowerPoint - Desabilitando Supabase service (sem conexão WebSocket)');
+        // Desabilita o serviço sem toggle (apenas seta estado interno)
+        (supabaseService as any).isEnabled = false;
+      }
+      
+      // Notifica todos os clientes via WebSocket que o PowerPoint desconectou
+      socket.sendAsJson({
+        type: 'powerpoint-status',
+        payload: { 
+          enabled: false, 
+          error: 'Desconectado do HouseriaPPT',
+          currentSlide: 0,
+          slideCount: 0,
+        },
+      });
     });
     
     // Escuta eventos de mudança de status

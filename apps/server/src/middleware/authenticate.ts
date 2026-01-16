@@ -54,6 +54,33 @@ export function makeAuthenticateMiddleware(prefix: string) {
   }
 
   function authenticate(req: Request, res: Response, next: NextFunction) {
+    // Rotas públicas - SEM autenticação
+    if (
+      req.path.startsWith('/api/public') ||
+      req.path.startsWith('/api/') ||
+      req.path.startsWith('/data/realtime') ||
+      req.path.startsWith('/data/automations') ||
+      req.path.startsWith('/data/custom-fields') ||
+      req.path.startsWith('/data/db') ||
+      req.path.startsWith('/data/project') ||
+      req.path.startsWith('/data/settings') ||
+      req.path.startsWith('/data/session') ||
+      req.path.startsWith('/data/url-presets') ||
+      req.path.startsWith('/data/view-settings') ||
+      req.path.startsWith('/data/report') ||
+      req.path.startsWith('/data/rundown') ||
+      req.path.startsWith('/data/rundowns') ||
+      req.path.startsWith('/auth')
+    ) {
+      console.log(`✅ [AUTH] Rota pública permitida sem autenticação: ${req.path}`);
+      return next();
+    }
+
+    // Para rotas Supabase, deixamos a autenticação para o middleware específico (ensureSupabaseAuth)
+    if (req.path.startsWith('/supabase')) {
+      return next();
+    }
+
     // Log apenas para rotas PowerPoint para debug
     if (req.path.includes('powerpoint')) {
       console.log('🔐 [AUTH] Autenticando requisição PowerPoint:', req.method, req.path);
@@ -135,8 +162,8 @@ export function authenticateSocket(_ws: WebSocket, req: IncomingMessage, next: (
 function setSessionCookie(res: Response, token: string) {
   res.cookie('token', token, {
     httpOnly: false, // allow websocket to access cookie
-    secure: true,
+    secure: process.env.NODE_ENV === 'production',
     path: '/', // allow cookie to be accessed from any path
-    sameSite: 'none', // allow cookies to be sent in cross-origin requests (e.g., iframes)
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   });
 }

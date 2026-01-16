@@ -1180,17 +1180,24 @@ export class SupabaseAdapter {
 
   /**
    * Get active projects from Supabase
+   * Admin vê todos, não-admin apenas registros com user_id correspondente (quando fornecido)
    */
-  async getActiveProjects(): Promise<any[]> {
+  async getActiveProjects(authUser?: { userId?: string | number; isAdmin?: boolean }): Promise<any[]> {
     if (!this.isConnected || !this.supabase) {
       return [];
     }
 
     try {
-      const { data, error } = await this.supabase
+      let query = this.supabase
         .from(this.config?.tableName || 'ontime_realtime')
-        .select('id, project_code, updated_at')
+        .select('id, project_code, updated_at, user_id')
         .order('updated_at', { ascending: false });
+
+      if (authUser && !authUser.isAdmin && authUser.userId != null) {
+        query = query.eq('user_id', authUser.userId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         logger.error(LogOrigin.Server, `Error getting active projects: ${error.message}`);
@@ -1206,8 +1213,11 @@ export class SupabaseAdapter {
 
   /**
    * Get project data by project code
+   * Não aplica filtro de user_id aqui; a checagem de propriedade é feita no controller
    */
-  async getProjectData(projectCode: string): Promise<any | null> {
+  async getProjectData(
+    projectCode: string,
+  ): Promise<{ data: any; user_id?: string | number | null } | null> {
     if (!this.isConnected || !this.supabase) {
       return null;
     }
@@ -1215,7 +1225,7 @@ export class SupabaseAdapter {
     try {
       const { data, error } = await this.supabase
         .from(this.config?.tableName || 'ontime_realtime')
-        .select('data')
+        .select('data, user_id')
         .eq('project_code', projectCode)
         .single();
 
@@ -1224,7 +1234,14 @@ export class SupabaseAdapter {
         return null;
       }
 
-      return data?.data || null;
+      if (!data) {
+        return null;
+      }
+
+      return {
+        data: data.data,
+        user_id: (data as any).user_id ?? null,
+      };
     } catch (error) {
       logger.error(LogOrigin.Server, `Error getting project data: ${error}`);
       return null;
