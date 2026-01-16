@@ -1,4 +1,4 @@
-// Serviço WebSocket para comunicação com app Python do PowerPoint
+// Serviço WebSocket para comunicação com HouseriaPPT do PowerPoint
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 import { logger } from '../../classes/Logger.js';
@@ -190,18 +190,8 @@ export class PowerPointWebSocketService extends EventEmitter {
           const rawMessage = data.toString();
           const message = JSON.parse(rawMessage) as WebSocketMessage;
           
-          // ✅ CAPTURA COMPLETA: Log detalhado de TODAS as mensagens recebidas
-          if (message.type === 'current_slide') {
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - RAW MESSAGE (current_slide): ${rawMessage}`);
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - PARSED MESSAGE: ${JSON.stringify(message, null, 2)}`);
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - slide_index: ${(message as any).slide_index}, tipo: ${typeof (message as any).slide_index}`);
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - slide_title: "${(message as any).slide_title}", tipo: ${typeof (message as any).slide_title}`);
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - slide_notes: "${(message as any).slide_notes}", tipo: ${typeof (message as any).slide_notes}`);
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - slide_notes existe?: ${(message as any).slide_notes !== undefined}`);
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - slide_notes é null?: ${(message as any).slide_notes === null}`);
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - slide_notes é string vazia?: ${(message as any).slide_notes === ''}`);
-            logger.info(LogOrigin.Server, `🔍 PowerPoint WebSocket - Todas as chaves do objeto: ${Object.keys(message).join(', ')}`);
-          }
+          // ✅ CORREÇÃO CRÍTICA: Removidos logs excessivos que causavam sobrecarga
+          // Logs detalhados removidos - apenas processa a mensagem
           
           this.handleMessage(message);
         } catch (error) {
@@ -239,41 +229,29 @@ export class PowerPointWebSocketService extends EventEmitter {
 
       case 'slides_info':
         this.slidesInfo = message as SlidesInfoMessage;
-        // ✅ DEBUG: Log detalhado para verificar se notes estão chegando
-        logger.info(LogOrigin.Server, `📋 PowerPoint WebSocket - slides_info recebido: ${this.slidesInfo.total_slides} slides`);
-        if (this.slidesInfo.slides && this.slidesInfo.slides.length > 0) {
-          // Log dos primeiros 3 slides para verificar notes
-          this.slidesInfo.slides.slice(0, 3).forEach(slide => {
-            logger.info(LogOrigin.Server, `   Slide ${slide.index + 1}: title="${slide.title}", notes="${slide.notes}", notes existe?=${slide.notes !== undefined}, notes é null?=${slide.notes === null}, notes length=${slide.notes?.length || 0}, tipo=${typeof slide.notes}`);
-          });
-          // Log também do slide atual se houver
-          if (this.currentSlide && this.currentSlide.slide_index !== undefined) {
-            const currentSlideInList = this.slidesInfo.slides.find(s => s.index === this.currentSlide!.slide_index);
-            if (currentSlideInList) {
-              logger.info(LogOrigin.Server, `   🔍 Slide ATUAL (${this.currentSlide.slide_index + 1}): title="${currentSlideInList.title}", notes="${currentSlideInList.notes}", notes length=${currentSlideInList.notes?.length || 0}`);
-            }
-          }
-        }
-        // Lista slides com vídeo no console para teste
+        // ✅ CORREÇÃO: Log reduzido - apenas informação essencial
+        logger.info(LogOrigin.Server, `📋 PowerPoint WebSocket - slides_info: ${this.slidesInfo.total_slides} slides`);
+        // Logs detalhados removidos para evitar sobrecarga
         this.logSlidesWithVideo(this.slidesInfo);
         this.updateStatus();
         break;
 
       case 'current_slide': {
         this.currentSlide = message as CurrentSlideMessage;
-        // Log para debug - mostra as notas recebidas
         const currentSlideMsg = message as CurrentSlideMessage;
-        logger.info(LogOrigin.Server, `📝 PowerPoint WebSocket - current_slide recebido: slide_index=${currentSlideMsg.slide_index}, title="${currentSlideMsg.slide_title}", notes="${currentSlideMsg.slide_notes}"`);
+        // ✅ CORREÇÃO: Log reduzido - apenas quando slide realmente muda
+        const previousSlide = this.lastStatus?.currentSlide ?? -1;
+        if (currentSlideMsg.slide_index !== previousSlide) {
+          logger.info(LogOrigin.Server, `📝 PowerPoint WebSocket - Slide ${currentSlideMsg.slide_index + 1}`);
+        }
         
         // ✅ Cacheia notas e título para preservar mesmo quando slides_info chegar novamente
         if (currentSlideMsg.slide_index !== undefined) {
           if (currentSlideMsg.slide_notes !== undefined) {
             this.slideNotesCache.set(currentSlideMsg.slide_index, currentSlideMsg.slide_notes);
-            logger.info(LogOrigin.Server, `💾 PowerPoint WebSocket - Notas do slide ${currentSlideMsg.slide_index + 1} cacheadas: "${currentSlideMsg.slide_notes}"`);
           }
           if (currentSlideMsg.slide_title !== undefined) {
             this.slideTitlesCache.set(currentSlideMsg.slide_index, currentSlideMsg.slide_title);
-            logger.info(LogOrigin.Server, `💾 PowerPoint WebSocket - Título do slide ${currentSlideMsg.slide_index + 1} cacheado: "${currentSlideMsg.slide_title}"`);
           }
         }
         
@@ -400,15 +378,15 @@ export class PowerPointWebSocketService extends EventEmitter {
           // Atualiza notas se vierem em current_slide (mesmo que seja string vazia)
           if (this.currentSlide.slide_notes !== undefined) {
             slideInList.notes = this.currentSlide.slide_notes || '';
-            logger.info(LogOrigin.Server, `📝 PowerPoint WebSocket - Atualizando notas do slide ${currentSlideIndex + 1}: "${this.currentSlide.slide_notes}"`);
+            // ✅ CORREÇÃO: Log removido para evitar sobrecarga
           }
           // Atualiza título se vier em current_slide (mesmo que seja string vazia)
           if (this.currentSlide.slide_title !== undefined) {
             slideInList.title = this.currentSlide.slide_title || '';
-            logger.info(LogOrigin.Server, `📝 PowerPoint WebSocket - Atualizando título do slide ${currentSlideIndex + 1}: "${this.currentSlide.slide_title}"`);
+            // ✅ CORREÇÃO: Log removido para evitar sobrecarga
           }
         } else {
-          logger.warning(LogOrigin.Server, `⚠️  PowerPoint WebSocket - Slide ${currentSlideIndex} não encontrado na lista para atualizar notas/título`);
+          logger.warning(LogOrigin.Server, `⚠️  PowerPoint WebSocket - Slide ${currentSlideIndex} não encontrado na lista`);
         }
       }
     }
@@ -471,11 +449,8 @@ export class PowerPointWebSocketService extends EventEmitter {
     // Atualiza último status
     this.lastStatus = status;
 
-    // Log no console mostrando slide atual (ajusta para 1-based)
-    if (status.currentSlide >= 0 && status.slideCount > 0) {
-      const slideNumber = status.currentSlide + 1; // Converte de 0-based para 1-based
-      console.log(`📊 PowerPoint - Slide atual: ${slideNumber}/${status.slideCount}`);
-    }
+    // ✅ CORREÇÃO: Log reduzido - apenas quando slide realmente muda
+    // Log do slide atual removido para evitar sobrecarga em cada mensagem
 
     // Emite evento de mudança
     this.emit('statusChange', status);
@@ -502,6 +477,8 @@ export class PowerPointWebSocketService extends EventEmitter {
    * Trata desconexão e agenda reconexão
    */
   private handleDisconnection(): void {
+    const wasConnected = this.isConnected;
+    
     if (this.isConnected) {
       this.isConnected = false;
       this.isConnecting = false;
@@ -510,6 +487,39 @@ export class PowerPointWebSocketService extends EventEmitter {
     if (this.ws) {
       this.ws.removeAllListeners();
       this.ws = null;
+    }
+
+    // Se estava conectado, atualiza status para desconectado e notifica clientes
+    if (wasConnected) {
+      logger.info(LogOrigin.Server, '🔌 PowerPoint WebSocket - Desconectado do HouseriaPPT, atualizando status...');
+      
+      // Limpa estado acumulado
+      this.slidesInfo = null;
+      this.currentSlide = null;
+      this.videoStatus = null;
+      this.videoDurations.clear();
+      this.slideNotesCache.clear();
+      this.slideTitlesCache.clear();
+      
+      // Atualiza status para desconectado
+      this.lastStatus = {
+        isAvailable: false,
+        slideCount: 0,
+        visibleSlideCount: 0,
+        currentSlide: 0,
+        isInSlideShow: false,
+        slidesRemaining: 0,
+        hiddenSlides: [],
+        slidesWithVideo: [],
+        slides: [],
+        timestamp: Date.now(),
+      };
+      
+      // Emite evento de desconexão para que outros serviços possam reagir
+      this.emit('disconnected');
+      
+      // Emite statusChange com estado desconectado para notificar clientes
+      this.emit('statusChange', this.lastStatus);
     }
 
     // Agenda reconexão automática

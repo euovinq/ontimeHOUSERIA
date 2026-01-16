@@ -66,6 +66,10 @@ const staticOptions = [
         label: 'Share link',
       },
       {
+        id: 'network__routes',
+        label: 'Public API Routes',
+      },
+      {
         id: 'network__log',
         label: 'Event log',
       },

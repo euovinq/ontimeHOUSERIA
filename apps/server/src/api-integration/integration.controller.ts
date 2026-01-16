@@ -307,17 +307,42 @@ const actionHandlers: Record<string, ActionHandler> = {
     runtimeService.setOffsetMode(mode);
     return { payload: 'success' };
   },
-  togglesupabase: () => {
-    supabaseAdapter.toggleConnection();
+  togglesupabase: async () => {
+    const wasConnected = supabaseAdapter.getConnectionStatus().connected;
+    const isConnected = supabaseAdapter.toggleConnection();
+    
+    // Aguarda um delay para garantir que init() completo foi executado
+    // (init() é assíncrono e chama testConnection() que também é assíncrono)
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
     const status = supabaseAdapter.getConnectionStatus();
+    
+    // O status final deve ser o oposto do que era antes (toggle)
+    // Mas também verifica getConnectionStatus() que é mais confiável após o delay
+    const finalStatus = {
+      connected: Boolean(status.connected),
+      enabled: Boolean(status.enabled),
+    };
+    
+    // Se getConnectionStatus() ainda não atualizou (raro), usa o toggle como fallback
+    if (!finalStatus.connected && !wasConnected && isConnected) {
+      finalStatus.connected = true;
+      finalStatus.enabled = true;
+      logger.info(LogOrigin.Server, `📡 Supabase toggle - Usando fallback: status baseado no toggle`);
+    }
+    
+    logger.info(
+      LogOrigin.Server,
+      `📡 Supabase toggle - Status final: ${JSON.stringify(finalStatus)}`
+    );
     
     // Envia atualização via WebSocket para todos os clientes conectados
     socket.sendAsJson({
       type: 'togglesupabase',
-      payload: status,
+      payload: finalStatus,
     });
     
-    return { payload: status };
+    return { payload: finalStatus };
   },
   getsupabasestatus: () => {
     const status = supabaseAdapter.getConnectionStatus();
@@ -342,12 +367,12 @@ const actionHandlers: Record<string, ActionHandler> = {
     }
     
     if (!hasWebSocket) {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - WebSocket não conectado! Aguarde conexão com o app Python.');
+      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle - WebSocket não conectado! Aguarde conexão com o HouseriaPPT.');
       socket.sendAsJson({
         type: 'powerpoint-status',
-        payload: { enabled: false, error: 'Não conectado ao app Python. Aguarde conexão automática ou verifique se o app Python está rodando.' },
+        payload: { enabled: false, error: 'Não conectado ao HouseriaPPT. Aguarde conexão automática ou verifique se o HouseriaPPT está rodando.' },
       });
-      return { payload: { enabled: false, error: 'Não conectado ao app Python. Aguarde conexão automática ou verifique se o app Python está rodando.' } };
+      return { payload: { enabled: false, error: 'Não conectado ao HouseriaPPT. Aguarde conexão automática ou verifique se o HouseriaPPT está rodando.' } };
     }
     
     // Se serviço não existe, tenta inicializar

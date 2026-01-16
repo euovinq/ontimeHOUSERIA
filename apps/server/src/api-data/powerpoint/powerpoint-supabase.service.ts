@@ -215,14 +215,17 @@ export class PowerPointSupabaseService {
       logger.info(LogOrigin.Server, '✅ PowerPoint Supabase service iniciado - Supabase disponível');
     }
     
+    // ✅ CORREÇÃO CRÍTICA: Remove listeners existentes antes de adicionar novo
+    // Isso evita listeners duplicados que causam processamento múltiplo do mesmo evento
+    if (this.service) {
+      this.service.removeAllListeners('statusChange');
+    }
+    
     // Escuta mudanças do serviço ativo (WebSocket ou Windows)
-    const listenerCountBefore = this.service.listenerCount('statusChange');
     this.service.on('statusChange', (status: PowerPointStatus) => {
-      logger.info(LogOrigin.Server, `🔔 PowerPoint Supabase - Evento statusChange recebido: Slide ${status.currentSlide}/${status.slideCount}`);
+      // ✅ CORREÇÃO: Log removido para evitar sobrecarga
       this.onStatusChange(status);
     });
-    const listenerCountAfter = this.service.listenerCount('statusChange');
-    logger.info(LogOrigin.Server, `👂 PowerPoint Supabase - Listener registrado (${listenerCountBefore} → ${listenerCountAfter} listeners)`);
 
     // Envia status inicial se disponível E se estiver habilitado
     // Não envia se estiver desabilitado (botão vermelho)
@@ -257,49 +260,35 @@ export class PowerPointSupabaseService {
    */
   private onStatusChange(status: PowerPointStatus): void {
     if (!this.isRunning) {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint Supabase - Serviço não está rodando, ignorando mudança');
       return;
     }
 
     // Verifica se está habilitado (botão verde/vermelho)
-    // Se estiver vermelho (desabilitado), NÃO envia dados para Supabase
     if (!this.isEnabled) {
-      // Não loga a cada mudança para não poluir logs
-      // logger.info(LogOrigin.Server, '⚠️  PowerPoint Supabase - Envio desabilitado (botão vermelho), ignorando mudança');
       return;
     }
 
     // Verifica se Supabase está disponível
     if (!this.isSupabaseAvailable()) {
-      // Não loga para não poluir - Supabase pode não estar configurado ainda
       return;
     }
 
-    // ✅ DEBUG: Log do slide atual antes de verificar mudanças
-    logger.info(LogOrigin.Server, `🔔 PowerPoint Supabase - statusChange recebido: Slide ${status.currentSlide + 1}/${status.slideCount} (0-based: ${status.currentSlide})`);
-    if (this.lastSentStatus) {
-      logger.info(LogOrigin.Server, `   Último slide enviado: ${this.lastSentStatus.currentSlide + 1}/${this.lastSentStatus.slideCount} (0-based: ${this.lastSentStatus.currentSlide})`);
-    }
-
+    // ✅ CORREÇÃO: Logs reduzidos - apenas quando há mudança real
     // Verifica se dados realmente mudaram comparando diretamente os valores
     const hasChanged = this.hasStatusChanged(status);
     
     if (!hasChanged) {
-      // Dados não mudaram, ignora
-      logger.info(LogOrigin.Server, `⏭️  PowerPoint Supabase - Nenhuma mudança detectada, ignorando envio`);
       return;
     }
 
     // ✅ CORREÇÃO: Garante envio sequencial para evitar slides pulados
-    // Se já está enviando, armazena status pendente e processa após envio atual
     if (this.isSending) {
-      logger.info(LogOrigin.Server, `⏳ PowerPoint Supabase - Envio em andamento, armazenando status pendente: Slide ${status.currentSlide}`);
-      this.pendingStatus = status; // Armazena para processar após envio atual
+      this.pendingStatus = status;
       return;
     }
 
-    // Dados mudaram - envia IMEDIATAMENTE para Supabase (sem debounce)
-    logger.info(LogOrigin.Server, `📤 PowerPoint Supabase - Dados mudaram, enviando IMEDIATAMENTE: Slide ${status.currentSlide}/${status.slideCount}${status.video?.hasVideo ? ` | Vídeo: ${status.video.currentTime?.toFixed(2)}s` : ''}`);
+    // ✅ CORREÇÃO: Log reduzido - apenas quando realmente envia
+    logger.info(LogOrigin.Server, `📤 PowerPoint Supabase - Enviando: Slide ${status.currentSlide + 1}/${status.slideCount}`);
     
     // ✅ CORREÇÃO: Atualiza cache ANTES de enviar para evitar race condition
     // Isso garante que próxima atualização compare com o valor correto
@@ -366,22 +355,22 @@ export class PowerPointSupabaseService {
     if (status.currentSlide !== last.currentSlide) {
       const slideDiff = status.currentSlide - last.currentSlide;
       
-      // ✅ NOVO: Detecta e loga quando há gap nos slides
+      // ✅ CORREÇÃO: Log apenas quando há gap significativo (slides pulados)
       if (slideDiff > 1) {
         const skippedSlides = [];
         for (let i = last.currentSlide + 1; i < status.currentSlide; i++) {
           skippedSlides.push(i);
         }
-        logger.warning(LogOrigin.Server, `⚠️  PowerPoint Supabase - GAP detectado: slides ${skippedSlides.join(', ')} foram pulados (${last.currentSlide} → ${status.currentSlide}). O app Windows não enviou dados para esses slides.`);
+        logger.warning(LogOrigin.Server, `⚠️  PowerPoint Supabase - GAP detectado: slides ${skippedSlides.join(', ')} foram pulados`);
       }
       
-      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: slide (${last.currentSlide} → ${status.currentSlide})`);
+      // ✅ CORREÇÃO: Log removido para evitar sobrecarga
       return true;
     }
 
     // Verifica mudança de slideCount
     if (status.slideCount !== last.slideCount) {
-      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: slideCount (${last.slideCount} → ${status.slideCount})`);
+      // ✅ CORREÇÃO: Log removido para evitar sobrecarga
       return true;
     }
 
@@ -389,7 +378,7 @@ export class PowerPointSupabaseService {
     if (status.video?.hasVideo || last.video?.hasVideo) {
       // Se estado de vídeo mudou (tem vídeo vs não tem)
       if (!!status.video?.hasVideo !== !!last.video?.hasVideo) {
-        logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: hasVideo (${!!last.video?.hasVideo} → ${!!status.video?.hasVideo})`);
+        // ✅ CORREÇÃO: Log removido para evitar sobrecarga
         return true;
       }
 
@@ -399,45 +388,42 @@ export class PowerPointSupabaseService {
         const lastTime = last.video.currentTime || 0;
         
         // ✅ PRECISÃO MÁXIMA: Detecta qualquer mudança de 0.1 segundos ou mais
-        // (antes era 1 segundo) - detecta mudanças muito mais rapidamente
         if (Math.abs(currentTime - lastTime) >= 0.1) {
-          logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: video currentTime (${lastTime.toFixed(2)}s → ${currentTime.toFixed(2)}s)`);
+          // ✅ CORREÇÃO: Log removido para evitar sobrecarga
           return true;
         }
 
-        // ✅ NOVO: Compara horas, minutos e segundos individualmente
-        // Isso detecta mudanças mesmo quando currentTime pode ter pequeno erro de cálculo
-        // e garante que sempre detecta mudanças de segundo em segundo
+        // ✅ Compara horas, minutos e segundos individualmente
         if (status.video.hours !== undefined && last.video.hours !== undefined) {
           if (status.video.hours !== last.video.hours) {
-            logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: video hours (${last.video.hours} → ${status.video.hours})`);
+            // ✅ CORREÇÃO: Log removido para evitar sobrecarga
             return true;
           }
         }
         
         if (status.video.minutes !== undefined && last.video.minutes !== undefined) {
           if (status.video.minutes !== last.video.minutes) {
-            logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: video minutes (${last.video.minutes} → ${status.video.minutes})`);
+            // ✅ CORREÇÃO: Log removido para evitar sobrecarga
             return true;
           }
         }
         
         if (status.video.seconds !== undefined && last.video.seconds !== undefined) {
           if (status.video.seconds !== last.video.seconds) {
-            logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: video seconds (${last.video.seconds} → ${status.video.seconds})`);
+            // ✅ CORREÇÃO: Log removido para evitar sobrecarga
             return true;
           }
         }
 
         // Verifica mudança de estado de reprodução (playing/paused)
         if (status.video.isPlaying !== last.video.isPlaying) {
-          logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: video isPlaying (${last.video.isPlaying} → ${status.video.isPlaying})`);
+          // ✅ CORREÇÃO: Log removido para evitar sobrecarga
           return true;
         }
 
-        // Verifica mudança no formato time (HH:MM:SS) - pode mudar mesmo que currentTime não mude muito
+        // Verifica mudança no formato time (HH:MM:SS)
         if (status.video.time && last.video.time && status.video.time !== last.video.time) {
-          logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: video time (${last.video.time} → ${status.video.time})`);
+          // ✅ CORREÇÃO: Log removido para evitar sobrecarga
           return true;
         }
       }
@@ -447,31 +433,31 @@ export class PowerPointSupabaseService {
     if (status.visibleSlideCount !== last.visibleSlideCount ||
         status.isInSlideShow !== last.isInSlideShow ||
         status.slidesRemaining !== last.slidesRemaining) {
-      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: propriedades gerais`);
+      // ✅ CORREÇÃO: Log removido para evitar sobrecarga
       return true;
     }
 
     // Compara arrays de slides ocultos
     if (!this.arraysEqual(status.hiddenSlides || [], last.hiddenSlides || [])) {
-      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: hiddenSlides`);
+      // ✅ CORREÇÃO: Log removido para evitar sobrecarga
       return true;
     }
 
     // Compara arrays de slides com vídeo
     if (!this.arraysEqual(status.slidesWithVideo || [], last.slidesWithVideo || [])) {
-      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: slidesWithVideo`);
+      // ✅ CORREÇÃO: Log removido para evitar sobrecarga
       return true;
     }
 
     // Compara videoItems (array de objetos)
     if (!this.videoItemsEqual(status.videoItems || [], last.videoItems || [])) {
-      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: videoItems`);
+      // ✅ CORREÇÃO: Log removido para evitar sobrecarga
       return true;
     }
 
     // Compara lista completa de slides
     if (!this.slidesEqual(status.slides || [], last.slides || [])) {
-      logger.info(LogOrigin.Server, `🔍 PowerPoint Supabase - Mudança detectada: slides`);
+      // ✅ CORREÇÃO: Log removido para evitar sobrecarga
       return true;
     }
 

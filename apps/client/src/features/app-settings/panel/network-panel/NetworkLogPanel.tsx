@@ -11,11 +11,13 @@ import ClientControlPanel from '../client-control-panel/ClientControlPanel';
 import GenerateLinkForm from './GenerateLinkForm';
 import InfoNif from './NetworkInterfaces';
 import LogExport from './NetworkLogExport';
+import PublicRoutesList from './PublicRoutesList';
 
 export default function NetworkLogPanel({ location }: PanelBaseProps) {
   const linkRef = useScrollIntoView<HTMLDivElement>('link', location);
   const clientsRef = useScrollIntoView<HTMLDivElement>('clients', location);
   const logRef = useScrollIntoView<HTMLDivElement>('log', location);
+  const routesRef = useScrollIntoView<HTMLDivElement>('routes', location);
 
   return (
     <>
@@ -39,6 +41,9 @@ export default function NetworkLogPanel({ location }: PanelBaseProps) {
             <GenerateLinkForm />
           </Panel.Card>
         </Panel.Section>
+      </div>
+      <div ref={routesRef}>
+        <PublicRoutesList />
       </div>
       <div ref={logRef}>
         <LogExport />

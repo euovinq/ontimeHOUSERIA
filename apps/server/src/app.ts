@@ -24,6 +24,8 @@ import { router as authRouter } from './api-data/auth/auth.router.js';
 import { appRouter } from './api-data/index.js';
 import { integrationRouter } from './api-integration/integration.router.js';
 import { publicRouter } from './api-integration/public.router.js';
+import { publicTimerControlRouter } from './api-integration/public-timer-control.router.js';
+import { publicDataRouter } from './api-data/public-data.router.js';
 
 // Import adapters
 import { socket } from './adapters/WebsocketAdapter.js';
@@ -78,8 +80,28 @@ if (!isProduction) {
 app.disable('x-powered-by');
 
 // Implement middleware
-app.use(cors()); // setup cors for all routes
-app.options('*', cors()); // enable pre-flight cors
+app.use(
+  cors({
+    origin: true, // reflect origin
+    credentials: true, // allow cookies (auth_user_id / auth_is_admin)
+  })
+); // setup cors for all routes
+app.options(
+  '*',
+  cors({
+    origin: true,
+    credentials: true,
+  })
+); // enable pre-flight cors
+
+// Middleware de debug para todas as requisições
+app.use((req, res, next) => {
+  // Log apenas requisições da API para não poluir logs
+  if (req.path.startsWith('/api') || req.path.startsWith('/data')) {
+    console.log(`📥 [REQUEST] ${req.method} ${req.path} | IP: ${req.ip} | Origin: ${req.headers.origin || 'N/A'} | User-Agent: ${req.headers['user-agent']?.substring(0, 50) || 'N/A'}`);
+  }
+  next();
+});
 
 app.use(bodyParser);
 app.use(cookieParser());
@@ -89,8 +111,12 @@ const { authenticate, authenticateAndRedirect } = makeAuthenticateMiddleware(pre
 app.use(`${prefix}/login`, loginRouter); // router for login flow (HTML antigo)
 app.use(`${prefix}/auth`, authRouter); // router para autenticação via Supabase (sem cookie)
 app.use(`${prefix}/api/public`, publicRouter); // router for public endpoints (Stream Deck) - SEM autenticação
-app.use(`${prefix}/data`, authenticate, appRouter); // router for application data
-app.use(`${prefix}/api`, authenticate, integrationRouter); // router for integrations
+app.use(`${prefix}/data`, publicDataRouter); // router público para leitura de dados (realtime, etc.) - SEM autenticação
+app.use(`${prefix}/data`, authenticate, appRouter); // router for application data (outras rotas protegidas)
+// Router público para controle básico do timer deve vir ANTES do router protegido
+// para capturar as ações públicas (start, pause, stop, etc.)
+app.use(`${prefix}/api`, publicTimerControlRouter); // router público para controle básico do timer (start, pause, stop, etc.) - SEM autenticação
+app.use(`${prefix}/api`, authenticate, integrationRouter); // router for integrations (outras ações protegidas)
 
 // serve static external files
 app.use(`${prefix}/external`, express.static(publicDir.externalDir));
@@ -104,9 +130,20 @@ app.use(`${prefix}/user`, express.static(publicDir.userDir));
 app.use(`${prefix}`, authenticateAndRedirect, compressedStatic);
 app.use(`${prefix}/*`, authenticateAndRedirect, compressedStatic);
 
-// Implement catch all
-app.use((_error, response) => {
-  response.status(400).send('Unhandled request');
+// Implement catch all para erros
+app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error(`❌ [ERROR-HANDLER] Erro não tratado: ${error.message}`);
+  console.error(`❌ [ERROR-HANDLER] Path: ${req.path} | Method: ${req.method}`);
+  if (error.stack) {
+    console.error(`❌ [ERROR-HANDLER] Stack: ${error.stack}`);
+  }
+  res.status(500).json({ error: 'Internal server error', message: error.message });
+});
+
+// Catch all para rotas não encontradas
+app.use((req: express.Request, res: express.Response) => {
+  console.log(`⚠️  [404] Rota não encontrada: ${req.method} ${req.path}`);
+  res.status(404).json({ error: 'Route not found', path: req.path });
 });
 
 /***************  START SERVICES ***************/

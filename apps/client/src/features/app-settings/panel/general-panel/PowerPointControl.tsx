@@ -16,6 +16,10 @@ export default function PowerPointControl() {
   // Ref para acessar o estado atual sem criar dependência no useEffect
   const statusRef = useRef(status);
   statusRef.current = status;
+  
+  // Ref para controlar debounce de toasts de erro (evita múltiplos toasts)
+  const lastErrorToastTime = useRef<number>(0);
+  const ERROR_TOAST_DEBOUNCE_MS = 2000; // 2 segundos entre toasts de erro
 
   // Log do estado sempre que mudar
   useEffect(() => {
@@ -44,6 +48,40 @@ export default function PowerPointControl() {
 
       if (type === 'togglepowerpoint' || type === 'getpowerpointstatus' || type === 'powerpoint-status') {
         if (payload && typeof payload === 'object') {
+          // Se há erro, SEMPRE força enabled para false (desconectado)
+          if ('error' in payload && payload.error) {
+            console.error('PowerPointControl - Erro recebido:', payload.error);
+            const currentEnabled = statusRef.current.enabled;
+            
+            // SEMPRE força desabilitar (vermelho) quando há erro, mesmo se já estava false
+            // Isso garante que o estado visual seja atualizado
+            console.log('PowerPointControl - Erro detectado, forçando botão para vermelho (desconectado)...');
+            setStatus({ enabled: false });
+            
+            // Mostra toast de erro apenas se passou tempo suficiente desde o último toast
+            // Isso evita múltiplos toasts quando togglepowerpoint e getpowerpointstatus retornam erro
+            const now = Date.now();
+            const timeSinceLastToast = now - lastErrorToastTime.current;
+            
+            if (timeSinceLastToast >= ERROR_TOAST_DEBOUNCE_MS) {
+              lastErrorToastTime.current = now;
+              toast({
+                title: 'Conexão Necessária',
+                description: payload.error || 'Não conectado ao HouseriaPPT. Aguarde conexão automática ou verifique se o HouseriaPPT está rodando.',
+                status: 'error',
+                duration: 4000,
+                isClosable: true,
+                position: 'top-right',
+              });
+            } else {
+              console.log(`PowerPointControl - Toast de erro suprimido (último toast há ${timeSinceLastToast}ms)`);
+            }
+            
+            // Se há erro, não processa enabled do payload (erro tem prioridade)
+            return;
+          }
+          
+          // Atualiza enabled se presente no payload (apenas se não houver erro)
           if ('enabled' in payload) {
             const newEnabled = Boolean(payload.enabled);
             const currentEnabled = statusRef.current.enabled;
@@ -66,18 +104,6 @@ export default function PowerPointControl() {
             } else {
               console.log('PowerPointControl - Estado não mudou, ignorando atualização');
             }
-          }
-          if ('error' in payload && payload.error) {
-            console.error('PowerPointControl - Erro recebido:', payload.error);
-            // Mostra toast de erro quando recebe erro
-            toast({
-              title: 'Conexão Necessária',
-              description: payload.error || 'Não conectado ao app Python. Aguarde conexão automática ou verifique se o app Python está rodando.',
-              status: 'error',
-              duration: 4000,
-              isClosable: true,
-              position: 'top-right',
-            });
           }
         } else {
           console.warn('PowerPointControl - Payload inválido:', payload);

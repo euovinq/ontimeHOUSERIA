@@ -49,6 +49,18 @@ export async function login(req: Request, res: Response) {
     // Cria/atualiza sessão de autenticação e inicia monitoramento do período (para não-admin)
     registerLoginSession(successResult.userId, successResult.isAdmin);
 
+    // Cookies HttpOnly para identificar usuário nas próximas requisições protegidas
+    res.cookie('auth_user_id', successResult.userId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000, // 24h
+    });
+    res.cookie('auth_is_admin', successResult.isAdmin ? '1' : '0', {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000, // 24h
+    });
+
     // Guarda última info de licença para exibir no front
     lastLicenseInfo = {
       userId: successResult.userId,

@@ -10,14 +10,15 @@ import {
   toggleSupabaseController,
   getSupabaseToggleStatusController,
 } from './supabase.controller.js';
+import { ensureSupabaseAuth } from './supabase.auth.middleware.js';
 
 export const router = express.Router();
 
 router.post('/configure', configureSupabase);
 router.get('/test', testSupabaseConnection);
 router.get('/status', getSupabaseStatus);
-router.get('/projects', getActiveProjects);
-router.get('/project/:projectCode', getProjectData);
+router.get('/projects', ensureSupabaseAuth, getActiveProjects);
+router.get('/project/:projectCode', ensureSupabaseAuth, getProjectData);
 router.post('/cleanup', cleanupOldProjects);
 
 // Rotas para Stream Deck/Companion
