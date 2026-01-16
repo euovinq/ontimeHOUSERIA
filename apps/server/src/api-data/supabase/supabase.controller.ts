@@ -136,7 +136,10 @@ export async function getProjectData(req: Request, res: Response) {
   try {
     const { projectCode } = req.params;
     
-    if (!projectCode) {
+    // Sanitizar projectCode (trim + uppercase)
+    const sanitizedCode = (projectCode || '').trim().toUpperCase();
+    
+    if (!sanitizedCode) {
       return res.status(400).json({ 
         error: 'Project code is required' 
       });
@@ -150,12 +153,47 @@ export async function getProjectData(req: Request, res: Response) {
       });
     }
     
-    const projectRecord = await supabaseAdapter.getProjectData(projectCode);
+    // Verificar se Supabase está conectado antes de buscar
+    const connectionStatus = supabaseAdapter.getConnectionStatus();
+    if (!connectionStatus.connected) {
+      logger.warning(LogOrigin.Server, `Tentativa de buscar projeto ${sanitizedCode} mas Supabase não está conectado`);
+      return res.status(503).json({ 
+        error: 'Supabase não está conectado',
+        projectCode: sanitizedCode,
+        message: 'Verifique se o Supabase está habilitado e conectado'
+      });
+    }
+    
+    logger.info(LogOrigin.Server, `🔍 Buscando projeto: ${sanitizedCode} (usuário: ${authUser.userId})`);
+    
+    const projectRecord = await supabaseAdapter.getProjectData(sanitizedCode);
     
     if (!projectRecord) {
+      logger.info(LogOrigin.Server, `❌ Projeto não encontrado: ${sanitizedCode}`);
+      
+      // Tenta listar projetos disponíveis para debug (apenas para admin)
+      let availableProjects: any[] = [];
+      if (authUser.isAdmin) {
+        try {
+          availableProjects = await supabaseAdapter.getActiveProjects({ userId: authUser.userId, isAdmin: true });
+          logger.info(LogOrigin.Server, `📋 Projetos disponíveis no banco: ${availableProjects.length}`);
+        } catch (err) {
+          // Ignora erro ao listar projetos
+        }
+      }
+      
       return res.status(404).json({ 
         error: 'Project not found',
-        projectCode 
+        projectCode: sanitizedCode,
+        message: `Nenhum projeto encontrado com o código: ${sanitizedCode}`,
+        ...(authUser.isAdmin && availableProjects.length > 0 ? {
+          hint: 'Projetos disponíveis no banco',
+          availableProjects: availableProjects.map(p => ({
+            id: p.id,
+            project_code: p.project_code || '(vazio)',
+            updated_at: p.updated_at
+          }))
+        } : {})
       });
     }
 
