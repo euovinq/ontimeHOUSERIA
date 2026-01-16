@@ -52,6 +52,89 @@ function init() {
   ensureDirectory(publicDir.corruptDir);
 }
 
+/**
+ * Get the email of the currently logged in user
+ * Returns undefined if no user is logged in (legacy/local mode)
+ */
+async function getCurrentUserEmail(): Promise<string | undefined> {
+  try {
+    const { getAllSessions } = await import('../../api-data/auth/auth-session.service.js');
+    const { supabase } = await import('../../api-data/auth/auth.service.js');
+    
+    const sessions = getAllSessions();
+    if (sessions.length === 0) {
+      return undefined;
+    }
+
+    // Get the most recent session
+    const latestSession = sessions
+      .slice()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .at(0);
+
+    if (!latestSession) {
+      return undefined;
+    }
+
+    // Get user email from users table
+    const { data: userRecord, error } = await supabase
+      .from('users')
+      .select('email')
+      .eq('id', latestSession.userId)
+      .maybeSingle();
+
+    if (error) {
+      logger.warning(LogOrigin.Server, `Error getting user email: ${error.message}`);
+      return undefined;
+    }
+
+    return userRecord?.email;
+  } catch (error) {
+    logger.warning(LogOrigin.Server, `Error in getCurrentUserEmail: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}
+
+/**
+ * Generate a unique projectCode for the current user
+ * Verifies in the database that the code doesn't already exist for this user
+ */
+async function generateUniqueProjectCode(userEmail: string | undefined): Promise<string> {
+  // If no user email, generate without validation (legacy mode)
+  if (!userEmail) {
+    const code = generateProjectCode();
+    logger.info(LogOrigin.Server, `Generated project code (legacy mode): ${code}`);
+    return code;
+  }
+
+  // Import supabaseAdapter
+  const { supabaseAdapter } = await import('../../adapters/SupabaseAdapter.js');
+  
+  const maxAttempts = 10;
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    const projectCode = generateProjectCode();
+    attempts++;
+
+    // Check if this projectCode already exists for this user
+    const exists = await supabaseAdapter.checkProjectCodeExists(userEmail, projectCode);
+    
+    if (!exists) {
+      logger.info(LogOrigin.Server, `Generated unique project code: ${projectCode} (attempts: ${attempts})`);
+      return projectCode;
+    }
+
+    logger.info(LogOrigin.Server, `Project code ${projectCode} already exists for user, generating new one...`);
+  }
+
+  // If we couldn't find a unique code after max attempts, generate one anyway
+  // (very unlikely scenario)
+  const fallbackCode = generateProjectCode();
+  logger.warning(LogOrigin.Server, `Could not generate unique project code after ${maxAttempts} attempts, using: ${fallbackCode}`);
+  return fallbackCode;
+}
+
 export async function getCurrentProject() {
   const filename = await getLastLoadedProject();
   const pathToFile = getPathToProject(filename);
@@ -65,8 +148,9 @@ export async function getCurrentProject() {
 export async function loadDemoProject(): Promise<string> {
   const pathToNewFile = generateUniqueFileName(publicDir.projectsDir, config.demoProject);
   
-  // Generate a projectCode for demo project
-  const demoProjectCode = generateProjectCode();
+  // Generate a unique projectCode for demo project
+  const userEmail = await getCurrentUserEmail();
+  const demoProjectCode = await generateUniqueProjectCode(userEmail);
   const demoProjectData = {
     ...demoDb,
     project: {
@@ -90,8 +174,9 @@ export async function loadDemoProject(): Promise<string> {
 async function loadNewProject(): Promise<string> {
   const pathToNewFile = generateUniqueFileName(publicDir.projectsDir, config.newProject);
   
-  // Generate a projectCode for new projects
-  const newProjectCode = generateProjectCode();
+  // Generate a unique projectCode for new projects
+  const userEmail = await getCurrentUserEmail();
+  const newProjectCode = await generateUniqueProjectCode(userEmail);
   const newProjectData = {
     ...dbModel,
     project: {
@@ -157,9 +242,24 @@ export async function initialiseProject(): Promise<string> {
       parsedFilePath = getPathToProject(parsedFileName);
     }
 
+    // Check if project exists in database for current user
+    const userEmail = await getCurrentUserEmail();
+    if (result.data.project?.projectCode && userEmail) {
+      const { supabaseAdapter } = await import('../../adapters/SupabaseAdapter.js');
+      const existsInDb = await supabaseAdapter.projectExistsForUser(userEmail, result.data.project.projectCode);
+      
+      if (existsInDb) {
+        logger.info(LogOrigin.Server, `Project ${result.data.project.projectCode} already exists in database for user ${userEmail}. Skipping automatic actions - user will manually load/update if needed.`);
+        // Still load the project locally but don't do anything else
+        await initPersistence(parsedFilePath, result.data);
+        await setLastLoadedProject(parsedFileName);
+        return parsedFileName;
+      }
+    }
+
     // Ensure projectCode exists for loaded projects - generate only if missing
     if (result.data.project && !result.data.project.projectCode) {
-      const newProjectCode = generateProjectCode();
+      const newProjectCode = await generateUniqueProjectCode(userEmail);
       result.data.project.projectCode = newProjectCode;
       logger.info(LogOrigin.Server, `Generated new project code: ${newProjectCode} for project ${parsedFileName}`);
       // Save the projectCode to the file immediately
@@ -203,9 +303,25 @@ export async function loadProjectFile(name: string) {
     parsedFilePath = getPathToProject(parsedFileName);
   }
 
+  // Check if project exists in database for current user
+  const userEmail = await getCurrentUserEmail();
+  if (result.data.project?.projectCode && userEmail) {
+    const { supabaseAdapter } = await import('../../adapters/SupabaseAdapter.js');
+    const existsInDb = await supabaseAdapter.projectExistsForUser(userEmail, result.data.project.projectCode);
+    
+    if (existsInDb) {
+      logger.info(LogOrigin.Server, `Project ${result.data.project.projectCode} already exists in database for user ${userEmail}. Skipping automatic actions - user will manually load/update if needed.`);
+      // Still load the project locally but don't do anything else
+      await initPersistence(parsedFilePath, result.data);
+      await setLastLoadedProject(parsedFileName);
+      logger.info(LogOrigin.Server, `Loaded project ${parsedFileName} (exists in DB, no automatic actions)`);
+      return;
+    }
+  }
+
   // Ensure projectCode exists for loaded projects - generate only if missing
   if (result.data.project && !result.data.project.projectCode) {
-    const newProjectCode = generateProjectCode();
+    const newProjectCode = await generateUniqueProjectCode(userEmail);
     result.data.project.projectCode = newProjectCode;
     logger.info(LogOrigin.Server, `Generated new project code: ${newProjectCode} for project ${parsedFileName}`);
     // Save the projectCode to the file immediately
@@ -306,9 +422,10 @@ export async function renameProjectFile(originalFile: string, newFilename: strin
  * Creates a new project file and applies its result
  */
 export async function createProject(filename: string, initialData: Partial<DatabaseModel>) {
-  // Generate projectCode if not provided
+  // Generate unique projectCode if not provided
   if (initialData.project && !initialData.project.projectCode) {
-    initialData.project.projectCode = generateProjectCode();
+    const userEmail = await getCurrentUserEmail();
+    initialData.project.projectCode = await generateUniqueProjectCode(userEmail);
   }
   
   const data = safeMerge(dbModel, initialData);
