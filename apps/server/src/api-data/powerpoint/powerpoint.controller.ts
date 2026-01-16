@@ -454,8 +454,8 @@ async function loadPowerPointConfig(): Promise<{ ip: string; port: string } | nu
   }
 
   try {
-    const data = await supabaseAdapter.getProjectData(projectCode);
-    const config = data?.powerpoint?.config;
+    const projectRecord = await supabaseAdapter.getProjectData(projectCode);
+    const config = projectRecord?.data?.powerpoint?.config;
     
     if (config && config.ip && config.port) {
       logger.info(LogOrigin.Server, `✅ PowerPoint - Configuração carregada do Supabase: ip=${config.ip}, port=${config.port}`);

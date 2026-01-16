@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "author": "Vinicius Queiroz",
   "description": "Time keeping for live events",
-  "repository": "",
   "keywords": [
     "lighdev",
     "houseriaapp",
@@ -25,6 +24,8 @@
     "dev": "cross-env NODE_ENV=development electron .",
     "dist-win": "electron-builder --publish=never --x64 --win",
     "dist-mac": "electron-builder --publish=never --mac",
+    "dist-mac:x64": "electron-builder --publish=never --mac --x64",
+    "dist-mac:arm64": "electron-builder --publish=never --mac --arm64",
     "dist-mac:local": "electron-builder --publish=never --mac -c.mac.identity=null",
     "dist-linux": "electron-builder --publish=never --x64 --linux",
     "cleanup": "rm -rf .turbo && rm -rf node_modules && rm -rf dist"
@@ -33,9 +34,29 @@
     "productName": "HouseriaAPP",
     "appId": "no.lightdev.houseriaapp",
     "asar": true,
+    "generateUpdatesFilesForAllChannels": false,
+    "electronVersion": "36.3.1",
+    "compression": "normal",
     "dmg": {
       "artifactName": "houseriaapp-macOS-${arch}.dmg",
-      "icon": "icon.icns"
+      "icon": "icon.icns",
+      "writeUpdateInfo": false,
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     },
     "mac": {
       "notarize": true,

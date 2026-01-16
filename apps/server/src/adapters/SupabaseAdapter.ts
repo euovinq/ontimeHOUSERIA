@@ -943,21 +943,45 @@ export class SupabaseAdapter {
     }
 
     try {
+      // Sanitizar projectCode para garantir consistência (trim + uppercase)
+      const sanitizedProjectCode = (payload.projectCode || '').trim().toUpperCase();
+      
+      if (!sanitizedProjectCode) {
+        logger.warning(LogOrigin.Server, 'sendOptimizedData: projectCode vazio, não é possível salvar');
+        return;
+      }
+
+      // Garantir que o payload também tenha o projectCode sanitizado
+      const sanitizedPayload = {
+        ...payload,
+        projectCode: sanitizedProjectCode,
+        project: {
+          ...payload.project,
+          projectCode: sanitizedProjectCode
+        }
+      };
+
       const { error } = await this.supabase
         .from(this.config.tableName || 'ontime_realtime')
         .upsert({
-          id: payload.projectCode,
-          data: payload,
-          project_code: payload.projectCode,
+          id: sanitizedProjectCode,
+          data: sanitizedPayload,
+          project_code: sanitizedProjectCode,
           updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'project_code'  // Sempre verifica por project_code para evitar duplicatas
         });
 
       if (error) {
+        logger.error(LogOrigin.Server, `Supabase upsert error: ${error.message} (code: ${error.code})`);
         console.error(`Supabase upsert error: ${error.message}`);
       } else {
+        logger.info(LogOrigin.Server, `Dados salvos no Supabase para projeto: ${sanitizedProjectCode}`);
         this.lastSendTime = Date.now();
       }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+      logger.error(LogOrigin.Server, `Supabase send error: ${errorMsg}`);
       console.error(`Supabase send error: ${error}`);
     }
   }
@@ -1120,33 +1144,148 @@ export class SupabaseAdapter {
   async getProjectData(
     projectCode: string,
   ): Promise<{ data: any; user_id?: string | number | null } | null> {
+    // Sanitizar projectCode (trim + uppercase para garantir consistência)
+    const sanitizedCode = (projectCode || '').trim().toUpperCase();
+    
+    if (!sanitizedCode) {
+      logger.warning(LogOrigin.Server, 'getProjectData: projectCode vazio ou inválido');
+      return null;
+    }
+
     if (!this.isConnected || !this.supabase) {
+      logger.warning(LogOrigin.Server, `getProjectData: Supabase não está conectado. Tentando buscar projeto ${sanitizedCode}`);
       return null;
     }
 
     try {
+      logger.info(LogOrigin.Server, `Buscando projeto no Supabase com project_code: ${sanitizedCode}`);
+      
+      // Busca por project_code - pode haver múltiplos registros com o mesmo project_code
+      // então buscamos todos e pegamos o mais recente (ordenado por updated_at DESC)
+      const { data: allRecords, error: queryError } = await this.supabase
+        .from(this.config?.tableName || 'ontime_realtime')
+        .select('data, user_id, project_code, id, updated_at')
+        .eq('project_code', sanitizedCode)
+        .order('updated_at', { ascending: false })
+        .limit(10); // Limita a 10 para performance
+
+      if (queryError) {
+        // Se der erro na query, tenta buscar por id como fallback
+        logger.info(LogOrigin.Server, `Erro ao buscar por project_code, tentando por id: ${queryError.message}`);
+        const resultById = await this.supabase
+          .from(this.config?.tableName || 'ontime_realtime')
+          .select('data, user_id, project_code, id, updated_at')
+          .eq('id', sanitizedCode)
+          .maybeSingle();
+        
+        if (resultById.data) {
+          logger.info(LogOrigin.Server, `Encontrado por id (fallback): ${sanitizedCode}`);
+          const data = resultById.data;
+          
+          // Se encontrou por id mas não tem project_code ou está diferente, atualiza
+          if (!data.project_code || data.project_code.toUpperCase() !== sanitizedCode) {
+            logger.info(LogOrigin.Server, `Atualizando project_code do registro encontrado por id`);
+            try {
+              await this.supabase
+                .from(this.config?.tableName || 'ontime_realtime')
+                .update({ project_code: sanitizedCode })
+                .eq('id', sanitizedCode);
+              data.project_code = sanitizedCode;
+            } catch (updateError) {
+              logger.warning(LogOrigin.Server, `Não foi possível atualizar project_code: ${updateError}`);
+            }
+          }
+          
+          return {
+            data: data.data,
+            user_id: (data as any).user_id ?? null,
+          };
+        }
+        
+        // Se chegou aqui com erro, não encontrou
+        logger.info(LogOrigin.Server, `Erro ao buscar projeto: ${queryError.message}`);
+        await this.debugListProjects(sanitizedCode);
+        return null;
+      } else if (allRecords && allRecords.length > 0) {
+        // Encontrou registros - pega o mais recente (já está ordenado)
+        const data = allRecords[0];
+        
+        if (allRecords.length > 1) {
+          logger.warning(LogOrigin.Server, `⚠️ Encontrados ${allRecords.length} registros com project_code="${sanitizedCode}". Usando o mais recente (id: ${data.id}, updated_at: ${data.updated_at})`);
+        } else {
+          logger.info(LogOrigin.Server, `✅ Projeto encontrado: ${sanitizedCode} (id: ${data.id})`);
+        }
+        
+        return {
+          data: data.data,
+          user_id: (data as any).user_id ?? null,
+        };
+      } else {
+        // Não encontrou por project_code, tenta por id
+        logger.info(LogOrigin.Server, `Não encontrado por project_code, tentando por id: ${sanitizedCode}`);
+        const resultById = await this.supabase
+          .from(this.config?.tableName || 'ontime_realtime')
+          .select('data, user_id, project_code, id, updated_at')
+          .eq('id', sanitizedCode)
+          .maybeSingle();
+        
+        if (resultById.data) {
+          const data = resultById.data;
+          logger.info(LogOrigin.Server, `Encontrado por id (fallback): ${sanitizedCode}`);
+          
+          // Se encontrou por id mas não tem project_code ou está diferente, atualiza
+          if (!data.project_code || data.project_code.toUpperCase() !== sanitizedCode) {
+            logger.info(LogOrigin.Server, `Atualizando project_code do registro encontrado por id`);
+            try {
+              await this.supabase
+                .from(this.config?.tableName || 'ontime_realtime')
+                .update({ project_code: sanitizedCode })
+                .eq('id', sanitizedCode);
+              data.project_code = sanitizedCode;
+            } catch (updateError) {
+              logger.warning(LogOrigin.Server, `Não foi possível atualizar project_code: ${updateError}`);
+            }
+          }
+          
+          return {
+            data: data.data,
+            user_id: (data as any).user_id ?? null,
+          };
+        }
+        
+        // Se chegou aqui, não encontrou nem por project_code nem por id
+        logger.info(LogOrigin.Server, `Nenhum registro encontrado para project_code/id: ${sanitizedCode}`);
+        // Tenta listar alguns registros para debug
+        await this.debugListProjects(sanitizedCode);
+        return null;
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+      logger.error(LogOrigin.Server, `Exceção ao buscar projeto ${sanitizedCode}: ${errorMsg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Função auxiliar para debug - lista alguns projetos para ajudar a identificar problemas
+   */
+  private async debugListProjects(searchCode: string) {
+    try {
       const { data, error } = await this.supabase
         .from(this.config?.tableName || 'ontime_realtime')
-        .select('data, user_id')
-        .eq('project_code', projectCode)
-        .single();
+        .select('id, project_code, updated_at')
+        .limit(10)
+        .order('updated_at', { ascending: false });
 
-      if (error) {
-        logger.error(LogOrigin.Server, `Error getting project data: ${error.message}`);
-        return null;
+      if (!error && data && data.length > 0) {
+        logger.info(LogOrigin.Server, `📋 Registros encontrados na tabela (últimos 10):`);
+        data.forEach((record: any, index: number) => {
+          logger.info(LogOrigin.Server, `  ${index + 1}. id="${record.id}", project_code="${record.project_code || '(vazio)'}"`);
+        });
+        logger.info(LogOrigin.Server, `🔍 Procurando por: "${searchCode}"`);
       }
-
-      if (!data) {
-        return null;
-      }
-
-      return {
-        data: data.data,
-        user_id: (data as any).user_id ?? null,
-      };
-    } catch (error) {
-      logger.error(LogOrigin.Server, `Error getting project data: ${error}`);
-      return null;
+    } catch (err) {
+      // Ignora erros de debug
     }
   }
 
