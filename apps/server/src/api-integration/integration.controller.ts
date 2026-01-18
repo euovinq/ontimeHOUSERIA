@@ -1,4 +1,4 @@
-import { MessageState, OffsetMode, OntimeEvent, SimpleDirection, SimplePlayback, LogOrigin } from 'houseriaapp-types';
+import { MessageState, OffsetMode, OntimeEvent, SimpleDirection, SimplePlayback, LogOrigin, Playback } from 'houseriaapp-types';
 import { MILLIS_PER_HOUR, MILLIS_PER_SECOND } from 'houseriaapp-utils';
 
 import { DeepPartial } from 'ts-essentials';
@@ -9,6 +9,7 @@ import * as messageService from '../services/message-service/MessageService.js';
 import { validateMessage, validateTimerMessage } from '../services/message-service/messageUtils.js';
 import { runtimeService } from '../services/runtime-service/RuntimeService.js';
 import { eventStore } from '../stores/EventStore.js';
+import { getState } from '../stores/runtimeState.js';
 import * as assert from '../utils/assert.js';
 import { isEmptyObject } from '../utils/parserUtils.js';
 import { parseProperty, updateEvent } from './integration.utils.js';
@@ -163,6 +164,23 @@ const actionHandlers: Record<string, ActionHandler> = {
   stop: () => {
     runtimeService.stop();
     return { payload: 'success' };
+  },
+  go: () => {
+    const state = getState();
+    const currentPlayback = state.timer.playback;
+    
+    // Se está pausado, resume (start)
+    if (currentPlayback === Playback.Pause) {
+      return successPayloadOrError(runtimeService.start(), 'Unable to resume');
+    }
+    
+    // Se está tocando, avança para o próximo e inicia
+    if (currentPlayback === Playback.Play) {
+      return successPayloadOrError(runtimeService.startNext(), 'Unable to start next event');
+    }
+    
+    // Se está armado ou parado, apenas inicia
+    return successPayloadOrError(runtimeService.start(), 'Unable to start');
   },
   reload: () => {
     runtimeService.reload();

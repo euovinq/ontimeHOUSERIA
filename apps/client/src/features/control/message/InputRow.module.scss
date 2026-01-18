@@ -2,7 +2,7 @@
 
 .inputItems {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: $element-spacing;
   margin-top: $element-inner-spacing;
 }

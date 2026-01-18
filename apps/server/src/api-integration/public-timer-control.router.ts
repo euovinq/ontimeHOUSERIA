@@ -77,7 +77,7 @@ publicTimerControlRouter.get('/', (req: Request, res: Response) => {
 // Captura qualquer ação: /start, /pause, /message, /change, /auxtimer, /client, etc.
 publicTimerControlRouter.get('/*', async (req: Request, res: Response) => {
   // Extrai a ação do path (ex: /start -> 'start', /start/next -> 'start', /message -> 'message')
-  let action = req.path.substring(1).split('/')[0];
+  const action = req.path.substring(1).split('/')[0];
   
   if (!action) {
     // Se não há ação, já foi tratado pelo health check na raiz

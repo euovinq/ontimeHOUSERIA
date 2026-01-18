@@ -160,7 +160,7 @@ publicRouter.get('/*', async (req: Request, res: Response) => {
   }
   
   // Extrai a ação do path (ex: /start -> 'start', /start/next -> 'start')
-  let action = req.path.substring(1).split('/')[0];
+  const action = req.path.substring(1).split('/')[0];
   if (!action) {
     return res.status(400).json({ error: 'No action found' });
   }
