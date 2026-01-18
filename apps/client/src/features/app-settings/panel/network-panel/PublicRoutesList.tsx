@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
-import { IoCopy, IoCheckmark } from 'react-icons/io5';
+import { useMemo,useState } from 'react';
+import { IoCheckmark,IoCopy } from 'react-icons/io5';
 import { IconButton, Tooltip } from '@chakra-ui/react';
-import { serverURL } from '../../../../externals';
+
 import copyToClipboard from '../../../../common/utils/copyToClipboard';
+import { serverURL } from '../../../../externals';
 import { tooltipDelayFast } from '../../../../ontimeConfig';
 import * as Panel from '../../panel-utils/PanelUtils';
 
