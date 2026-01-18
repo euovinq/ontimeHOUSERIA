@@ -20,8 +20,27 @@ export const publicTimerControlRouter = express.Router();
  */
 const handlePublicTimerAction = async (req: Request, res: Response, action: string) => {
   try {
-    const query = isEmptyObject(req.query) ? undefined : (req.query as object);
+    let query = isEmptyObject(req.query) ? undefined : (req.query as object);
     let payload: unknown = undefined;
+    
+    // Processa query string e tenta fazer parse de valores JSON
+    if (query && typeof query === 'object') {
+      const processedQuery: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(query)) {
+        // Se o valor é uma string que parece JSON, tenta fazer parse
+        if (typeof value === 'string' && (value.trim().startsWith('{') || value.trim().startsWith('['))) {
+          try {
+            processedQuery[key] = JSON.parse(value);
+          } catch {
+            // Se não conseguir fazer parse, mantém como string
+            processedQuery[key] = value;
+          }
+        } else {
+          processedQuery[key] = value;
+        }
+      }
+      query = processedQuery;
+    }
     
     // Se há parâmetros na URL (ex: /start/next), processa como path
     const pathParts = req.path.split('/').filter(p => p && p !== action);

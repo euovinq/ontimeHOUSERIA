@@ -236,7 +236,18 @@ const actionHandlers: Record<string, ActionHandler> = {
     if (!('1' in payload)) {
       throw new Error('Invalid auxtimer index');
     }
-    const command = payload['1'];
+    let command = payload['1'];
+    
+    // Tenta fazer parse de JSON se o comando for uma string que parece JSON
+    // Isso é necessário quando JSON é passado via query string (GET)
+    if (typeof command === 'string' && (command.trim().startsWith('{') || command.trim().startsWith('['))) {
+      try {
+        command = JSON.parse(command);
+      } catch {
+        // Se não conseguir fazer parse, continua como string
+      }
+    }
+    
     if (typeof command === 'string') {
       if (command === SimplePlayback.Start) {
         const reply = auxTimerService.start();
@@ -259,6 +270,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       }
       if ('addtime' in command) {
         // convert addTime in seconds to ms
+        // Valores negativos removem tempo, valores positivos adicionam
         const timeInMs = numberOrError(command.addtime) * 1000;
         reply.payload = auxTimerService.addTime(timeInMs);
       }

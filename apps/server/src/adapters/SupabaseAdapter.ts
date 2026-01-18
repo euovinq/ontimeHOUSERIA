@@ -969,7 +969,7 @@ export class SupabaseAdapter {
           project_code: sanitizedProjectCode,
           updated_at: new Date().toISOString()
         }, {
-          onConflict: 'project_code'  // Sempre verifica por project_code para evitar duplicatas
+          onConflict: 'id'  // Usa id como chave primária (id = project_code)
         });
 
       if (error) {
