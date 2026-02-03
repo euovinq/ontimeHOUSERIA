@@ -1,0 +1,824 @@
+================================================================================
+GUIA COMPLETO: MIGRAÇÃO DO SISTEMA DE AUTENTICAÇÃO DO APP DESKTOP
+================================================================================
+Este documento descreve tudo que foi implementado no servidor e como migrar
+o app desktop para usar a nova API de autenticação com máxima segurança.
+================================================================================
+
+================================================================================
+1. O QUE FOI IMPLEMENTADO NO SERVIDOR
+================================================================================
+
+1.1 ENDPOINTS CRIADOS:
+-----------------------
+- POST /api/auth/login   → Login de usuários
+- POST /api/auth/logout  → Logout de usuários
+
+1.2 FUNCIONALIDADES:
+--------------------
+✅ Validação de credenciais (email + password)
+✅ Verificação de período de acesso (tabela sales)
+✅ Controle de limite de sessões/máquinas (base: 5 máquinas)
+✅ Criação de sessões no banco de dados
+✅ Geração de tokens JWT
+✅ Validação de tokens no servidor
+✅ Revogação de sessões (logout)
+
+1.3 TABELAS CRIADAS NO SUPABASE:
+----------------------------------
+- user_sessions          → Controla sessões ativas
+- user_machine_licenses → Licenças adicionais de máquinas
+
+1.4 SEGURANÇA:
+--------------
+✅ Hash de senha: SHA-256 + base64url (mesmo formato do sistema antigo)
+✅ Tokens JWT com expiração de 24 horas
+✅ Validação de assinatura no servidor (chave secreta nunca exposta)
+✅ Controle de limite de sessões no banco (trigger)
+✅ Validação de período de acesso no servidor
+
+================================================================================
+2. COMO FUNCIONA O NOVO SISTEMA
+================================================================================
+
+2.1 FLUXO DE LOGIN:
+-------------------
+1. App Desktop → POST /api/auth/login {email, password}
+2. Servidor valida credenciais
+3. Servidor verifica período de acesso (se não admin)
+4. Servidor verifica limite de sessões
+5. Servidor cria sessão no banco
+6. Servidor gera token JWT
+7. Servidor retorna token + dados do usuário
+8. App Desktop armazena token de forma segura
+9. App Desktop usa token em requisições futuras
+
+2.2 FLUXO DE AUTENTICAÇÃO:
+--------------------------
+1. App Desktop envia token no header: Authorization: Bearer <token>
+2. Servidor valida assinatura do token
+3. Servidor verifica se sessão ainda está ativa no banco
+4. Servidor permite ou nega acesso
+
+2.3 FLUXO DE LOGOUT:
+--------------------
+1. App Desktop → POST /api/auth/logout (com token)
+2. Servidor valida token
+3. Servidor remove sessão do banco
+4. Token JWT fica inválido (sessão não existe mais)
+
+================================================================================
+3. ENDPOINTS DA API - DETALHAMENTO COMPLETO
+================================================================================
+
+3.1 POST /api/auth/login
+-------------------------
+URL: https://seu-dominio.com/api/auth/login
+Method: POST
+Content-Type: application/json
+
+REQUEST BODY:
+{
+  "email": "usuario@example.com",
+  "password": "senha123"
+}
+
+RESPOSTA DE SUCESSO (200):
+{
+  "message": "Login efetuado com sucesso.",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMjMiLCJzZXNzaW9uSWQiOiJ1dWlkLWRhLXNlc3NhbyIsImlzQWRtaW4iOmZhbHNlLCJleHAiOjE3MDAwMDAwMDB9.assinatura",
+  "user": {
+    "id": "123",
+    "email": "usuario@example.com",
+    "isAdmin": false
+  },
+  "session": {
+    "id": "uuid-da-sessao",
+    "activeSessions": 3,
+    "maxLimit": 5
+  },
+  "licenseExpiresAt": "2025-12-31"  // null se for admin
+}
+
+RESPOSTAS DE ERRO:
+
+400 - Email/senha não fornecidos:
+{
+  "message": "E-mail e senha são obrigatórios."
+}
+
+401 - Credenciais inválidas:
+{
+  "message": "Usuário ou senha inválidos.",
+  "code": "invalid_credentials"
+}
+
+403 - Período de acesso expirado:
+{
+  "message": "Seu período de acesso expirou. Faça uma nova aquisição.",
+  "code": "period_expired"
+}
+
+403 - Limite de sessões atingido:
+{
+  "message": "Limite de 5 máquinas atingido. Você possui 5 instância(s) ativa(s). Faça logout em uma das instâncias ou compre licenças adicionais.",
+  "code": "max_sessions_reached",
+  "activeSessions": 5,
+  "maxLimit": 5,
+  "baseLimit": 5,
+  "additionalLicenses": 0,
+  "availableSlots": 0
+}
+
+500 - Erro interno:
+{
+  "message": "Erro ao fazer login."
+}
+
+3.2 POST /api/auth/logout
+--------------------------
+URL: https://seu-dominio.com/api/auth/logout
+Method: POST
+Headers: Authorization: Bearer <token>
+
+RESPOSTA DE SUCESSO (200):
+{
+  "message": "Logout realizado com sucesso."
+}
+
+RESPOSTAS DE ERRO:
+
+401 - Token não fornecido ou inválido:
+{
+  "error": "Token não fornecido"
+}
+ou
+{
+  "error": "Token inválido ou expirado"
+}
+
+500 - Erro interno:
+{
+  "error": "Erro ao fazer logout"
+}
+
+================================================================================
+4. ESTRUTURA DO TOKEN JWT
+================================================================================
+
+O token JWT contém as seguintes informações (decodificado):
+
+{
+  "userId": "123",              // ID do usuário
+  "sessionId": "uuid-sessao",   // ID único da sessão no banco
+  "isAdmin": false,             // Se usuário é administrador
+  "exp": 1700000000,            // Timestamp de expiração (24h)
+  "iat": 1699913600             // Timestamp de criação
+}
+
+IMPORTANTE:
+- O token tem validade de 24 horas
+- A sessão no banco também expira em 24 horas
+- Mesmo que o token JWT seja válido, se a sessão foi removida do banco,
+  o acesso será negado
+- O servidor SEMPRE valida a assinatura do token (não pode ser forjado)
+
+================================================================================
+5. MIGRAÇÃO DO APP DESKTOP - PASSO A PASSO
+================================================================================
+
+5.1 REMOVER SISTEMA ANTIGO:
+----------------------------
+❌ Remover toda lógica de validação de login local
+❌ Remover hash de senha no cliente
+❌ Remover verificação de período local
+❌ Remover armazenamento de credenciais em texto plano
+❌ Remover qualquer lógica de autenticação que não seja via API
+
+5.2 IMPLEMENTAR NOVO SISTEMA:
+------------------------------
+
+PASSO 1: Criar classe/service de autenticação
+
+```typescript
+// AuthService.ts
+class AuthService {
+  private token: string | null = null;
+  private userData: any = null;
+  private readonly API_BASE_URL = 'https://seu-dominio.com/api';
+
+  /**
+   * Faz login via API
+   */
+  async login(email: string, password: string): Promise<LoginResponse> {
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Tratar erros específicos
+        if (data.code === 'invalid_credentials') {
+          throw new Error('Email ou senha incorretos');
+        } else if (data.code === 'period_expired') {
+          throw new Error('Seu período de acesso expirou. Faça uma nova aquisição.');
+        } else if (data.code === 'max_sessions_reached') {
+          throw new Error(
+            `Limite de ${data.maxLimit} máquinas atingido. ` +
+            `Você possui ${data.activeSessions} instância(s) ativa(s). ` +
+            `Faça logout em uma das instâncias ou compre licenças adicionais.`
+          );
+        } else {
+          throw new Error(data.message || 'Erro ao fazer login');
+        }
+      }
+
+      // Armazenar token de forma segura
+      this.token = data.token;
+      this.userData = data.user;
+
+      // Salvar token no keychain/credential manager (SEGURO)
+      await this.saveTokenSecurely(data.token);
+      await this.saveUserData(data.user, data.session, data.licenseExpiresAt);
+
+      return {
+        success: true,
+        token: data.token,
+        user: data.user,
+        session: data.session,
+        licenseExpiresAt: data.licenseExpiresAt,
+      };
+    } catch (error) {
+      console.error('Erro no login:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Faz logout via API
+   */
+  async logout(): Promise<void> {
+    if (!this.token) {
+      return; // Já está deslogado
+    }
+
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Erro ao fazer logout:', await response.json());
+      }
+    } catch (error) {
+      console.error('Erro no logout:', error);
+    } finally {
+      // Limpar dados locais mesmo se logout falhar
+      this.token = null;
+      this.userData = null;
+      await this.clearStoredData();
+    }
+  }
+
+  /**
+   * Verifica se token está expirado (SEM validar assinatura - não precisa de chave)
+   */
+  isTokenExpired(): boolean {
+    if (!this.token) {
+      return true;
+    }
+
+    try {
+      const parts = this.token.split('.');
+      if (parts.length !== 3) {
+        return true;
+      }
+
+      const payload = JSON.parse(atob(parts[1]));
+      const now = Math.floor(Date.now() / 1000);
+
+      return payload.exp < now;
+    } catch (error) {
+      console.error('Erro ao verificar expiração do token:', error);
+      return true;
+    }
+  }
+
+  /**
+   * Verifica se usuário está autenticado
+   */
+  isAuthenticated(): boolean {
+    return this.token !== null && !this.isTokenExpired();
+  }
+
+  /**
+   * Obtém token atual
+   */
+  getToken(): string | null {
+    return this.token;
+  }
+
+  /**
+   * Obtém dados do usuário
+   */
+  getUserData(): any {
+    return this.userData;
+  }
+
+  /**
+   * Faz requisições autenticadas
+   */
+  async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+    if (!this.token || this.isTokenExpired()) {
+      throw new Error('Token inválido ou expirado. Faça login novamente.');
+    }
+
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+  }
+
+  /**
+   * Carrega token salvo ao iniciar app
+   */
+  async loadStoredToken(): Promise<boolean> {
+    try {
+      const token = await this.loadTokenSecurely();
+      if (token && !this.isTokenExpiredForToken(token)) {
+        this.token = token;
+        const userData = await this.loadUserData();
+        this.userData = userData;
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Erro ao carregar token salvo:', error);
+      return false;
+    }
+  }
+
+  private isTokenExpiredForToken(token: string): boolean {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return true;
+      const payload = JSON.parse(atob(parts[1]));
+      return payload.exp < Math.floor(Date.now() / 1000);
+    } catch {
+      return true;
+    }
+  }
+
+  // Métodos para armazenamento seguro (implementar conforme plataforma)
+  private async saveTokenSecurely(token: string): Promise<void> {
+    // macOS: Keychain
+    // Windows: Credential Manager
+    // Linux: libsecret
+    // Implementar conforme sua plataforma
+  }
+
+  private async loadTokenSecurely(): Promise<string | null> {
+    // Carregar do keychain/credential manager
+    // Implementar conforme sua plataforma
+    return null;
+  }
+
+  private async saveUserData(user: any, session: any, licenseExpiresAt: string | null): Promise<void> {
+    // Salvar dados do usuário (pode ser em arquivo criptografado ou keychain)
+    // Implementar conforme sua plataforma
+  }
+
+  private async loadUserData(): Promise<any> {
+    // Carregar dados do usuário
+    // Implementar conforme sua plataforma
+    return null;
+  }
+
+  private async clearStoredData(): Promise<void> {
+    // Limpar token e dados do keychain/credential manager
+    // Implementar conforme sua plataforma
+  }
+}
+
+interface LoginResponse {
+  success: boolean;
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    isAdmin: boolean;
+  };
+  session: {
+    id: string;
+    activeSessions: number;
+    maxLimit: number;
+  };
+  licenseExpiresAt: string | null;
+}
+
+export default AuthService;
+```
+
+PASSO 2: Usar o AuthService no app
+
+```typescript
+// main.ts ou App.tsx
+import AuthService from './services/AuthService';
+
+const authService = new AuthService();
+
+// Ao iniciar app, tentar carregar token salvo
+async function initializeApp() {
+  const hasStoredToken = await authService.loadStoredToken();
+  
+  if (!hasStoredToken) {
+    // Mostrar tela de login
+    showLoginScreen();
+  } else {
+    // Usuário já autenticado, mostrar app principal
+    showMainApp();
+  }
+}
+
+// Tela de login
+async function handleLogin(email: string, password: string) {
+  try {
+    const response = await authService.login(email, password);
+    
+    if (response.success) {
+      // Login bem-sucedido
+      showMainApp();
+      
+      // Mostrar informações ao usuário (opcional)
+      console.log(`Logado como: ${response.user.email}`);
+      console.log(`Sessões ativas: ${response.session.activeSessions}/${response.session.maxLimit}`);
+      
+      if (response.licenseExpiresAt) {
+        console.log(`Licença expira em: ${response.licenseExpiresAt}`);
+      }
+    }
+  } catch (error) {
+    // Mostrar erro ao usuário
+    showError(error.message);
+  }
+}
+
+// Fazer requisições autenticadas
+async function fetchUserData() {
+  try {
+    const response = await authService.authenticatedFetch(
+      'https://seu-dominio.com/api/user/data'
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data;
+    } else if (response.status === 401) {
+      // Token inválido, fazer logout e mostrar login
+      await authService.logout();
+      showLoginScreen();
+    }
+  } catch (error) {
+    console.error('Erro ao buscar dados:', error);
+  }
+}
+
+// Logout
+async function handleLogout() {
+  await authService.logout();
+  showLoginScreen();
+}
+```
+
+================================================================================
+6. BOAS PRÁTICAS DE SEGURANÇA
+================================================================================
+
+6.1 ARMAZENAMENTO DO TOKEN:
+----------------------------
+✅ SEMPRE use keychain/credential manager (NUNCA texto plano)
+✅ macOS: Keychain Services
+✅ Windows: Credential Manager (Windows Credential Store)
+✅ Linux: libsecret ou similar
+✅ NUNCA salve token em arquivo de texto, banco local sem criptografia, ou
+   variáveis de ambiente do sistema
+
+6.2 COMUNICAÇÃO:
+----------------
+✅ SEMPRE use HTTPS (NUNCA HTTP)
+✅ Valide certificados SSL
+✅ Não aceite certificados auto-assinados em produção
+✅ Use TLS 1.2 ou superior
+
+6.3 TRATAMENTO DE ERROS:
+-------------------------
+✅ NUNCA exponha mensagens de erro detalhadas ao usuário
+✅ Log erros no console apenas em desenvolvimento
+✅ Trate erros 401 (não autenticado) fazendo logout automático
+✅ Trate erros 403 (período expirado/limite) mostrando mensagem clara
+
+6.4 VALIDAÇÃO:
+--------------
+✅ Verifique expiração do token antes de fazer requisições
+✅ Se token expirado, faça logout automático e mostre tela de login
+✅ NUNCA tente validar assinatura do token no cliente (não precisa da chave)
+✅ O servidor SEMPRE valida a assinatura
+
+6.5 LOGOUT:
+-----------
+✅ Sempre chame /api/auth/logout ao fazer logout
+✅ Limpe token local mesmo se logout falhar
+✅ Limpe todos os dados sensíveis ao fazer logout
+
+================================================================================
+7. EXEMPLO COMPLETO DE IMPLEMENTAÇÃO (TypeScript/Electron)
+================================================================================
+
+```typescript
+// services/AuthService.ts
+import * as keytar from 'keytar'; // Para keychain (npm install keytar)
+// ou use @electron/remote para Electron
+
+const SERVICE_NAME = 'SeuApp';
+const TOKEN_KEY = 'auth_token';
+const USER_DATA_KEY = 'user_data';
+
+class AuthService {
+  private token: string | null = null;
+  private userData: any = null;
+  private readonly API_BASE_URL = process.env.API_URL || 'https://seu-dominio.com/api';
+
+  async login(email: string, password: string) {
+    const response = await fetch(`${this.API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw this.handleLoginError(data);
+    }
+
+    this.token = data.token;
+    this.userData = data.user;
+
+    // Salvar no keychain
+    await keytar.setPassword(SERVICE_NAME, TOKEN_KEY, data.token);
+    await keytar.setPassword(
+      SERVICE_NAME,
+      USER_DATA_KEY,
+      JSON.stringify({
+        user: data.user,
+        session: data.session,
+        licenseExpiresAt: data.licenseExpiresAt,
+      })
+    );
+
+    return data;
+  }
+
+  async logout() {
+    if (this.token) {
+      try {
+        await fetch(`${this.API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${this.token}` },
+        });
+      } catch (error) {
+        console.error('Erro ao fazer logout:', error);
+      }
+    }
+
+    this.token = null;
+    this.userData = null;
+
+    // Limpar keychain
+    await keytar.deletePassword(SERVICE_NAME, TOKEN_KEY);
+    await keytar.deletePassword(SERVICE_NAME, USER_DATA_KEY);
+  }
+
+  async loadStoredToken(): Promise<boolean> {
+    try {
+      const token = await keytar.getPassword(SERVICE_NAME, TOKEN_KEY);
+      if (token && !this.isTokenExpired(token)) {
+        this.token = token;
+        
+        const userDataStr = await keytar.getPassword(SERVICE_NAME, USER_DATA_KEY);
+        if (userDataStr) {
+          this.userData = JSON.parse(userDataStr);
+        }
+        
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  isTokenExpired(token?: string): boolean {
+    const tokenToCheck = token || this.token;
+    if (!tokenToCheck) return true;
+
+    try {
+      const parts = tokenToCheck.split('.');
+      if (parts.length !== 3) return true;
+      const payload = JSON.parse(atob(parts[1]));
+      return payload.exp < Math.floor(Date.now() / 1000);
+    } catch {
+      return true;
+    }
+  }
+
+  async authenticatedFetch(url: string, options: RequestInit = {}) {
+    if (!this.token || this.isTokenExpired()) {
+      throw new Error('Token inválido');
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status === 401) {
+      await this.logout();
+      throw new Error('Sessão expirada');
+    }
+
+    return response;
+  }
+
+  private handleLoginError(data: any): Error {
+    if (data.code === 'invalid_credentials') {
+      return new Error('Email ou senha incorretos');
+    } else if (data.code === 'period_expired') {
+      return new Error('Seu período de acesso expirou. Faça uma nova aquisição.');
+    } else if (data.code === 'max_sessions_reached') {
+      return new Error(
+        `Limite de ${data.maxLimit} máquinas atingido. ` +
+        `Você possui ${data.activeSessions} instância(s) ativa(s).`
+      );
+    }
+    return new Error(data.message || 'Erro ao fazer login');
+  }
+
+  getToken() {
+    return this.token;
+  }
+
+  getUserData() {
+    return this.userData;
+  }
+
+  isAuthenticated() {
+    return this.token !== null && !this.isTokenExpired();
+  }
+}
+
+export default new AuthService();
+```
+
+================================================================================
+8. CHECKLIST DE MIGRAÇÃO
+================================================================================
+
+Antes de fazer deploy:
+[ ] Remover toda lógica de autenticação local do app desktop
+[ ] Remover hash de senha no cliente
+[ ] Remover verificação de período local
+[ ] Implementar chamada para /api/auth/login
+[ ] Implementar chamada para /api/auth/logout
+[ ] Implementar armazenamento seguro do token (keychain)
+[ ] Implementar verificação de expiração do token
+[ ] Implementar envio de token em requisições autenticadas
+[ ] Implementar tratamento de erros (401, 403, 500)
+[ ] Testar login com credenciais válidas
+[ ] Testar login com credenciais inválidas
+[ ] Testar login com período expirado
+[ ] Testar login com limite de sessões atingido
+[ ] Testar logout
+[ ] Testar expiração de token
+[ ] Testar requisições autenticadas
+[ ] Verificar que token não é exposto em logs
+[ ] Verificar que comunicação é sempre HTTPS
+[ ] Verificar que token é salvo de forma segura
+
+================================================================================
+9. VARIÁVEIS DE AMBIENTE NECESSÁRIAS
+================================================================================
+
+No servidor (já configurado):
+- JWT_SECRET=sua-chave-secreta-aqui
+- SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key
+- NEXT_PUBLIC_SUPABASE_URL=url-do-supabase
+- NEXT_PUBLIC_SUPABASE_ANON_KEY=anon-key
+
+No app desktop:
+- API_URL=https://seu-dominio.com/api  (URL base da API)
+- NÃO precisa de JWT_SECRET (mais seguro!)
+
+================================================================================
+10. TESTES RECOMENDADOS
+================================================================================
+
+10.1 TESTES DE LOGIN:
+---------------------
+✅ Login com credenciais válidas
+✅ Login com email inválido
+✅ Login com senha incorreta
+✅ Login com período expirado
+✅ Login com limite de sessões atingido
+✅ Login de admin (bypass de validações)
+
+10.2 TESTES DE TOKEN:
+---------------------
+✅ Verificar que token é recebido após login
+✅ Verificar que token é salvo de forma segura
+✅ Verificar expiração do token após 24h
+✅ Verificar que token expirado não funciona
+
+10.3 TESTES DE REQUISIÇÕES:
+---------------------------
+✅ Requisição autenticada com token válido
+✅ Requisição autenticada com token expirado
+✅ Requisição autenticada sem token
+✅ Requisição autenticada com token inválido
+
+10.4 TESTES DE LOGOUT:
+----------------------
+✅ Logout remove sessão do banco
+✅ Logout limpa token local
+✅ Logout após token expirado
+
+================================================================================
+11. SUPORTE E TROUBLESHOOTING
+================================================================================
+
+11.1 ERRO: "Token não fornecido"
+---------------------------------
+Causa: Token não está sendo enviado no header Authorization
+Solução: Verificar que token está sendo enviado como: Authorization: Bearer <token>
+
+11.2 ERRO: "Token inválido ou expirado"
+---------------------------------------
+Causa: Token expirou ou assinatura inválida
+Solução: Fazer login novamente
+
+11.3 ERRO: "Limite de máquinas atingido"
+----------------------------------------
+Causa: Usuário já tem número máximo de sessões ativas
+Solução: Fazer logout em outra instância ou comprar licenças adicionais
+
+11.4 ERRO: "Período de acesso expirado"
+---------------------------------------
+Causa: Não há registro válido na tabela sales
+Solução: Fazer nova aquisição de licença
+
+11.5 ERRO: CORS ou conexão
+---------------------------
+Causa: Problema de rede ou CORS não configurado
+Solução: Verificar URL da API e configuração CORS no servidor
+
+================================================================================
+12. NOTAS FINAIS
+================================================================================
+
+✅ O sistema foi migrado para máxima segurança
+✅ Chave secreta JWT nunca sai do servidor
+✅ Validação sempre acontece no servidor
+✅ Tokens podem ser revogados (sessões no banco)
+✅ Limite de máquinas é controlado no servidor
+✅ Período de acesso é validado no servidor
+
+⚠️ IMPORTANTE:
+- NUNCA exponha JWT_SECRET no app desktop
+- SEMPRE use HTTPS
+- SEMPRE armazene token de forma segura (keychain)
+- SEMPRE valide expiração antes de usar token
+- SEMPRE trate erros 401 fazendo logout
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

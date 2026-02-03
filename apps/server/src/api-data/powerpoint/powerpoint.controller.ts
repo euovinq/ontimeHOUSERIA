@@ -166,7 +166,7 @@ setTimeout(() => {
 // EXPORTA para poder ser chamada externamente (ex: integration.controller)
 export function initializeSupabaseService(): void {
   // Só loga na primeira verificação ou quando há mudanças importantes
-  const shouldLog = !supabaseService;
+  const _shouldLog = !supabaseService;
   
   // Verifica apenas WebSocket (único serviço usado agora)
   const hasWebSocket = websocketService && websocketService.isServiceConnected();

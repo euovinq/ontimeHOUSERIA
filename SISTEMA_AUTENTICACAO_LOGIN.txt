@@ -1,0 +1,855 @@
+================================================================================
+DOCUMENTAÇÃO: SISTEMA DE AUTENTICAÇÃO E REGRAS DE LOGIN
+================================================================================
+Este documento descreve como funciona o sistema atual de autenticação para
+que você possa criar um endpoint idêntico na Vercel.
+
+================================================================================
+IMPORTANTE: ESTADO ATUAL DO SISTEMA
+================================================================================
+
+O QUE JÁ EXISTE E FUNCIONA:
+- Tabela "users" (já existe)
+- Tabela "sales" (já existe)
+- Validação de credenciais (email + password)
+- Verificação de período de acesso via tabela "sales"
+- Login funciona para admin e usuários com período válido
+
+O QUE PRECISA SER CRIADO PRIMEIRO (ANTES DO ENDPOINT VERCEL):
+- Tabela "user_sessions" (para controlar sessões ativas)
+- Tabela "user_machine_licenses" (para licenças adicionais)
+- Trigger "check_max_sessions()" (valida limite antes de inserir sessão)
+- Função "get_user_machine_limit()" (calcula limite total)
+- View "user_machine_limits" (para visualização)
+
+O QUE SERÁ IMPLEMENTADO DEPOIS:
+- Endpoint de login na Vercel (usando as tabelas criadas acima)
+- Endpoint de logout na Vercel
+- Sistema atual passará a validar JWT ao invés de gerenciar sessões
+
+================================================================================
+ORDEM DE IMPLEMENTAÇÃO RECOMENDADA
+================================================================================
+
+1. PRIMEIRO: Criar tabelas e triggers no Supabase (Seção 11)
+2. SEGUNDO: Implementar endpoint na Vercel (Seção 6)
+3. TERCEIRO: Atualizar sistema atual para validar JWT
+
+================================================================================
+1. VISÃO GERAL DO FLUXO DE LOGIN
+================================================================================
+
+1. Cliente envia: POST /auth/login
+   Body: { email: string, password: string }
+
+2. Sistema valida credenciais no Supabase (tabela users)
+
+3. Se usuário é admin:
+   - Login permitido imediatamente
+   - Não verifica período de acesso (sales)
+
+4. Se usuário NÃO é admin:
+   - Verifica se existe registro válido na tabela "sales"
+   - Período válido = timestamp_inicio <= agora <= timestamp_final
+   - Se não houver período válido, bloqueia login
+
+5. Se tudo OK:
+   - Cria sessão de autenticação
+   - Retorna dados do usuário e informações de licença
+
+================================================================================
+2. ESTRUTURA DAS TABELAS NO SUPABASE
+================================================================================
+
+2.1 TABELA: users
+------------------
+Campos relevantes:
+- id (string | number) - ID único do usuário
+- email (string) - Email do usuário (usado para login)
+- password_hash (string) - Hash da senha (SHA-256 + base64url, sem "=")
+- is_admin (boolean) - Se o usuário é administrador
+
+Query para buscar usuário:
+  SELECT id, email, is_admin, password_hash
+  FROM users
+  WHERE email = ?
+  LIMIT 1
+
+2.2 TABELA: sales
+------------------
+Campos relevantes:
+- id_usuario (string | number) - ID do usuário
+- timestamp_inicio (timestamp) - Data/hora de início do período
+- timestamp_final (timestamp) - Data/hora de fim do período
+
+Query para verificar período válido:
+  SELECT id, timestamp_inicio, timestamp_final
+  FROM sales
+  WHERE id_usuario = ?
+    AND timestamp_inicio <= NOW()
+    AND timestamp_final >= NOW()
+
+IMPORTANTE: Um usuário precisa ter PELO MENOS 1 registro válido na tabela
+sales para fazer login (exceto se for admin).
+
+2.3 TABELA: user_sessions (A SER CRIADA)
+------------------------------------------
+Esta tabela será criada para controlar sessões e limite de máquinas.
+
+Campos:
+- id (UUID) - ID único da sessão no banco
+- user_id (string) - ID do usuário
+- session_id (UUID) - ID único da sessão (gerado pelo sistema)
+- is_admin (boolean) - Se usuário é admin
+- machine_info (JSONB) - Informações da máquina (machineId, IP, user-agent, etc)
+  - machineId: Identificador único baseado em hardware (RECOMENDADO)
+  - ip: Endereço IP (mantido para referência)
+  - userAgent: User-Agent do cliente
+  - timestamp: Data/hora da criação
+- created_at (timestamp) - Data de criação
+- last_activity (timestamp) - Última atividade
+- expires_at (timestamp) - Data de expiração (padrão: 24h)
+
+2.4 TABELA: user_machine_licenses (A SER CRIADA)
+-------------------------------------------------
+Esta tabela armazena licenças adicionais de máquinas compradas.
+
+Campos:
+- id (UUID) - ID único
+- user_id (string) - ID do usuário
+- quantity (integer) - Quantidade de máquinas adicionais
+- expires_at (timestamp | null) - Data de expiração (null = permanente)
+- is_active (boolean) - Se licença está ativa
+- purchase_reference (string) - Referência da compra (único)
+- created_at (timestamp)
+- updated_at (timestamp)
+
+================================================================================
+3. HASH DE SENHA
+================================================================================
+
+O sistema usa SHA-256 + base64url (sem padding "=").
+
+Algoritmo:
+1. Criar hash SHA-256 da senha
+2. Converter para base64url (URL-safe base64)
+3. Remover padding "=" se houver
+
+Exemplo em Node.js:
+  const crypto = require('crypto');
+  const hash = crypto.createHash('sha256')
+    .update(password)
+    .digest('base64url');
+
+IMPORTANTE: O hash armazenado no Supabase NÃO tem "=" no final.
+O formato base64url já remove o padding automaticamente.
+
+Exemplo:
+  Senha: "minhasenha123"
+  Hash: "aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890abcdefghijklmnopqrstuvwxyz"
+
+================================================================================
+4. FLUXO DETALHADO DE AUTENTICAÇÃO
+================================================================================
+
+4.1 VALIDAÇÃO DE CREDENCIAIS
+------------------------------
+
+Passo 1: Receber email e password do body da requisição
+Passo 2: Validar que ambos foram fornecidos
+Passo 3: Criar hash da senha usando SHA-256 + base64url
+Passo 4: Buscar usuário no Supabase:
+  
+  SELECT id, email, is_admin, password_hash
+  FROM users
+  WHERE email = ?
+  LIMIT 1
+
+Passo 5: Comparar hash recebido com hash armazenado
+  Se diferentes OU usuário não encontrado:
+    Retornar erro 401: "Usuário ou senha inválidos."
+    code: "invalid_credentials"
+
+4.2 VERIFICAÇÃO DE PERÍODO DE ACESSO (APENAS NÃO-ADMIN)
+---------------------------------------------------------
+
+Se usuário.is_admin === true:
+  - Pular esta verificação
+  - Prosseguir para criação de sessão
+
+Se usuário.is_admin === false:
+  Passo 1: Buscar registros válidos na tabela sales:
+  
+    SELECT id, timestamp_inicio, timestamp_final
+    FROM sales
+    WHERE id_usuario = ?
+      AND timestamp_inicio <= NOW()
+      AND timestamp_final >= NOW()
+
+  Passo 2: Verificar se encontrou pelo menos 1 registro
+    Se não encontrou:
+      Retornar erro 403: "Seu período de acesso expirou. Faça uma nova aquisição."
+      code: "period_expired"
+
+  Passo 3: Calcular data de expiração da licença:
+    - Pegar o maior timestamp_final entre os registros válidos
+    - Converter para formato YYYY-MM-DD (apenas data, sem hora)
+    - Exemplo: "2025-12-31T23:59:59Z" -> "2025-12-31"
+
+4.3 VERIFICAÇÃO DE LIMITE DE SESSÕES (NOVO - REQUER TABELAS CRIADAS)
+---------------------------------------------------------------------
+IMPORTANTE: Esta seção só funciona DEPOIS de criar as tabelas user_sessions
+e user_machine_licenses no Supabase (ver Seção 11).
+
+Passo 1: Calcular limite total do usuário:
+  - Limite base: 5 máquinas
+  - Buscar licenças ativas na tabela user_machine_licenses:
+    
+    SELECT SUM(quantity) as additional
+    FROM user_machine_licenses
+    WHERE user_id = ?
+      AND is_active = true
+      AND (expires_at IS NULL OR expires_at > NOW())
+  
+  - Limite total = 5 + additional
+
+Passo 2: Contar sessões ativas:
+  
+  SELECT COUNT(*) as count
+  FROM user_sessions
+  WHERE user_id = ?
+    AND expires_at > NOW()
+
+Passo 3: Verificar se pode criar nova sessão:
+  Se count >= limite_total:
+    Retornar erro 403:
+      "Limite de {limite_total} máquinas atingido. 
+       Você possui {count} instância(s) ativa(s). 
+       Faça logout em uma das instâncias ou compre licenças adicionais."
+    code: "max_sessions_reached"
+    activeSessions: count
+    maxLimit: limite_total
+
+4.4 CRIAÇÃO DE SESSÃO (NOVO - REQUER TABELA user_sessions CRIADA)
+------------------------------------------------------------------
+IMPORTANTE: Esta seção só funciona DEPOIS de criar a tabela user_sessions
+no Supabase (ver Seção 11.1).
+
+Se passou todas as validações:
+
+Passo 1: Gerar sessionId único (UUID v4)
+Passo 2: Calcular expires_at (agora + 24 horas)
+Passo 3: Coletar informações da máquina:
+  - Machine ID: req.body.machineId (identificador único baseado em hardware - RECOMENDADO)
+  - IP: req.headers['x-forwarded-for'] || req.ip (mantido para referência)
+  - User-Agent: req.headers['user-agent']
+  - Timestamp: new Date().toISOString()
+  
+  NOTA: Machine ID é mais confiável que IP porque:
+    - Não muda mesmo se o IP mudar (DHCP, VPN, etc)
+    - É único por máquina física
+    - Mais difícil de falsificar
+    - Funciona em qualquer rede
+
+Passo 4: Inserir sessão no banco:
+  
+  INSERT INTO user_sessions (
+    user_id,
+    session_id,
+    is_admin,
+    machine_info,
+    created_at,
+    last_activity,
+    expires_at
+  ) VALUES (
+    ?,
+    ?,
+    ?,
+    ?::jsonb,
+    NOW(),
+    NOW(),
+    ?
+  )
+
+IMPORTANTE: O trigger check_max_sessions() no banco vai validar o limite
+ANTES de inserir. Se exceder, a inserção será rejeitada com erro.
+
+Passo 5: Se inserção falhar por limite excedido:
+  Retornar erro 403 com informações do limite
+
+4.5 GERAÇÃO DE TOKEN JWT (NOVO - PARA VERCEL)
+----------------------------------------------
+Esta parte será implementada no endpoint da Vercel.
+
+Passo 1: Criar payload do JWT:
+  {
+    userId: user.id,
+    sessionId: sessionIdGerado,
+    isAdmin: user.is_admin,
+    exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24h em segundos
+  }
+
+Passo 2: Assinar JWT com secret:
+  const jwt = require('jsonwebtoken');
+  const token = jwt.sign(payload, process.env.JWT_SECRET);
+
+Passo 3: Retornar token no response
+
+================================================================================
+5. RESPOSTAS DA API
+================================================================================
+
+5.1 SUCESSO (200 OK)
+---------------------
+{
+  "message": "Login efetuado com sucesso.",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "123",
+    "email": "usuario@example.com",
+    "isAdmin": false
+  },
+  "session": {
+    "id": "uuid-da-sessao",
+    "activeSessions": 3,
+    "maxLimit": 5
+  },
+  "licenseExpiresAt": "2025-12-31" // ou null se admin
+}
+
+5.2 ERRO: CREDENCIAIS INVÁLIDAS (401)
+--------------------------------------
+{
+  "message": "Usuário ou senha inválidos.",
+  "code": "invalid_credentials"
+}
+
+5.3 ERRO: PERÍODO EXPIRADO (403)
+---------------------------------
+{
+  "message": "Seu período de acesso expirou. Faça uma nova aquisição.",
+  "code": "period_expired"
+}
+
+5.4 ERRO: LIMITE DE SESSÕES ATINGIDO (403) - NOVO
+--------------------------------------------------
+{
+  "message": "Limite de 5 máquinas atingido. Você possui 5 instância(s) ativa(s). Faça logout em uma das instâncias ou compre licenças adicionais.",
+  "code": "max_sessions_reached",
+  "activeSessions": 5,
+  "maxLimit": 5,
+  "baseLimit": 5,
+  "additionalLicenses": 0,
+  "availableSlots": 0
+}
+
+5.5 ERRO: VALIDAÇÃO (400)
+--------------------------
+{
+  "message": "E-mail e senha são obrigatórios."
+}
+
+5.6 ERRO: SERVIDOR (500)
+-------------------------
+{
+  "message": "Erro ao fazer login."
+}
+
+================================================================================
+6. EXEMPLO DE IMPLEMENTAÇÃO PARA VERCEL
+================================================================================
+
+// api/auth/login.js (Vercel)
+import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // IMPORTANTE: service_role para criar sessões
+);
+
+function hashPassword(password) {
+  return crypto.createHash('sha256')
+    .update(password)
+    .digest('base64url');
+}
+
+async function getUserMachineLimit(userId) {
+  // Limite base
+  const baseLimit = 5;
+  
+  // Buscar licenças adicionais
+  const { data: licenses } = await supabase
+    .from('user_machine_licenses')
+    .select('quantity')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+  
+  const additional = licenses?.reduce((sum, l) => sum + l.quantity, 0) || 0;
+  return baseLimit + additional;
+}
+
+async function countActiveSessions(userId) {
+  const { count } = await supabase
+    .from('user_sessions')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gt('expires_at', new Date().toISOString());
+  
+  return count || 0;
+}
+
+async function createSession(userId, isAdmin, machineInfo) {
+  const sessionId = uuidv4();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24h
+  
+  const { data, error } = await supabase
+    .from('user_sessions')
+    .insert({
+      user_id: String(userId),
+      session_id: sessionId,
+      is_admin: isAdmin,
+      machine_info: machineInfo,
+      created_at: now.toISOString(),
+      last_activity: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+    })
+    .select()
+    .single();
+  
+  if (error) {
+    // Se erro for de limite excedido (trigger do banco)
+    if (error.message.includes('Limite de') || error.code === '23514') {
+      throw new Error('MAX_SESSIONS_REACHED');
+    }
+    throw error;
+  }
+  
+  return { sessionId, data };
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { email, password, machineId } = req.body;
+
+    // 1. Validar entrada
+    if (!email || !password) {
+      return res.status(400).json({
+        message: 'E-mail e senha são obrigatórios.'
+      });
+    }
+    
+    // machineId é opcional, mas recomendado para identificação única da máquina
+
+    // 2. Hash da senha
+    const passwordHash = hashPassword(password);
+
+    // 3. Buscar usuário
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('id, email, is_admin, password_hash')
+      .eq('email', email)
+      .limit(1);
+
+    if (userError) {
+      console.error('Erro ao buscar usuário:', userError);
+      return res.status(500).json({ message: 'Erro ao fazer login.' });
+    }
+
+    const user = users?.[0];
+    if (!user || user.password_hash !== passwordHash) {
+      return res.status(401).json({
+        message: 'Usuário ou senha inválidos.',
+        code: 'invalid_credentials'
+      });
+    }
+
+    // 4. Verificar período de acesso (se não for admin)
+    let licenseExpiresAt = null;
+    if (!user.is_admin) {
+      const { data: sales, error: salesError } = await supabase
+        .from('sales')
+        .select('id, timestamp_inicio, timestamp_final')
+        .eq('id_usuario', user.id)
+        .lte('timestamp_inicio', new Date().toISOString())
+        .gte('timestamp_final', new Date().toISOString());
+
+      if (salesError) {
+        console.error('Erro ao buscar sales:', salesError);
+        return res.status(500).json({ message: 'Erro ao fazer login.' });
+      }
+
+      if (!sales || sales.length === 0) {
+        return res.status(403).json({
+          message: 'Seu período de acesso expirou. Faça uma nova aquisição.',
+          code: 'period_expired'
+        });
+      }
+
+      // Calcular data de expiração
+      const maxExpiry = sales
+        .map(s => s.timestamp_final)
+        .filter(v => v && typeof v === 'string')
+        .sort()
+        .pop();
+      
+      if (maxExpiry) {
+        licenseExpiresAt = maxExpiry.split('T')[0]; // YYYY-MM-DD
+      }
+    }
+
+    // 5. Verificar limite de sessões
+    const maxLimit = await getUserMachineLimit(user.id);
+    const activeSessions = await countActiveSessions(user.id);
+
+    if (activeSessions >= maxLimit) {
+      return res.status(403).json({
+        message: `Limite de ${maxLimit} máquinas atingido. Você possui ${activeSessions} instância(s) ativa(s). Faça logout em uma das instâncias ou compre licenças adicionais.`,
+        code: 'max_sessions_reached',
+        activeSessions,
+        maxLimit,
+        baseLimit: 5,
+        additionalLicenses: maxLimit - 5,
+        availableSlots: 0
+      });
+    }
+
+    // 6. Criar sessão
+    const machineInfo = {
+      machineId: req.body.machineId || null, // Machine ID único da máquina (RECOMENDADO)
+      ip: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown',
+      userAgent: req.headers['user-agent'] || 'unknown',
+      timestamp: new Date().toISOString()
+    };
+
+    let sessionId;
+    try {
+      const session = await createSession(user.id, user.is_admin, machineInfo);
+      sessionId = session.sessionId;
+    } catch (error) {
+      if (error.message === 'MAX_SESSIONS_REACHED') {
+        // Re-contar para ter valores atualizados
+        const newCount = await countActiveSessions(user.id);
+        const newLimit = await getUserMachineLimit(user.id);
+        return res.status(403).json({
+          message: `Limite de ${newLimit} máquinas atingido. Você possui ${newCount} instância(s) ativa(s).`,
+          code: 'max_sessions_reached',
+          activeSessions: newCount,
+          maxLimit: newLimit,
+          baseLimit: 5,
+          additionalLicenses: newLimit - 5,
+          availableSlots: 0
+        });
+      }
+      throw error;
+    }
+
+    // 7. Gerar JWT
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        sessionId: sessionId,
+        isAdmin: user.is_admin,
+        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24h
+      },
+      process.env.JWT_SECRET
+    );
+
+    // 8. Retornar sucesso
+    return res.status(200).json({
+      message: 'Login efetuado com sucesso.',
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        isAdmin: user.is_admin
+      },
+      session: {
+        id: sessionId,
+        activeSessions: activeSessions + 1,
+        maxLimit
+      },
+      licenseExpiresAt
+    });
+
+  } catch (error) {
+    console.error('Erro no login:', error);
+    return res.status(500).json({
+      message: 'Erro ao fazer login.'
+    });
+  }
+}
+
+================================================================================
+7. VARIÁVEIS DE AMBIENTE NECESSÁRIAS (Vercel)
+================================================================================
+
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key (NÃO anon key!)
+JWT_SECRET=chave-secreta-para-assinar-jwt (use uma string longa e aleatória)
+
+================================================================================
+8. ENDPOINT DE LOGOUT (OPCIONAL - PARA VERCEL)
+================================================================================
+
+// api/auth/logout.js (Vercel)
+import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token não fornecido' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Remover sessão do banco
+    await supabase
+      .from('user_sessions')
+      .delete()
+      .eq('session_id', decoded.sessionId);
+
+    return res.status(200).json({
+      message: 'Logout realizado com sucesso.'
+    });
+
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token inválido ou expirado' });
+    }
+
+    console.error('Erro no logout:', error);
+    return res.status(500).json({ error: 'Erro ao fazer logout' });
+  }
+}
+
+================================================================================
+9. NOTAS IMPORTANTES DE SEGURANÇA
+================================================================================
+
+1. SEMPRE use SUPABASE_SERVICE_ROLE_KEY para criar sessões (não anon key)
+2. O trigger check_max_sessions() no banco valida limite ANTES de inserir
+3. JWT deve ser assinado com secret forte e nunca exposto
+4. Rate limiting deve ser implementado na Vercel (usar Vercel Edge Config ou similar)
+5. Logs de tentativas de login devem ser monitorados
+6. Hash de senha deve ser exatamente SHA-256 + base64url (sem padding)
+7. Validação de período (sales) só aplica para não-admin
+8. Admin sempre pode fazer login (bypass de sales e limite pode ser configurado)
+
+================================================================================
+10. PRÓXIMOS PASSOS
+================================================================================
+
+1. Criar tabelas user_sessions e user_machine_licenses no Supabase
+2. Criar trigger check_max_sessions() no banco
+3. Criar função get_user_machine_limit() no banco
+4. Implementar endpoint de login na Vercel seguindo este documento
+5. Implementar endpoint de logout na Vercel
+6. Atualizar sistema atual para validar JWT ao invés de gerenciar sessões
+7. Testar fluxo completo de login/logout
+
+================================================================================
+11. SCRIPTS SQL PARA CRIAR TABELAS E REGRAS (EXECUTAR PRIMEIRO)
+================================================================================
+
+IMPORTANTE: Execute estes scripts no Supabase Dashboard ANTES de implementar
+o endpoint na Vercel. Sem essas tabelas e triggers, o sistema não funcionará.
+
+11.1 CRIAR TABELA user_sessions
+---------------------------------
+Execute no SQL Editor do Supabase:
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  session_id TEXT NOT NULL UNIQUE,
+  is_admin BOOLEAN NOT NULL DEFAULT false,
+  machine_info JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  last_activity TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '24 hours')
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id 
+ON user_sessions(user_id) 
+WHERE expires_at > NOW();
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_session_id 
+ON user_sessions(session_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_active 
+ON user_sessions(user_id, expires_at) 
+WHERE expires_at > NOW();
+
+11.2 CRIAR TABELA user_machine_licenses
+----------------------------------------
+Execute no SQL Editor do Supabase:
+
+CREATE TABLE IF NOT EXISTS user_machine_licenses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  purchase_date TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  is_active BOOLEAN DEFAULT true,
+  purchase_reference TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_machine_licenses_user_id 
+ON user_machine_licenses(user_id) 
+WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_user_machine_licenses_active 
+ON user_machine_licenses(user_id, expires_at, is_active) 
+WHERE is_active = true;
+
+11.3 CRIAR FUNÇÃO get_user_machine_limit
+-----------------------------------------
+Execute no SQL Editor do Supabase:
+
+CREATE OR REPLACE FUNCTION get_user_machine_limit(p_user_id TEXT)
+RETURNS INTEGER AS $$
+DECLARE
+  base_limit INTEGER := 5;
+  additional_licenses INTEGER := 0;
+  current_time TIMESTAMPTZ := NOW();
+BEGIN
+  SELECT COALESCE(SUM(quantity), 0) INTO additional_licenses
+  FROM user_machine_licenses
+  WHERE user_id = p_user_id
+    AND is_active = true
+    AND (expires_at IS NULL OR expires_at > current_time);
+  
+  RETURN base_limit + additional_licenses;
+END;
+$$ LANGUAGE plpgsql;
+
+11.4 CRIAR TRIGGER check_max_sessions
+--------------------------------------
+Execute no SQL Editor do Supabase:
+
+CREATE OR REPLACE FUNCTION check_max_sessions()
+RETURNS TRIGGER AS $$
+DECLARE
+  session_count INTEGER;
+  max_allowed INTEGER;
+BEGIN
+  max_allowed := get_user_machine_limit(NEW.user_id);
+  
+  SELECT COUNT(*) INTO session_count
+  FROM user_sessions
+  WHERE user_id = NEW.user_id
+    AND expires_at > NOW()
+    AND id != NEW.id;
+
+  IF session_count >= max_allowed THEN
+    RAISE EXCEPTION 'Limite de % máquinas atingido para o usuário %. Você possui % sessão(ões) ativa(s).', 
+      max_allowed, NEW.user_id, session_count;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_check_max_sessions ON user_sessions;
+CREATE TRIGGER trigger_check_max_sessions
+  BEFORE INSERT ON user_sessions
+  FOR EACH ROW
+  EXECUTE FUNCTION check_max_sessions();
+
+11.5 CONFIGURAR RLS (Row Level Security)
+-----------------------------------------
+Execute no SQL Editor do Supabase:
+
+ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_machine_licenses ENABLE ROW LEVEL SECURITY;
+
+-- Política para user_sessions (permite inserção/leitura/atualização/deleção)
+DROP POLICY IF EXISTS "Allow all user_sessions" ON user_sessions;
+CREATE POLICY "Allow all user_sessions"
+  ON user_sessions
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- Política para user_machine_licenses (permite inserção/leitura/atualização/deleção)
+DROP POLICY IF EXISTS "Allow all user_machine_licenses" ON user_machine_licenses;
+CREATE POLICY "Allow all user_machine_licenses"
+  ON user_machine_licenses
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+NOTA: Essas políticas permitem tudo porque o sistema externo usará
+SUPABASE_SERVICE_ROLE_KEY que bypassa RLS. Se preferir políticas mais
+restritivas, ajuste conforme necessário.
+
+11.6 VERIFICAR SE TUDO FOI CRIADO CORRETAMENTE
+----------------------------------------------
+Execute estas queries para verificar:
+
+-- Verificar tabelas
+SELECT table_name 
+FROM information_schema.tables 
+WHERE table_schema = 'public' 
+  AND table_name IN ('user_sessions', 'user_machine_licenses');
+
+-- Verificar função
+SELECT routine_name 
+FROM information_schema.routines 
+WHERE routine_schema = 'public' 
+  AND routine_name = 'get_user_machine_limit';
+
+-- Verificar trigger
+SELECT trigger_name 
+FROM information_schema.triggers 
+WHERE event_object_table = 'user_sessions' 
+  AND trigger_name = 'trigger_check_max_sessions';
+
+-- Testar função
+SELECT get_user_machine_limit('ID_DO_USUARIO_TESTE');
+
+================================================================================
+12. NOTAS SOBRE O ENDPOINT NA VERCEL
+================================================================================
+
+IMPORTANTE: O código do endpoint na Vercel (Seção 6) assume que:
+- As tabelas user_sessions e user_machine_licenses já existem
+- O trigger check_max_sessions() já está ativo
+- A função get_user_machine_limit() já existe
+
+Se você tentar executar o endpoint ANTES de criar essas estruturas, vai dar erro.
+
+FLUXO RECOMENDADO:
+1. Execute TODOS os scripts SQL da Seção 11
+2. Verifique que tudo foi criado (Seção 11.6)
+3. Implemente o endpoint na Vercel (Seção 6)
+4. Teste o endpoint com um usuário de teste
+5. Se funcionar, integre com o sistema atual
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

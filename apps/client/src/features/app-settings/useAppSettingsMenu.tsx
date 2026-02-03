@@ -80,6 +80,11 @@ const staticOptions = [
     ],
   },
   {
+    id: 'logout',
+    label: 'Deslogar',
+    split: true,
+  },
+  {
     id: 'shutdown',
     label: 'Sair do HouseriaAPP',
     split: true,

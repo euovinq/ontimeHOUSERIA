@@ -9,6 +9,12 @@ node_modules/
 .DS_Store
 *.local
 
+# environment variables
+.env
+.env.local
+apps/electron/.env
+apps/electron/.env.local
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

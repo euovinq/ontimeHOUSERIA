@@ -49,7 +49,7 @@ export default function SupabaseControl() {
           // Só atualiza se realmente mudou
           if (currentStatus.connected !== newStatus.connected || currentStatus.enabled !== newStatus.enabled) {
             // Força atualização usando função de atualização
-            setStatus(prevStatus => {
+            setStatus(_prevStatus => {
               const updatedStatus = {
                 connected: Boolean(payload.connected),
                 enabled: Boolean(payload.enabled ?? payload.connected),

@@ -14,7 +14,9 @@ const {
   trayIcon,
   appIcon,
   getServerUrl,
+  getAppDataPath,
 } = require('./externals.js');
+const authService = require('./services/AuthService.js');
 
 if (!isProduction) {
   console.log(`Electron running in ${env} environment`);
@@ -39,6 +41,60 @@ let tray = null;
 
 /** Promise com a porta do backend (para evitar múltiplos startBackend em produção) */
 let backendPortPromise = null;
+
+/** Interval que verifica se o período de licença expirou (para encerrar o app) */
+let licenseCheckIntervalId = null;
+
+const LICENSE_CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutos
+
+/**
+ * Mostra aviso de licença expirada e encerra o app.
+ * @param {{ message?: string }} [payload]
+ */
+async function handleLicenseExpired(payload) {
+  const messageBase =
+    (payload && payload.message) ||
+    'Seu período de acesso expirou ou foi alterado.';
+  await dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['OK'],
+    defaultId: 0,
+    title: 'Sessão expirada',
+    message: messageBase,
+    detail: 'Reabra o HouseriaAPP e faça login novamente para continuar usando o sistema.',
+  });
+  console.log('🔌 Shutting down app after license expiration...');
+  appShutdown();
+}
+
+/**
+ * Cria o arquivo .login-complete para sinalizar ao wait-for-login.js (dev) que o login foi feito.
+ * Assim o Vite sobe e o Electron consegue conectar na porta 3000.
+ */
+function createLoginLockFile() {
+  const fs = require('fs');
+  try {
+    const appDataPath = getAppDataPath();
+    if (appDataPath) {
+      if (!fs.existsSync(appDataPath)) {
+        fs.mkdirSync(appDataPath, { recursive: true });
+      }
+      const lockFilePath = path.join(appDataPath, '.login-complete');
+      fs.writeFileSync(
+        lockFilePath,
+        JSON.stringify({ timestamp: Date.now() }),
+        'utf8'
+      );
+      console.log('✅ Login lock file created:', lockFilePath);
+    } else {
+      console.warn(
+        '⚠️ Could not resolve AppDataPath when creating login lock file.'
+      );
+    }
+  } catch (lockError) {
+    console.error('❌ Error creating login lock file:', lockError);
+  }
+}
 
 /**
  * Coordinates the node process startup
@@ -409,6 +465,18 @@ function startApplication() {
         } else {
           tray.setToolTip('Initialising error: please restart Houseria');
         }
+
+        // Verificação periódica: se o período de licença (licenseExpiresAt) expirou, encerra o app
+        if (licenseCheckIntervalId) clearInterval(licenseCheckIntervalId);
+        licenseCheckIntervalId = setInterval(() => {
+          if (authService.isLicenseExpired()) {
+            if (licenseCheckIntervalId) {
+              clearInterval(licenseCheckIntervalId);
+              licenseCheckIntervalId = null;
+            }
+            handleLicenseExpired({ message: 'Seu período de acesso expirou.' });
+          }
+        }, LICENSE_CHECK_INTERVAL_MS);
       })
       .catch((error) => {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -448,6 +516,7 @@ function startApplication() {
 /**
  * Handles login submission
  * Valida login no servidor (Supabase via backend) antes de iniciar o app
+ * Agora usa AuthService para gerenciar tokens JWT
  */
 ipcMain.on('login-submit', async (event, credentials) => {
   const { username, password } = credentials || {};
@@ -462,124 +531,178 @@ ipcMain.on('login-submit', async (event, credentials) => {
   }
 
   try {
-    let baseUrl;
-
+    // Obter porta do servidor se necessário
+    let port = null;
     if (isProduction) {
-      const port = await ensureBackendStarted();
-      baseUrl = getServerUrl(port);
-    } else {
-      // Em desenvolvimento, o servidor HTTP deve estar rodando em 4001
-      baseUrl = 'http://localhost:4001';
+      port = await ensureBackendStarted();
     }
 
-    const loginUrl = `${baseUrl}/auth/login`;
-    console.log('🔐 Calling auth endpoint:', loginUrl);
-
-    const response = await fetch(loginUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: username,
-        password,
-      }),
+    console.log('🔐 Iniciando processo de login...');
+    
+    // Usar AuthService para fazer login
+    const loginResult = await authService.login(username, password, port);
+    
+    console.log('📥 Resultado do login recebido:', {
+      hasResult: !!loginResult,
+      success: loginResult?.success,
+      hasToken: !!loginResult?.token,
+      hasUser: !!loginResult?.user,
+      hasSession: !!loginResult?.session,
+      keys: loginResult ? Object.keys(loginResult) : [],
     });
 
-    let result = {};
-    try {
-      result = await response.json();
-    } catch (_) {
-      // ignore parse errors, handled below
-    }
+    if (loginResult && loginResult.success) {
+      console.log('✅ Login successful. Token armazenado com segurança.');
+      console.log(`📊 Máquinas ativas: ${loginResult.session.activeSessions}/${loginResult.session.maxLimit}`);
+      
+      // Enviar sucesso com dados completos
+      event.sender.send('login-success', {
+        user: loginResult.user,
+        session: loginResult.session,
+        licenseExpiresAt: loginResult.licenseExpiresAt,
+      });
 
-    if (!response.ok) {
-      const status = response.status;
-      const messageFromServer =
-        (result && result.message) || (result && result.error);
+      createLoginLockFile();
 
-      let friendlyMessage = messageFromServer;
-      if (!friendlyMessage) {
-        if (status === 401) {
-          friendlyMessage = 'Usuário ou senha inválidos.';
-        } else if (status === 403) {
-          friendlyMessage = 'Seu período de acesso expirou.';
-        } else {
-          friendlyMessage = 'Erro ao fazer login. Tente novamente.';
-        }
+      // Fechar janela de login
+      if (loginWindow) {
+        console.log('🔒 Closing login window after successful login...');
+        loginWindow.close();
+        loginWindow = null;
       }
 
-      console.error(
-        '❌ Login failed:',
-        status,
-        messageFromServer || '(sem mensagem detalhada)'
-      );
-      event.sender.send('login-error', friendlyMessage);
-      return;
+      // Iniciar aplicação normalmente
+      console.log('🚀 Starting application...');
+      startApplication();
     }
-
-    console.log('✅ Login successful. Starting application...');
-    event.sender.send('login-success');
-
-    // Criar arquivo de lock para sinalizar ao servidor/cliente que o login foi feito
-    // (usado pelos scripts de desenvolvimento para iniciar Vite/aplicações após o login)
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const { getAppDataPath } = require('./externals.js');
-
-      const appDataPath = getAppDataPath();
-      if (appDataPath) {
-        if (!fs.existsSync(appDataPath)) {
-          fs.mkdirSync(appDataPath, { recursive: true });
-        }
-
-        const lockFilePath = path.join(appDataPath, '.login-complete');
-        fs.writeFileSync(
-          lockFilePath,
-          JSON.stringify({ timestamp: Date.now() }),
-          'utf8'
-        );
-        console.log('✅ Login lock file created:', lockFilePath);
-      } else {
-        console.warn(
-          '⚠️ Could not resolve AppDataPath when creating login lock file.'
-        );
-      }
-    } catch (lockError) {
-      console.error('❌ Error creating login lock file:', lockError);
-    }
-
-    // Fechar janela de login
-    if (loginWindow) {
-      console.log('🔒 Closing login window after successful login...');
-      loginWindow.close();
-      loginWindow = null;
-    }
-
-    // Iniciar aplicação normalmente
-    console.log('🚀 Starting application...');
-    startApplication();
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
     console.error('❌ Error during login:', errorMsg);
-    event.sender.send(
-      'login-error',
-      'Erro ao conectar ao servidor de login. Verifique se o servidor está rodando.'
-    );
+    console.error('❌ Error stack:', errorStack);
+    console.error('❌ Error completo:', error);
+    
+    // Tratar erros específicos
+    let friendlyMessage = errorMsg;
+    
+    // Se for erro de limite de máquinas, enviar detalhes adicionais
+    if (error.code === 'max_sessions_reached' && error.details) {
+      event.sender.send('login-error', {
+        message: friendlyMessage,
+        code: 'max_sessions_reached',
+        details: error.details,
+      });
+    } else {
+      event.sender.send('login-error', friendlyMessage);
+    }
+  }
+});
+
+/**
+ * Handles logout request
+ * Faz logout via API e limpa dados locais
+ */
+ipcMain.on('logout', async () => {
+  try {
+    console.log('🔓 Logout requested...');
+    
+    // Obter porta do servidor se necessário
+    let port = null;
+    if (isProduction) {
+      try {
+        port = await ensureBackendStarted();
+      } catch (error) {
+        console.warn('⚠️ Could not get server port for logout, continuing anyway');
+      }
+    }
+
+    if (licenseCheckIntervalId) {
+      clearInterval(licenseCheckIntervalId);
+      licenseCheckIntervalId = null;
+    }
+    await authService.logout(port);
+    console.log('✅ Logout realizado com sucesso');
+
+    // Fechar janela principal
+    if (win) {
+      win.close();
+      win = null;
+    }
+
+    // Mostrar janela de login novamente
+    if (!loginWindow) {
+      createLoginWindow();
+    } else {
+      loginWindow.show();
+      loginWindow.focus();
+    }
+  } catch (error) {
+    console.error('❌ Erro ao fazer logout:', error);
+    // Mesmo se logout falhar, limpar estado local
+    if (win) {
+      win.close();
+      win = null;
+    }
+    if (!loginWindow) {
+      createLoginWindow();
+    }
+  }
+});
+
+/**
+ * Handler para requisições autenticadas
+ * Permite que o renderer faça requisições autenticadas via IPC
+ */
+ipcMain.handle('get-license-info', async () => {
+  return authService.getLicenseInfo();
+});
+
+ipcMain.handle('authenticated-fetch', async (_event, url, options = {}) => {
+  try {
+    const response = await authService.authenticatedFetch(url, options);
+    const data = await response.json();
+    return {
+      ok: response.ok,
+      status: response.status,
+      data,
+    };
+  } catch (error) {
+    // Se erro 401, fazer logout automático
+    if (error.message.includes('Sessão expirada') || error.message.includes('Token inválido')) {
+      await authService.logout();
+      if (win) {
+        win.close();
+        win = null;
+      }
+      if (!loginWindow) {
+        createLoginWindow();
+      }
+    }
+    throw error;
   }
 });
 
 app.disableHardwareAcceleration();
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app title in windows
   if (isWindows) {
     app.setAppUserModelId(app.name);
   }
 
-  console.log('📱 Electron ready, creating login window...');
-  // Criar e mostrar janela de login primeiro
-  createLoginWindow();
+  // Tentar carregar token salvo
+  console.log('📱 Electron ready, verificando token salvo...');
+  const hasStoredToken = await authService.loadStoredToken();
+  
+  if (hasStoredToken && authService.isAuthenticated()) {
+    console.log('✅ Token válido encontrado, iniciando aplicação diretamente...');
+    createLoginLockFile();
+    startApplication();
+  } else {
+    console.log('📱 Nenhum token válido encontrado, mostrando janela de login...');
+    // Criar e mostrar janela de login
+    createLoginWindow();
+  }
 });
 
 /**
@@ -603,35 +726,22 @@ ipcMain.on('shutdown', () => {
 
 /**
  * Força logout quando o servidor indicar que a licença/período expirou.
- * Em vez de voltar para o login, mostra um aviso e encerra o app.
  * Evento originado do cliente React via window.ipcRenderer.send('auth-license-expired', ...)
+ * Ou disparado pela verificação periódica de licenseExpiresAt no token.
  */
 ipcMain.on('auth-license-expired', async (_event, payload) => {
   try {
     console.log('🔒 Auth license expired IPC received:', payload);
-
-    const messageBase =
-      (payload && payload.message) ||
-      'Seu período de acesso expirou ou foi alterado.';
-
-    // Mostra aviso bloqueante antes de encerrar tudo
-    await dialog.showMessageBox({
-      type: 'warning',
-      buttons: ['OK'],
-      defaultId: 0,
-      title: 'Sessão expirada',
-      message: messageBase,
-      detail: 'Reabra o HouseriaAPP e faça login novamente para continuar usando o sistema.',
-    });
-
-    console.log('🔌 Shutting down app after license expiration...');
-    appShutdown();
+    if (licenseCheckIntervalId) {
+      clearInterval(licenseCheckIntervalId);
+      licenseCheckIntervalId = null;
+    }
+    await handleLicenseExpired(payload);
   } catch (error) {
     console.error(
       '❌ Unexpected error handling auth-license-expired IPC:',
       error instanceof Error ? error.message : String(error)
     );
-    // Em caso de erro inesperado, ainda assim tenta encerrar o app para evitar estado inconsistente
     appShutdown();
   }
 });

@@ -1,5 +1,7 @@
 import type { Request, Response } from 'express';
 import { getErrorMessage } from 'houseriaapp-utils';
+import { logger } from '../../classes/Logger.js';
+import { LogOrigin } from 'houseriaapp-types';
 import { authenticateUser, type LoginResult } from './auth.service.js';
 import { registerLoginSession } from './auth-realtime.service.js';
 
@@ -13,9 +15,10 @@ let lastLicenseInfo: LicenseInfo | null = null;
 
 export async function login(req: Request, res: Response) {
   try {
-    const { email, password } = req.body as {
+    const { email, password, machineId: _machineId } = req.body as {
       email?: string;
       password?: string;
+      machineId?: string;
     };
 
     if (!email || !password) {
@@ -47,7 +50,17 @@ export async function login(req: Request, res: Response) {
     const successResult = result as Extract<LoginResult, { success: true }>;
 
     // Cria/atualiza sessão de autenticação e inicia monitoramento do período (para não-admin)
-    registerLoginSession(successResult.userId, successResult.isAdmin);
+    try {
+      registerLoginSession(successResult.userId, successResult.isAdmin);
+    } catch (sessionError) {
+      logger.error(
+        LogOrigin.Server,
+        `[AUTH] Erro ao registrar sessão de login: ${
+          sessionError instanceof Error ? sessionError.message : String(sessionError)
+        }`
+      );
+      // Não falhar o login se houver erro ao registrar sessão, apenas logar
+    }
 
     // Cookies HttpOnly para identificar usuário nas próximas requisições protegidas
     res.cookie('auth_user_id', successResult.userId, {
@@ -75,6 +88,17 @@ export async function login(req: Request, res: Response) {
     });
   } catch (error) {
     const message = getErrorMessage(error);
+    const errorDetails = error instanceof Error ? {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    } : String(error);
+    
+    logger.error(
+      LogOrigin.Server,
+      `[AUTH] Erro no endpoint /auth/login: ${JSON.stringify(errorDetails, null, 2)}`
+    );
+    
     return res.status(500).json({ message });
   }
 }
