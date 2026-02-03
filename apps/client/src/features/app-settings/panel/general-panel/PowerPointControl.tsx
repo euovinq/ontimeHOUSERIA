@@ -43,7 +43,7 @@ export default function PowerPointControl() {
         if (payload && typeof payload === 'object') {
           // Se há erro, SEMPRE força enabled para false (desconectado)
           if ('error' in payload && payload.error) {
-            const currentEnabled = statusRef.current.enabled;
+            const _currentEnabled = statusRef.current.enabled;
             
             // SEMPRE força desabilitar (vermelho) quando há erro, mesmo se já estava false
             // Isso garante que o estado visual seja atualizado
@@ -78,7 +78,7 @@ export default function PowerPointControl() {
             // Só atualiza se realmente mudou
             if (currentEnabled !== newEnabled) {
               // Força atualização usando função de atualização
-              setStatus(prevStatus => {
+              setStatus(_prevStatus => {
                 const newStatus = { enabled: newEnabled };
                 return newStatus;
               });

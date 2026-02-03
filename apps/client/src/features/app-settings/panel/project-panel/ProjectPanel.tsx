@@ -15,6 +15,32 @@ interface ProjectPanelProps extends PanelBaseProps {
   setLocation: (location: SettingsOptionId) => void;
 }
 
+interface LicenseInfo {
+  licenseExpiresAt: string | null;
+  isAdmin: boolean;
+}
+
+function formatLicenseLabel(data: LicenseInfo): string | null {
+  const { licenseExpiresAt, isAdmin } = data;
+  if (isAdmin) return 'Acesso admin (sem limite)';
+  if (!licenseExpiresAt) return null;
+  const datePart = licenseExpiresAt.includes('T') ? licenseExpiresAt.split('T')[0] : licenseExpiresAt;
+  const [yearStr, monthStr, dayStr] = datePart.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (!year || !month || !day) return null;
+  const formatted = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+  return `Licença até ${formatted}`;
+}
+
+declare global {
+  interface Window {
+    require?: (module: string) => { ipcRenderer: { invoke: (channel: string) => Promise<LicenseInfo> } };
+    process?: { type?: string };
+  }
+}
+
 export default function ProjectPanel({ location, setLocation }: ProjectPanelProps) {
   const projectRef = useScrollIntoView<HTMLDivElement>('data', location);
   const manageRef = useScrollIntoView<HTMLDivElement>('manage', location);
@@ -24,49 +50,35 @@ export default function ProjectPanel({ location, setLocation }: ProjectPanelProp
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchLicense() {
+    async function fetchFromServer() {
       try {
-        const res = await axios.get<{ licenseExpiresAt: string | null; isAdmin: boolean }>(`${serverURL}/auth/license`);
-
+        const res = await axios.get<LicenseInfo>(`${serverURL}/auth/license`);
         if (cancelled) return;
-
-        const { licenseExpiresAt, isAdmin } = res.data;
-
-        if (isAdmin) {
-          setLicenseLabel('Acesso admin (sem limite)');
-          return;
-        }
-
-        if (!licenseExpiresAt) {
-          setLicenseLabel(null);
-          return;
-        }
-
-        // licenseExpiresAt vem do backend como 'YYYY-MM-DD'
-        const datePart = licenseExpiresAt.includes('T') ? licenseExpiresAt.split('T')[0] : licenseExpiresAt;
-
-        const [yearStr, monthStr, dayStr] = datePart.split('-');
-        const year = Number(yearStr);
-        const month = Number(monthStr);
-        const day = Number(dayStr);
-
-        if (!year || !month || !day) {
-          setLicenseLabel(null);
-          return;
-        }
-
-        const formatted = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-
-        setLicenseLabel(`Licença até ${formatted}`);
+        setLicenseLabel(formatLicenseLabel(res.data));
       } catch {
-        if (!cancelled) {
-          setLicenseLabel(null);
-        }
+        if (!cancelled) setLicenseLabel(null);
       }
     }
 
-    fetchLicense();
+    async function loadLicense() {
+      const isElectron = typeof window !== 'undefined' && window.process?.type === 'renderer' && window.require;
+      if (isElectron) {
+        try {
+          const { ipcRenderer } = window.require('electron');
+          const data = await ipcRenderer.invoke('get-license-info');
+          if (cancelled) return;
+          if (data && typeof data === 'object') {
+            setLicenseLabel(formatLicenseLabel(data as LicenseInfo));
+            return;
+          }
+        } catch {
+          // fallback to server
+        }
+      }
+      await fetchFromServer();
+    }
 
+    loadLicense();
     return () => {
       cancelled = true;
     };

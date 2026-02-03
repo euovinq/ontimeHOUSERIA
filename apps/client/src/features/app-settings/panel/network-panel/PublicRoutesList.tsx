@@ -96,7 +96,7 @@ const publicRoutes: Route[] = [
   { method: 'GET', path: '/auth/license', description: 'Informações de licença', category: 'Autenticação' },
 ];
 
-function RouteItem({ route, index }: { route: Route; index: number }) {
+function RouteItem({ route, index: _index }: { route: Route; index: number }) {
   const [copied, setCopied] = useState(false);
   const [showExample, setShowExample] = useState(false);
 

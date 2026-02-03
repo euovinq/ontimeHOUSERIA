@@ -196,9 +196,23 @@
           submitButton.textContent = isLoading ? 'Entrando...' : 'Entrar';
         }
 
-        function showError(message) {
+        function showError(message, details) {
           if (!errorBox) return;
-          errorBox.textContent = message || 'Erro ao fazer login.';
+          
+          // Se for erro de limite de máquinas, mostrar mensagem detalhada
+          if (details && details.code === 'max_sessions_reached') {
+            let errorText = message || 'Limite de máquinas atingido.';
+            if (details.details) {
+              const active = details.details.activeMachines ?? details.details.activeSessions ?? 0;
+              errorText += `\n\nVocê possui ${active} de ${details.details.maxLimit} máquinas ativas.`;
+              if (details.details.availableSlots === 0) {
+                errorText += '\n\nFaça logout em uma das instâncias ou compre licenças adicionais.';
+              }
+            }
+            errorBox.textContent = errorText;
+          } else {
+            errorBox.textContent = message || 'Erro ao fazer login.';
+          }
           errorBox.style.display = 'block';
         }
 
@@ -249,16 +263,29 @@
           }
         });
 
-        ipcRenderer.on('login-error', (_event, message) => {
-          console.log('❌ Login error received from main:', message);
+        ipcRenderer.on('login-error', (_event, errorData) => {
+          console.log('❌ Login error received from main:', errorData);
           setLoading(false);
-          showError(message);
+          
+          // Pode receber string simples ou objeto com detalhes
+          if (typeof errorData === 'string') {
+            showError(errorData);
+          } else if (errorData && errorData.message) {
+            showError(errorData.message, errorData);
+          } else {
+            showError('Erro ao fazer login. Tente novamente.');
+          }
         });
 
-        ipcRenderer.on('login-success', () => {
-          console.log('✅ Login success received from main');
+        ipcRenderer.on('login-success', (_event, data) => {
+          console.log('✅ Login success received from main', data);
           setLoading(false);
           clearError();
+          
+          // Opcional: mostrar informações de sessão (pode ser removido depois)
+          if (data && data.session) {
+            console.log(`📊 Máquinas ativas: ${data.session.activeSessions ?? data.session.activeMachines}/${data.session.maxLimit}`);
+          }
         });
       } catch (error) {
         console.error('❌ Error loading IPC:', error);

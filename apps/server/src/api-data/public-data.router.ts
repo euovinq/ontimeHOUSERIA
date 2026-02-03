@@ -33,7 +33,7 @@ publicDataRouter.get('/realtime', (req, res, next) => {
 });
 
 // GET /data/automations - Configurações de automação
-publicDataRouter.get('/automations', (req, res, next) => {
+publicDataRouter.get('/automations', (req, res, _next) => {
   getAutomationSettings(req, res);
 });
 
@@ -48,7 +48,7 @@ publicDataRouter.get('/db', (req, res, next) => {
 });
 
 // GET /data/project - Dados do projeto
-publicDataRouter.get('/project', (req, res, next) => {
+publicDataRouter.get('/project', (req, res, _next) => {
   getProjectData(req, res);
 });
 
@@ -78,7 +78,7 @@ publicDataRouter.get('/view-settings', (req, res, next) => {
 });
 
 // GET /data/report - Relatórios
-publicDataRouter.get('/report', (req, res, next) => {
+publicDataRouter.get('/report', (req, res, _next) => {
   getReportAll(req, res);
 });
 

@@ -8,8 +8,8 @@ import serverTiming from 'server-timing';
 import cookieParser from 'cookie-parser';
 
 // import utils
-import { publicDir, srcDir } from './setup/index.js';
-import { environment, isProduction } from './setup/environment.js';
+import { publicDir, srcDir as _srcDir } from './setup/index.js';
+import { environment as _environment, isProduction } from './setup/environment.js';
 import { updateRouterPrefix } from './externals.js';
 import { ONTIME_VERSION } from './ONTIME_VERSION.js';
 import { consoleSuccess, consoleHighlight, consoleError } from './utils/console.js';
@@ -54,7 +54,7 @@ import {reenviarRundown} from './scripts/dataSupabase.js';
 
 consoleHighlight(`Starting Ontime version ${ONTIME_VERSION}`);
 
-const canLog = isProduction;
+const _canLog = isProduction;
 
 /**
  * When running in Ontime cloud, the client is not at the root segment
@@ -121,7 +121,7 @@ app.use(`${prefix}`, authenticateAndRedirect, compressedStatic);
 app.use(`${prefix}/*`, authenticateAndRedirect, compressedStatic);
 
 // Implement catch all para erros
-app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((error: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(`❌ [ERROR-HANDLER] Erro não tratado: ${error.message}`);
   console.error(`❌ [ERROR-HANDLER] Path: ${req.path} | Method: ${req.method}`);
   if (error.stack) {

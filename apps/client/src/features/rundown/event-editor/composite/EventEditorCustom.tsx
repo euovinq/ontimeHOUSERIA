@@ -6,7 +6,6 @@ import { EditorUpdateFields } from '../EventEditor';
 
 import EventCustomFieldHTML from './EventCustomFieldHTML';
 import EventEditorImage from './EventEditorImage';
-import EventTextArea from './EventTextArea';
 import EventTextInput from './EventTextInput';
 
 import style from '../EventEditor.module.scss';

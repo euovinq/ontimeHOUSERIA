@@ -1087,7 +1087,7 @@ export class SupabaseAdapter {
     }
 
     try {
-      const { data, error } = await this.supabase
+      const { data: _data, error } = await this.supabase
         .from(this.config?.tableName || 'ontime_realtime')
         .select('id')
         .limit(1);

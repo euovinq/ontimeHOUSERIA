@@ -144,16 +144,15 @@ async function ensureUserHasValidSalesWindow(userId: string | number): Promise<v
   const session = getAuthSession(userId);
   if (!session) return;
 
+  // Buscar todos os registros de sales para o usuário e filtrar em JavaScript
+  // Isso evita problemas de tipo SQL (time vs timestamp)
   const {
     data: sales,
     error: salesError,
   } = await supabase
     .from('sales')
     .select('id, timestamp_inicio, timestamp_final')
-    .eq('id_usuario', userId)
-    // Mesma lógica do login: agora deve estar dentro da janela de acesso
-    .lte('timestamp_inicio', new Date().toISOString())
-    .gte('timestamp_final', new Date().toISOString());
+    .eq('id_usuario', userId);
 
   if (salesError) {
     logger.error(
@@ -166,7 +165,33 @@ async function ensureUserHasValidSalesWindow(userId: string | number): Promise<v
     return;
   }
 
-  const hasValidSales = Array.isArray(sales) && sales.length > 0;
+  // Filtrar em JavaScript para evitar problemas de tipo SQL
+  const now = new Date();
+  const validSales = Array.isArray(sales) ? sales.filter((sale) => {
+    if (!sale.timestamp_inicio || !sale.timestamp_final) return false;
+    
+    // Se os campos são time (hora do dia), comparar apenas a hora
+    // Se são timestamp (data+hora), comparar normalmente
+    try {
+      const inicio = new Date(sale.timestamp_inicio);
+      const final = new Date(sale.timestamp_final);
+      
+      // Verificar se são datas válidas
+      if (isNaN(inicio.getTime()) || isNaN(final.getTime())) {
+        // Se não são datas válidas, podem ser apenas horas (time)
+        // Nesse caso, comparar apenas a hora do dia atual
+        const nowTime = now.toTimeString().substring(0, 8); // HH:MM:SS
+        return sale.timestamp_inicio <= nowTime && sale.timestamp_final >= nowTime;
+      }
+      
+      // São timestamps completos, comparar normalmente
+      return inicio <= now && final >= now;
+    } catch {
+      return false;
+    }
+  }) : [];
+
+  const hasValidSales = validSales.length > 0;
 
   if (!hasValidSales) {
     handleLicenseExpired(userId);

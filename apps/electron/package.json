@@ -10,18 +10,26 @@
   ],
   "license": "AGPL-3.0-only",
   "main": "src/main.js",
+  "dependencies": {
+    "keytar": "^7.9.0",
+    "node-machine-id": "^1.1.12"
+  },
   "devDependencies": {
     "electron": "36.3.1",
     "electron-builder": "26.0.12",
+    "electron-rebuild": "^3.2.9",
     "eslint": "catalog:",
     "eslint-config-prettier": "catalog:",
     "prettier": "catalog:",
     "wait-on": "^7.2.0"
   },
   "scripts": {
-    "postinstall": "",
+    "postinstall": "electron-rebuild -f -w keytar --version=36.3.1",
+    "rebuild": "electron-rebuild -f -w keytar --version=36.3.1",
     "lint": "eslint . --quiet",
     "dev": "cross-env NODE_ENV=development electron .",
+    "dev:remote": "cross-env NODE_ENV=development REMOTE_API_URL=https://seu-servidor.vercel.app electron .",
+    "dev:api": "cross-env NODE_ENV=development API_URL=https://seu-servidor.vercel.app electron .",
     "dist-win": "electron-builder --publish=never --x64 --win",
     "dist-mac": "electron-builder --publish=never --mac",
     "dist-mac:x64": "electron-builder --publish=never --mac --x64",
