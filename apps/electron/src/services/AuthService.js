@@ -79,9 +79,10 @@ class AuthService {
    * 
    * Prioridade:
    * 1. API_URL (variável de ambiente) - para qualquer ambiente (mais alta prioridade)
-   * 2. Em produção local: servidor local na porta especificada
-   * 3. Em dev: REMOTE_API_URL ou servidor remoto padrão
-   * 4. Fallback: localhost:4001
+   * 2. REMOTE_API_URL (variável de ambiente) - para qualquer ambiente
+   * 3. Servidor remoto padrão (defaultRemoteApiUrl) - mesmo em produção
+   * 4. Servidor local (apenas se explicitamente necessário)
+   * 5. Fallback: localhost:4001
    */
   getApiBaseUrl(port) {
     // Se API_URL estiver configurada (ex: Vercel), usar ela (prioridade máxima)
@@ -91,26 +92,26 @@ class AuthService {
       return config.apiUrl;
     }
     
-    // Em produção local, usar porta do servidor local
-    if (isProduction && port) {
-      const localUrl = getServerUrl(port);
-      console.log(`🏠 [PROD] Usando servidor local: ${localUrl}`);
-      return localUrl;
+    // Se REMOTE_API_URL estiver configurada, usar ela (mesmo em produção)
+    if (config.remoteApiUrl) {
+      console.log(`🌐 Usando REMOTE_API_URL: ${config.remoteApiUrl}`);
+      return config.remoteApiUrl;
     }
     
-    // Em desenvolvimento: usar REMOTE_API_URL se configurada, senão usar servidor remoto padrão
-    if (!isProduction) {
-      // Se REMOTE_API_URL estiver definida, usar ela
-      if (config.remoteApiUrl) {
-        console.log(`🌐 [DEV] Usando REMOTE_API_URL: ${config.remoteApiUrl}`);
-        return config.remoteApiUrl;
-      }
-      
-      // Se não houver REMOTE_API_URL, usar servidor remoto padrão
-      // Para usar localhost em dev, defina: REMOTE_API_URL=http://localhost:4001
-      console.log(`🌐 [DEV] Usando servidor remoto padrão: ${config.defaultRemoteApiUrl}`);
-      console.log(`💡 Para usar outro servidor, configure REMOTE_API_URL ou API_URL`);
+    // Se não houver API_URL nem REMOTE_API_URL, usar servidor remoto padrão
+    // Isso garante que login/logout sempre usem a API externa quando não configurado explicitamente
+    if (config.defaultRemoteApiUrl) {
+      console.log(`🌐 Usando servidor remoto padrão: ${config.defaultRemoteApiUrl}`);
+      console.log(`💡 Para usar outro servidor, configure API_URL ou REMOTE_API_URL`);
       return config.defaultRemoteApiUrl;
+    }
+    
+    // Servidor local só como último recurso (quando não há nenhuma API externa configurada)
+    if (isProduction && port) {
+      const localUrl = getServerUrl(port);
+      console.log(`🏠 [PROD] Usando servidor local (fallback): ${localUrl}`);
+      console.log(`⚠️ Nenhuma API externa configurada. Configure API_URL ou REMOTE_API_URL para usar API externa.`);
+      return localUrl;
     }
     
     // Fallback final: localhost (não deveria chegar aqui)
