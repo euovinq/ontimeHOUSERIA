@@ -207,8 +207,19 @@ function appShutdown() {
   })();
 
   isQuitting = true;
-  tray.destroy();
-  win.destroy();
+  
+  // Destruir tray se existir
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+  
+  // Destruir janela principal se existir
+  if (win) {
+    win.destroy();
+    win = null;
+  }
+  
   app.quit();
 }
 
@@ -216,16 +227,20 @@ function appShutdown() {
  * Sets Houseria window in focus
  */
 function bringToFront() {
-  win.show();
-  win.focus();
+  if (win) {
+    win.show();
+    win.focus();
+  }
 }
 
 /**
  * Coordinates the shutdown process
  */
 function askToQuit() {
-  bringToFront();
-  win.send('user-request-shutdown');
+  if (win) {
+    bringToFront();
+    win.send('user-request-shutdown');
+  }
 }
 
 /**
@@ -246,7 +261,9 @@ function escalateError(error, unrecoverable = false) {
  * @param {string} location
  */
 function redirectWindow(location) {
-  win.webContents.send('request-editor-location', location);
+  if (win) {
+    win.webContents.send('request-editor-location', location);
+  }
 }
 
 /**
@@ -254,7 +271,9 @@ function redirectWindow(location) {
  * @param {string} name
  */
 function showDialog(name) {
-  win.webContents.send('dialog', name);
+  if (win) {
+    win.webContents.send('dialog', name);
+  }
 }
 
 // Ensure there isn't another instance of the app running already
@@ -350,7 +369,9 @@ function createWindow() {
     },
   });
 
-  win.setMenu(null);
+  if (win) {
+    win.setMenu(null);
+  }
 }
 
 /**
@@ -444,7 +465,11 @@ function startApplication() {
       serverUrl,
       redirectWindow,
       showDialog,
-      (url) => win.webContents.downloadURL(url),
+      (url) => {
+        if (win) {
+          win.webContents.downloadURL(url);
+        }
+      },
     );
     Menu.setApplicationMenu(menu);
 
@@ -453,10 +478,11 @@ function startApplication() {
       .loadURL(`${clientUrl}/editor`)
       .then(() => {
         console.log('URL loaded successfully');
-        win.webContents.setBackgroundThrottling(false);
-
-        win.show();
-        win.focus();
+        if (win) {
+          win.webContents.setBackgroundThrottling(false);
+          win.show();
+          win.focus();
+        }
 
         splash.destroy();
 
@@ -500,11 +526,13 @@ function startApplication() {
    * Hide on close
    */
   win.on('close', function (event) {
-    event.preventDefault();
-    if (!isQuitting) {
+    // Se não está quitando, prevenir fechamento e esconder janela
+    if (!isQuitting && win) {
+      event.preventDefault();
       showNotification('Window Closed', 'App running in background');
       win.hide();
     }
+    // Se isQuitting é true, permitir fechamento normal (não prevenir)
   });
 
   // create tray and set its context menu
@@ -706,6 +734,17 @@ app.whenReady().then(async () => {
 });
 
 /**
+ * Handler para quando o usuário realmente quer fechar o app
+ * (ex: Cmd+Q, menu Dock "Encerrar", etc.)
+ */
+app.on('before-quit', (event) => {
+  if (!isQuitting) {
+    isQuitting = true;
+    console.log('🛑 Usuário solicitou fechamento do app');
+  }
+});
+
+/**
  * Unregister shortcuts before quitting
  */
 app.once('will-quit', () => {
@@ -750,6 +789,7 @@ ipcMain.on('auth-license-expired', async (_event, payload) => {
  * Handles requests to set window properties
  */
 ipcMain.on('set-window', (_event, arg) => {
+  if (!win) return;
   switch (arg) {
     case 'show-dev':
       win.webContents.openDevTools({ mode: 'detach' });
