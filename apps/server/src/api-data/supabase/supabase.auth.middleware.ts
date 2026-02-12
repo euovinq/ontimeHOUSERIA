@@ -29,6 +29,19 @@ export function ensureSupabaseAuth(
   const userIdHeader = req.header('x-user-id');
   const isAdminHeader = req.header('x-is-admin');
 
+  // Log para debug
+  console.log('🔐 [ensureSupabaseAuth] Verificando autenticação:', {
+    path: req.path,
+    method: req.method,
+    userIdCookie,
+    userIdHeader,
+    userIdQuery,
+    isAdminCookie,
+    isAdminHeader,
+    isAdminQuery,
+    allHeaders: req.headers,
+  });
+
   const userId = userIdCookie ?? userIdHeader ?? userIdQuery;
   const isAdminRaw = isAdminCookie ?? isAdminHeader ?? isAdminQuery;
 

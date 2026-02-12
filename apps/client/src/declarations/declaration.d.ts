@@ -13,9 +13,17 @@ declare global {
     ipcRenderer: {
       send: (channel: string, args?: string | object) => void;
       on: (channel: string, listener: ListenerType) => void;
+      invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
     };
     process: {
       type: string;
+    };
+    require: (module: string) => {
+      ipcRenderer: {
+        send: (channel: string, args?: string | object) => void;
+        on: (channel: string, listener: ListenerType) => void;
+        invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+      };
     };
   }
 }

@@ -686,6 +686,27 @@ ipcMain.handle('get-license-info', async () => {
   return authService.getLicenseInfo();
 });
 
+/**
+ * Retorna dados de autenticação do usuário para uso em headers de requisições
+ */
+ipcMain.handle('get-auth-headers', async () => {
+  console.log('🔐 [get-auth-headers] Handler chamado');
+  const userData = authService.getUserData();
+  console.log('🔐 [get-auth-headers] userData:', userData ? { hasId: !!userData.id, hasUserId: !!userData.userId, isAdmin: userData.isAdmin } : 'null');
+  
+  if (!userData) {
+    console.warn('⚠️ [get-auth-headers] userData não encontrado');
+    return { userId: null, isAdmin: false };
+  }
+  
+  // userId pode estar em userData.id ou userData.userId
+  const userId = userData.id || userData.userId || null;
+  const isAdmin = Boolean(userData.isAdmin);
+  
+  console.log('✅ [get-auth-headers] Retornando:', { userId, isAdmin });
+  return { userId, isAdmin };
+});
+
 ipcMain.handle('authenticated-fetch', async (_event, url, options = {}) => {
   try {
     const response = await authService.authenticatedFetch(url, options);
@@ -737,7 +758,7 @@ app.whenReady().then(async () => {
  * Handler para quando o usuário realmente quer fechar o app
  * (ex: Cmd+Q, menu Dock "Encerrar", etc.)
  */
-app.on('before-quit', (event) => {
+app.on('before-quit', () => {
   if (!isQuitting) {
     isQuitting = true;
     console.log('🛑 Usuário solicitou fechamento do app');

@@ -6,6 +6,9 @@ import { getDataProvider } from '../classes/data-provider/DataProvider.js';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { publicDir } from '../setup/index.js';
+import { socket } from './WebsocketAdapter.js';
+import type { OntimeChange } from 'houseriaapp-types';
+import { updateEvent } from '../api-integration/integration.utils.js';
 
 export interface SupabaseConfig {
   url: string;
@@ -46,18 +49,158 @@ export class SupabaseAdapter {
   private globalThrottleTime: number = 0;
   private readonly GLOBAL_THROTTLE_MS = 200; // Max 5 sends per second
   private readonly DELAY_DEBOUNCE_MS = 2000; // Increased from 500ms to 2s
+  
+  private isApplyingRealtimeUpdate = false; // Flag to prevent loops when applying updates
+
+  // Changes listener - INDEPENDENT of toggle, always active when project is loaded
+  private changesSupabaseClient: any = null;
+  private changesRealtimeChannel: any = null;
+  private lastChangesProjectCode: string = '';
+  private changesCheckInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     // Set config file path
     this.configFilePath = join(publicDir.root, 'supabase-config.json');
-    
+
     // Load hardcoded configuration - ALWAYS start disabled
     this.loadConfigFromEnv();
-    
+
     // Setup eventStore listener after a delay to ensure eventStore is initialized
     setTimeout(() => {
       this.setupEventStoreListener();
     }, 1000);
+
+    // Setup changes listener - INDEPENDENT of toggle, checks periodically for project
+    this.startChangesListenerCheck();
+  }
+
+  /**
+   * Start periodic check for project - setup changes Realtime subscription when project is loaded
+   * This runs independently of the toggle button
+   */
+  private startChangesListenerCheck() {
+    if (this.changesCheckInterval) return;
+    const check = () => {
+      try {
+        const projectData = getDataProvider().getProjectData();
+        const projectCode = projectData?.projectCode || '';
+        if (projectCode && projectCode !== this.lastChangesProjectCode) {
+          this.setupChangesRealtimeSubscription();
+        } else if (!projectCode && this.lastChangesProjectCode) {
+          this.teardownChangesRealtimeSubscription();
+        }
+      } catch {
+        // DataProvider not ready yet (db.data undefined)
+      }
+    };
+    setTimeout(check, 1500); // Delay until DataProvider is initialized
+    this.changesCheckInterval = setInterval(check, 3000);
+  }
+
+  /**
+   * Setup Realtime subscription for changes - INDEPENDENT of toggle
+   * Always listens when we have config (url, anonKey) and projectCode
+   */
+  private setupChangesRealtimeSubscription() {
+    if (!this.config?.url || !this.config?.anonKey) return;
+
+    const projectData = getDataProvider().getProjectData();
+    const projectCode = projectData?.projectCode || '';
+    if (!projectCode) return;
+
+    if (this.lastChangesProjectCode === projectCode && this.changesRealtimeChannel) {
+      return; // Already subscribed to this project
+    }
+
+    this.teardownChangesRealtimeSubscription();
+
+    try {
+      this.changesSupabaseClient = createClient(this.config.url, this.config.anonKey);
+      this.lastChangesProjectCode = projectCode;
+
+      logger.info(
+        LogOrigin.Server,
+        `Supabase: Setting up changes listener (independent of toggle) for project: ${projectCode}`,
+      );
+
+      this.changesRealtimeChannel = this.changesSupabaseClient
+        .channel(`ontime-changes-${projectCode}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: this.config.tableName || 'ontime_realtime',
+            filter: `id=eq.${projectCode}`,
+          },
+          (payload: any) => {
+            this.handleRealtimeUpdate(payload);
+          },
+        )
+        .subscribe((status: string) => {
+          logger.info(LogOrigin.Server, `Supabase changes listener: status=${status}`);
+          if (status === 'SUBSCRIBED') {
+            this.fetchAndBroadcastInitialChanges(projectCode);
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            this.lastChangesProjectCode = '';
+          }
+        });
+    } catch (error) {
+      logger.error(LogOrigin.Server, `Supabase: Error setting up changes listener: ${error}`);
+    }
+  }
+
+  /**
+   * Fetch current changes from DB and broadcast to clients (for items already in DB before subscription)
+   */
+  private async fetchAndBroadcastInitialChanges(projectCode: string) {
+    if (!this.changesSupabaseClient || !this.config) return;
+    try {
+      const sanitized = (projectCode || '').trim().toUpperCase();
+      if (!sanitized) return;
+
+      // Try project_code first, then id (table may use either)
+      let result = await this.changesSupabaseClient
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('changes')
+        .eq('project_code', sanitized)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (result.error || !result.data?.length) {
+        result = await this.changesSupabaseClient
+          .from(this.config.tableName || 'ontime_realtime')
+          .select('changes')
+          .eq('id', sanitized)
+          .maybeSingle();
+      }
+
+      const row = Array.isArray(result.data) ? result.data[0] : result.data;
+      const raw = row?.changes;
+      const toBroadcast = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+      if (toBroadcast.length > 0) {
+        logger.info(LogOrigin.Server, `Supabase: Broadcasting initial changes (${toBroadcast.length} item(s))`);
+        socket.sendAsJson({ type: 'ontime-changes', payload: toBroadcast });
+      }
+    } catch (err) {
+      logger.warning(LogOrigin.Server, `Supabase: Error fetching initial changes: ${err}`);
+    }
+  }
+
+  /**
+   * Teardown changes Realtime subscription
+   */
+  private teardownChangesRealtimeSubscription() {
+    if (this.changesRealtimeChannel) {
+      try {
+        this.changesRealtimeChannel.unsubscribe();
+      } catch (e) {
+        // ignore
+      }
+      this.changesRealtimeChannel = null;
+    }
+    this.changesSupabaseClient = null;
+    this.lastChangesProjectCode = '';
   }
 
   /**
@@ -97,13 +240,71 @@ export class SupabaseAdapter {
       if (this.isConnected) {
         // Save configuration
         this.saveConfig(config);
-        
-        // Send initial data
-        this.sendToSupabase();
+
+        // Send initial data (await para garantir que o envio complete)
+        await this.sendToSupabase();
+
+        // Realtime for changes is handled by setupChangesRealtimeSubscription (independent of toggle)
       }
     } catch (error) {
       console.error(`❌ Failed to initialize Supabase: ${error}`);
       this.isConnected = false;
+    }
+  }
+
+  /**
+   * Handle realtime updates received from Supabase (from changes listener)
+   */
+  private async handleRealtimeUpdate(payload: any) {
+    try {
+      const eventType = payload.eventType; // 'INSERT', 'UPDATE', 'DELETE'
+      const newData = payload.new;
+
+      logger.info(LogOrigin.Server, `Supabase: Realtime update received - event: ${eventType}`);
+      logger.info(LogOrigin.Server, `Supabase: Payload structure - newData keys: ${newData ? Object.keys(newData).join(', ') : 'null'}`);
+      
+      // Only process UPDATE events (INSERT/DELETE are less common for project updates)
+      if (eventType !== 'UPDATE') {
+        logger.info(LogOrigin.Server, `Supabase: Ignoring ${eventType} event (only processing UPDATE)`);
+        return;
+      }
+
+      if (!newData) {
+        logger.warning(LogOrigin.Server, 'Supabase: Realtime update received but newData is null');
+        return;
+      }
+
+      // Extract project code from the row
+      const projectCode = newData.id || newData.project_code;
+      
+      if (!projectCode) {
+        logger.warning(LogOrigin.Server, 'Supabase: Realtime update received but no project code found');
+        return;
+      }
+
+      // Verify this is for the current project
+      const currentProjectData = getDataProvider().getProjectData();
+      const currentProjectCode = currentProjectData?.projectCode || '';
+      
+      if (projectCode !== currentProjectCode) {
+        logger.info(LogOrigin.Server, `Supabase: Ignoring realtime update for different project: ${projectCode} (current: ${currentProjectCode})`);
+        return;
+      }
+
+      // Process changes column - ALWAYS broadcast (independent of toggle)
+      const raw = newData.changes;
+      const toBroadcast = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+      if (toBroadcast.length > 0) {
+        logger.info(LogOrigin.Server, `Supabase: Broadcasting changes to clients (${toBroadcast.length} item(s))`);
+        socket.sendAsJson({ type: 'ontime-changes', payload: toBroadcast });
+      }
+
+      // NÃO aplica os dados automaticamente - requer aprovação do usuário.
+      // Os dados (project, rundown, customFields, etc.) só serão aplicados quando
+      // o usuário clicar em "Aplicar" ou "Aplicar tudo" no toast de alterações.
+    } catch (error) {
+      logger.error(LogOrigin.Server, `Supabase: Error handling realtime update: ${error}`);
+      console.error('Supabase handleRealtimeUpdate error:', error);
     }
   }
 
@@ -126,7 +327,8 @@ export class SupabaseAdapter {
         originalSet.call(eventStore, key, value);
         
         // Check for specific triggers
-        if (this.isConnected) {
+        // Don't send updates if we're currently applying a realtime update (to avoid loops)
+        if (this.isConnected && !this.isApplyingRealtimeUpdate) {
           this.checkForTriggers(key, value);
         }
       };
@@ -157,6 +359,9 @@ export class SupabaseAdapter {
       this.lastProjectCode = projectCode;
       logger.info(LogOrigin.Server, `Supabase: Project loaded - sending initial data for ${projectCode}`);
       this.handleProjectChange(currentData);
+
+      // Changes listener is updated by startChangesListenerCheck (independent of toggle)
+
       // Reset delay update timer to prevent immediate delay update after project load
       this.lastDelayUpdate = Date.now();
       return; // Don't process other triggers on initial load
@@ -579,12 +784,49 @@ export class SupabaseAdapter {
   }
 
   /**
-   * Disconnect from Supabase
+   * Envia os dados atuais para o Supabase conectando, enviando e desconectando.
+   * Usa a mesma lógica que funciona quando o usuário clica em Conectar.
+   */
+  public async syncDataToSupabase(): Promise<boolean> {
+    if (!this.config?.url || !this.config?.anonKey) {
+      logger.warning(LogOrigin.Server, 'syncDataToSupabase: config ausente');
+      return false;
+    }
+
+    const wasConnected = this.isConnected;
+
+    try {
+      const config: SupabaseConfig = { ...this.config, enabled: true };
+      await this.init(config);
+
+      if (!this.isConnected) {
+        logger.warning(LogOrigin.Server, 'syncDataToSupabase: init falhou');
+        return false;
+      }
+
+      logger.info(LogOrigin.Server, 'syncDataToSupabase: dados enviados com sucesso');
+
+      if (!wasConnected) {
+        this.disconnect();
+      }
+      return true;
+    } catch (err) {
+      logger.error(LogOrigin.Server, `syncDataToSupabase error: ${err}`);
+      if (!wasConnected) {
+        this.disconnect();
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Disconnect from Supabase (send only - does NOT affect changes listener)
    */
   private disconnect() {
     this.isConnected = false;
     this.supabase = null;
     // Keep config so we can reconnect later
+    // Changes listener (changesSupabaseClient) stays active - independent of toggle
   }
 
   /**
@@ -1138,6 +1380,72 @@ export class SupabaseAdapter {
   }
 
   /**
+   * Busca projeto no Supabase SOMENTE LEITURA - não conecta, não envia dados.
+   * Usado pelo Recarregar para baixar projeto atualizado sem sobrescrever no Supabase.
+   */
+  async getProjectDataReadOnly(
+    projectCode: string,
+  ): Promise<{ data: any; user_id?: string | number | null } | null> {
+    const sanitizedCode = (projectCode || '').trim().toUpperCase();
+    if (!sanitizedCode) return null;
+    if (!this.config?.url || !this.config?.anonKey) {
+      logger.warning(LogOrigin.Server, 'getProjectDataReadOnly: config ausente');
+      return null;
+    }
+
+    const readClient = createClient(this.config.url, this.config.anonKey);
+    const table = this.config.tableName || 'ontime_realtime';
+
+    try {
+      logger.info(LogOrigin.Server, `Buscando projeto (read-only): ${sanitizedCode}`);
+
+      const { data: allRecords, error: queryError } = await readClient
+        .from(table)
+        .select('data, user_id, project_code, id, updated_at')
+        .eq('project_code', sanitizedCode)
+        .order('updated_at', { ascending: false })
+        .limit(10);
+
+      if (queryError) {
+        const resultById = await readClient
+          .from(table)
+          .select('data, user_id, project_code, id, updated_at')
+          .eq('id', sanitizedCode)
+          .maybeSingle();
+        if (resultById.data) {
+          const d = resultById.data;
+          return { data: d.data, user_id: (d as any).user_id ?? null };
+        }
+        logger.info(LogOrigin.Server, `Erro read-only: ${queryError.message}`);
+        return null;
+      }
+
+      if (allRecords && allRecords.length > 0) {
+        const d = allRecords[0];
+        logger.info(LogOrigin.Server, `✅ Projeto encontrado (read-only): ${sanitizedCode}`);
+        return { data: d.data, user_id: (d as any).user_id ?? null };
+      }
+
+      const resultById = await readClient
+        .from(table)
+        .select('data, user_id, project_code, id, updated_at')
+        .eq('id', sanitizedCode)
+        .maybeSingle();
+
+      if (resultById.data) {
+        const d = resultById.data;
+        return { data: d.data, user_id: (d as any).user_id ?? null };
+      }
+
+      return null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      logger.error(LogOrigin.Server, `getProjectDataReadOnly erro: ${msg}`);
+      return null;
+    }
+  }
+
+  /**
    * Get project data by project code
    * Não aplica filtro de user_id aqui; a checagem de propriedade é feita no controller
    */
@@ -1286,6 +1594,176 @@ export class SupabaseAdapter {
       }
     } catch (err) {
       // Ignora erros de debug
+    }
+  }
+
+  /**
+   * Busca o array changes de um projeto. Usa changes client, main client, ou cria um temporário.
+   */
+  async getChangesForProject(projectCode: string): Promise<unknown[]> {
+    let client = this.getSupabaseClientForDb();
+    if (!client && this.config?.url && this.config?.anonKey) {
+      client = createClient(this.config.url, this.config.anonKey);
+    }
+    if (!client || !this.config) return [];
+
+    try {
+      const sanitizedCode = (projectCode || '').trim().toUpperCase();
+      if (!sanitizedCode) return [];
+
+      let row: { changes?: unknown[] } | null = null;
+
+      const byProjectCode = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('changes')
+        .eq('project_code', sanitizedCode)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (!byProjectCode.error && byProjectCode.data?.[0]) {
+        row = byProjectCode.data[0];
+      } else {
+        const byId = await client
+          .from(this.config.tableName || 'ontime_realtime')
+          .select('changes')
+          .eq('id', sanitizedCode)
+          .maybeSingle();
+        if (!byId.error && byId.data) row = byId.data;
+      }
+
+      const raw = row?.changes;
+      return Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get Supabase client for DB operations - use main client if connected, else changes client
+   */
+  private getSupabaseClientForDb(): any {
+    if (this.supabase) return this.supabase;
+    if (this.changesSupabaseClient) return this.changesSupabaseClient;
+    return null;
+  }
+
+  /**
+   * Remove a change item from the changes array in ontime_realtime
+   * Works with either main client or changes client (so approve/reject works when toggle is off)
+   */
+  async removeChangeFromArray(projectCode: string, changeId: string): Promise<boolean> {
+    const client = this.getSupabaseClientForDb();
+    if (!client || !this.config) {
+      return false;
+    }
+
+    try {
+      const sanitizedCode = (projectCode || '').trim().toUpperCase();
+      if (!sanitizedCode) {
+        return false;
+      }
+
+      // Fetch current row - by project_code (or id as fallback for backwards compat)
+      let row: { id: string; changes?: unknown[] } | null = null;
+
+      const byProjectCode = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('id, changes')
+        .eq('project_code', sanitizedCode)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (!byProjectCode.error && byProjectCode.data && byProjectCode.data.length > 0) {
+        row = byProjectCode.data[0];
+      } else {
+        const byId = await client
+          .from(this.config.tableName || 'ontime_realtime')
+          .select('id, changes')
+          .eq('id', sanitizedCode)
+          .maybeSingle();
+        if (!byId.error && byId.data) {
+          row = byId.data;
+        }
+      }
+
+      if (!row) {
+        logger.warning(LogOrigin.Server, `removeChangeFromArray: No row found for project ${sanitizedCode}`);
+        return false;
+      }
+      const currentChanges = Array.isArray(row.changes) ? row.changes : row.changes != null ? [row.changes] : [];
+      let newChanges = currentChanges.filter((c: { id?: string }) => (c as any)?.id !== changeId);
+      if (newChanges.length === currentChanges.length) {
+        const hasProjectUpdateNoId = currentChanges.some(
+          (c: any) => c?.type === 'project_data_updated' && !c?.id
+        );
+        if (hasProjectUpdateNoId) {
+          newChanges = [];
+          logger.info(LogOrigin.Server, `removeChangeFromArray: Cleared project_data_updated (no id)`);
+        } else {
+          logger.warning(LogOrigin.Server, `removeChangeFromArray: Change ${changeId} not found in array`);
+        }
+      }
+
+      const { error: updateError } = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .update({
+          changes: newChanges,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+
+      if (updateError) {
+        logger.error(LogOrigin.Server, `removeChangeFromArray error: ${updateError.message}`);
+        return false;
+      }
+
+      logger.info(LogOrigin.Server, `removeChangeFromArray: Removed change ${changeId} from project ${sanitizedCode}`);
+      return true;
+    } catch (error) {
+      logger.error(LogOrigin.Server, `removeChangeFromArray error: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Apply an OntimeChange (custom action) to the local project and remove it from the array
+   */
+  async applyChangeAndRemove(change: OntimeChange): Promise<boolean> {
+    try {
+      if (change.path === 'cuesheet.rundown' && change.eventId && change.field?.startsWith('custom.')) {
+        const fieldName = change.field.replace('custom.', '');
+        updateEvent({
+          id: change.eventId,
+          custom: { [fieldName]: change.after },
+        } as any);
+      } else if (change.path === 'cuesheet.rundown' && change.eventId) {
+        // Non-custom field
+        updateEvent({
+          id: change.eventId,
+          [change.field]: change.after,
+        } as any);
+      } else {
+        logger.warning(LogOrigin.Server, `applyChangeAndRemove: Unsupported path/field: ${change.path}/${change.field}`);
+        return false;
+      }
+
+      const projectData = getDataProvider().getProjectData();
+      const projectCode = projectData?.projectCode || '';
+      if (!projectCode) {
+        logger.warning(LogOrigin.Server, 'applyChangeAndRemove: No project code');
+        return false;
+      }
+
+      const removed = await this.removeChangeFromArray(projectCode, change.id);
+      if (removed) {
+        await new Promise((r) => setTimeout(r, 250));
+        await this.syncDataToSupabase();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      logger.error(LogOrigin.Server, `applyChangeAndRemove error: ${error}`);
+      return false;
     }
   }
 

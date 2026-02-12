@@ -284,10 +284,26 @@ export const connectSocket = () => {
           // Handle PowerPoint status broadcast (sent by server when status changes)
           if (typeof payload === 'object' && payload !== null) {
             // Dispatch custom event for PowerPointControl component
-            window.dispatchEvent(new CustomEvent('powerpoint-status', { 
-              detail: { type: 'powerpoint-status', payload } 
+            window.dispatchEvent(new CustomEvent('powerpoint-status', {
+              detail: { type: 'powerpoint-status', payload },
             }));
           }
+          break;
+        }
+        case 'ontime-changes':
+        case 'get-changes': {
+          if (Array.isArray(payload) || (payload && typeof payload === 'object')) {
+            window.dispatchEvent(new CustomEvent('ontime-changes', { detail: { changes: payload } }));
+          }
+          break;
+        }
+        case 'approve-change':
+        case 'reject-change': {
+          window.dispatchEvent(
+            new CustomEvent('change-action-response', {
+              detail: { type, payload: payload as string },
+            }),
+          );
           break;
         }
       }

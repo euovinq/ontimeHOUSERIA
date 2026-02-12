@@ -5,9 +5,9 @@ import { millisToString, removeSeconds } from 'houseriaapp-utils';
 
 import DelayIndicator from '../../../../common/components/delay-indicator/DelayIndicator';
 import { formatDuration } from '../../../../common/utils/time';
+import EventCustomFieldHTML from '../../../../features/rundown/event-editor/composite/EventCustomFieldHTML';
 
 import EditableImage from './EditableImage';
-import MultiLineCell from './MultiLineCell';
 import SingleLineCell from './SingleLineCell';
 import TimeInput from './TimeInput';
 
@@ -102,8 +102,17 @@ function MakeMultiLineField({ row, column, table }: CellContext<OntimeRundownEnt
   }
 
   const initialValue = event[column.id as keyof OntimeRundownEntry] ?? '';
+  const fieldName = column.id as string;
 
-  return <MultiLineCell initialValue={initialValue} handleUpdate={update} />;
+  return (
+    <EventCustomFieldHTML
+      field={fieldName}
+      label=''
+      initialValue={initialValue}
+      submitHandler={(_, value) => update(value)}
+      compact
+    />
+  );
 }
 
 function LazyImage({ row, column, table }: CellContext<OntimeRundownEntry, unknown>) {
@@ -158,7 +167,16 @@ function MakeCustomField({ row, column, table }: CellContext<OntimeRundownEntry,
   }
 
   const initialValue = event.custom[column.id] ?? '';
-  return <MultiLineCell initialValue={initialValue} handleUpdate={update} />;
+  const fieldName = `custom-${column.id}`;
+  return (
+    <EventCustomFieldHTML
+      field={fieldName}
+      label=''
+      initialValue={initialValue}
+      submitHandler={(_, value) => update(value)}
+      compact
+    />
+  );
 }
 
 export function makeCuesheetColumns(customFields: CustomFields): ColumnDef<OntimeRundownEntry>[] {
