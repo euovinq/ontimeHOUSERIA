@@ -4,6 +4,7 @@ import TooltipActionBtn from '../../../common/components/buttons/TooltipActionBt
 import { setMessage, useExternalMessageInput, useTimerMessageInput } from '../../../common/hooks/useSocket';
 import { tooltipDelayMid } from '../../../ontimeConfig';
 
+import ChangesBanner from './ChangesBanner';
 import InputRow from './InputRow';
 import ProjectCodeInput from './ProjectCodeInput';
 import TimerControlsPreview from './TimerViewControl';
@@ -15,6 +16,7 @@ export default function MessageControl() {
       <TimerMessageInput />
       <ExternalInput />
       <ProjectCodeInput />
+      <ChangesBanner />
     </>
   );
 }

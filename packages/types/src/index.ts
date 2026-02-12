@@ -38,6 +38,17 @@ export type {
 // ---> Project Data
 export type { ProjectData } from './definitions/core/ProjectData.type.js';
 
+// ---> Supabase Changes (ontime_realtime.changes)
+export type {
+  OntimeChange,
+  ProjectDataUpdatedNotification,
+  ChangeItem,
+} from './definitions/core/SupabaseChanges.type.js';
+export {
+  isProjectDataUpdated,
+  isOntimeChange,
+} from './definitions/core/SupabaseChanges.type.js';
+
 // ---> Settings
 export type { Settings } from './definitions/core/Settings.type.js';
 

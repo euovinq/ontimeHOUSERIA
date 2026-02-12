@@ -378,6 +378,33 @@ const actionHandlers: Record<string, ActionHandler> = {
     const status = supabaseAdapter.getConnectionStatus();
     return { payload: status };
   },
+  'approve-change': async (payload) => {
+    assert.isObject(payload);
+    if (!('change' in payload) || typeof payload.change !== 'object' || payload.change === null) {
+      throw new Error('approve-change requires payload.change (object)');
+    }
+    const change = payload.change as import('houseriaapp-types').OntimeChange;
+    const success = await supabaseAdapter.applyChangeAndRemove(change);
+    return { payload: success ? 'success' : 'error' };
+  },
+  'get-changes': async () => {
+    const projectCode = getDataProvider().getProjectData()?.projectCode || '';
+    if (!projectCode) return { payload: [] };
+    const changes = await supabaseAdapter.getChangesForProject(projectCode);
+    return { payload: changes };
+  },
+  'reject-change': async (payload) => {
+    assert.isObject(payload);
+    if (!('changeId' in payload) || typeof payload.changeId !== 'string') {
+      throw new Error('reject-change requires payload.changeId (string)');
+    }
+    const projectCode = getDataProvider().getProjectData()?.projectCode || '';
+    if (!projectCode) {
+      throw new Error('No project loaded');
+    }
+    const success = await supabaseAdapter.removeChangeFromArray(projectCode, payload.changeId);
+    return { payload: success ? 'success' : 'error' };
+  },
   togglepowerpoint: async () => {
     // Importa dinamicamente para evitar dependência circular
     const module = await import('../api-data/powerpoint/powerpoint.controller.js');

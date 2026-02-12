@@ -153,20 +153,12 @@ export async function getProjectData(req: Request, res: Response) {
       });
     }
     
-    // Verificar se Supabase está conectado antes de buscar
-    const connectionStatus = supabaseAdapter.getConnectionStatus();
-    if (!connectionStatus.connected) {
-      logger.warning(LogOrigin.Server, `Tentativa de buscar projeto ${sanitizedCode} mas Supabase não está conectado`);
-      return res.status(503).json({ 
-        error: 'Supabase não está conectado',
-        projectCode: sanitizedCode,
-        message: 'Verifique se o Supabase está habilitado e conectado'
-      });
-    }
-    
     logger.info(LogOrigin.Server, `🔍 Buscando projeto: ${sanitizedCode} (usuário: ${authUser.userId})`);
-    
-    const projectRecord = await supabaseAdapter.getProjectData(sanitizedCode);
+
+    const connectionStatus = supabaseAdapter.getConnectionStatus();
+    const projectRecord = connectionStatus.connected
+      ? await supabaseAdapter.getProjectData(sanitizedCode)
+      : await supabaseAdapter.getProjectDataReadOnly(sanitizedCode);
     
     if (!projectRecord) {
       logger.info(LogOrigin.Server, `❌ Projeto não encontrado: ${sanitizedCode}`);
