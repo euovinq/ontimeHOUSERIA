@@ -2,42 +2,22 @@
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": ["NODE_ENV", "GITHUB_TOKEN"],
   "tasks": {
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
-    "dev:server": {
-      "cache": false,
-      "persistent": true
-    },
-    "dev:test": {
-      "cache": false
-    },
+    "dev": {"cache": false, "persistent": true},
+    "dev:server": {"cache": false, "persistent": true},
+    "dev:test": {"cache": false},
     "test": {},
     "test:pipeline": {},
-    "lint": {
-      "cache": false
-    },
-    "typecheck": {
-      "cache": false
-    },
-    "build": {
-      "env": ["SENTRY_AUTH_TOKEN"]
-    },
+    "lint": {"cache": false},
+    "typecheck": {"cache": false},
+    "build": {"env": ["SENTRY_AUTH_TOKEN"]},
     "build:local": {},
-    "build:electron": {
-      "env": ["SENTRY_AUTH_TOKEN"]
-    },
+    "build:electron": {"env": ["SENTRY_AUTH_TOKEN"]},
     "build:localdocker": {},
-    "e2e": {
-      "dependsOn": [
-        "^build"
-      ]
-    },
+    "e2e": {"dependsOn": ["^build"]},
     "dist-win": {},
-    "dist-mac": {
-      "env": ["APPLEID", "APPLEIDPASS", "TEAMID", "CSC_KEY_PASSWORD", "CSC_LINK"]
-    },
+    "dist-mac": {"env": ["APPLEID", "APPLEIDPASS", "TEAMID", "CSC_KEY_PASSWORD", "CSC_LINK"]},
+    "dist-mac:universal": {"env": ["APPLEID", "APPLEIDPASS", "TEAMID", "CSC_KEY_PASSWORD", "CSC_LINK"]},
+    "dist-mac:universal:local": {},
     "dist-mac:local": {},
     "dist-linux": {},
     "cleanup": {}

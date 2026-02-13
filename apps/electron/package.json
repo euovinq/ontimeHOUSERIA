@@ -32,6 +32,8 @@
     "dev:api": "cross-env NODE_ENV=development API_URL=https://seu-servidor.vercel.app electron .",
     "dist-win": "electron-builder --publish=never --x64 --win",
     "dist-mac": "electron-builder --publish=never --mac",
+    "dist-mac:universal": "electron-builder --publish=never --mac --universal -c.dmg.artifactName=houseriaapp-macOS-universal.dmg",
+    "dist-mac:universal:local": "electron-builder --publish=never --mac --universal -c.mac.identity=null -c.dmg.artifactName=houseriaapp-macOS-universal.dmg",
     "dist-mac:x64": "electron-builder --publish=never --mac --x64",
     "dist-mac:arm64": "electron-builder --publish=never --mac --arm64",
     "dist-mac:local": "electron-builder --publish=never --mac -c.mac.identity=null",
