@@ -26,6 +26,7 @@ import { patchData } from '../../../common/api/db';
 import { fetchSupabaseProject } from '../../../common/api/supabase';
 import { maybeAxiosError } from '../../../common/api/utils';
 import useProjectData from '../../../common/hooks-query/useProjectData';
+import useRundown from '../../../common/hooks-query/useRundown';
 import { ontimeQueryClient } from '../../../common/queryClient';
 import { setChangesFromEvent, useChangesStore } from '../../../common/stores/changesStore';
 import { socketSendJson } from '../../../common/utils/socket';
@@ -40,14 +41,21 @@ export default function ChangesBanner() {
   const changes = useChangesStore((s) => s.changes);
   const setChanges = useChangesStore((s) => s.setChanges);
   const { data: projectData } = useProjectData();
+  const { data: rundownData } = useRundown();
   const projectCode = projectData?.projectCode || '';
   const [selectedChange, setSelectedChange] = useState<ChangeItem | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [syncIndex, setSyncIndex] = useState(0);
+  const [approveIndex, setApproveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const pendingChangeIdRef = useRef<string | null>(null);
   const isApplyingAllRef = useRef(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
+
+  const projectUpdates = changes.filter((c): c is ProjectDataUpdatedNotification => isProjectDataUpdated(c));
+  const ontimChanges = changes.filter((c): c is OntimeChange => !isProjectDataUpdated(c));
+  const hasSync = projectUpdates.length > 0;
+  const hasApprove = ontimChanges.length > 0;
 
   // Listen for ontime-changes events from WebSocket
   useEffect(() => {
@@ -61,7 +69,7 @@ export default function ChangesBanner() {
     return () => window.removeEventListener('ontime-changes', handler);
   }, []);
 
-  // Request current changes when component mounts (catches items already in DB)
+  // Request current changes when component mounts
   useEffect(() => {
     if (!projectCode) return;
     const t = setTimeout(() => socketSendJson('get-changes'), 500);
@@ -117,25 +125,31 @@ export default function ChangesBanner() {
     [],
   );
 
-  /** Aplica todas as alterações: aprova cada OntimeChange e recarrega para ProjectDataUpdated */
   const handleApplyAll = useCallback(
     async () => {
-      const currentChanges = useChangesStore.getState().changes;
-      const projectUpdates = currentChanges.filter((c): c is ProjectDataUpdatedNotification => isProjectDataUpdated(c));
       if (projectUpdates.length > 0 && !projectCode) return;
       isApplyingAllRef.current = true;
       setIsLoading(true);
       try {
         const allChanges = useChangesStore.getState().changes;
-        const ontimChanges = allChanges.filter((c): c is OntimeChange => !isProjectDataUpdated(c));
-        const projUpdates = allChanges.filter((c): c is ProjectDataUpdatedNotification => isProjectDataUpdated(c));
+        const ontim = allChanges.filter((c): c is OntimeChange => !isProjectDataUpdated(c));
+        const proj = allChanges.filter((c): c is ProjectDataUpdatedNotification => isProjectDataUpdated(c));
 
-        for (const c of ontimChanges) {
-          socketSendJson('approve-change', { change: c });
+        let appliedResult: { applied: number; failed: number; total: number } | null = null;
+        if (ontim.length > 0) {
+          appliedResult = await new Promise<{ applied: number; failed: number; total: number }>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Timeout ao aplicar alterações')), 60000 + ontim.length * 2000);
+            const handler = (e: Event) => {
+              clearTimeout(timeout);
+              window.removeEventListener('approve-all-changes-response', handler);
+              resolve((e as CustomEvent).detail);
+            };
+            window.addEventListener('approve-all-changes-response', handler);
+            socketSendJson('approve-all-changes', { changes: ontim });
+          });
         }
-        await new Promise((r) => setTimeout(r, 300 + 150 * ontimChanges.length));
 
-        if (ontimChanges.length > 0) {
+        if (ontim.length > 0) {
           await Promise.all([
             ontimeQueryClient.invalidateQueries({ queryKey: RUNDOWN }),
             ontimeQueryClient.invalidateQueries({ queryKey: CUSTOM_FIELDS }),
@@ -143,7 +157,7 @@ export default function ChangesBanner() {
           ]);
         }
 
-        if (projUpdates.length > 0 && projectCode) {
+        if (proj.length > 0 && projectCode) {
           const response = await fetchSupabaseProject(projectCode);
           const supabaseData = response?.project;
           if (!supabaseData) throw new Error('Projeto não encontrado');
@@ -159,14 +173,18 @@ export default function ChangesBanner() {
             ontimeQueryClient.invalidateQueries({ queryKey: CUSTOM_FIELDS }),
             ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA }),
           ]);
-          for (const n of projUpdates) {
-            socketSendJson('reject-change', { changeId: n.id });
-          }
-          await new Promise((r) => setTimeout(r, 500));
+          socketSendJson('reject-project-data-updates', { projectCode });
+          await new Promise((r) => setTimeout(r, 300));
         }
 
         setChanges([]);
-        toast({ title: 'Todas as alterações aplicadas', status: 'success', duration: 3000, isClosable: true });
+        const failed = appliedResult?.failed ?? 0;
+        toast({
+          title: failed > 0 ? `${appliedResult?.applied ?? 0} aplicadas, ${failed} falharam` : 'Todas as alterações aplicadas',
+          status: failed > 0 ? 'warning' : 'success',
+          duration: 3000,
+          isClosable: true,
+        });
       } catch (error) {
         toast({
           title: 'Erro ao aplicar',
@@ -182,15 +200,11 @@ export default function ChangesBanner() {
         setSelectedChange(null);
       }
     },
-    [projectCode, setChanges, toast, onClose],
+    [projectCode, setChanges, toast, onClose, projectUpdates.length],
   );
 
-  /**
-   * Recarrega o projeto do Supabase (somente leitura - não envia dados locais).
-   * Funciona mesmo sem clicar em Conectar.
-   */
   const handleReloadProject = useCallback(
-    async (_notification?: ProjectDataUpdatedNotification) => {
+    async () => {
       if (!projectCode) return;
       setIsLoading(true);
       try {
@@ -209,16 +223,12 @@ export default function ChangesBanner() {
           ontimeQueryClient.invalidateQueries({ queryKey: CUSTOM_FIELDS }),
           ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA }),
         ]);
-        const currentChanges = useChangesStore.getState().changes;
-        const projectUpdateIds = currentChanges.filter(isProjectDataUpdated).map((c) => c.id);
-        for (const id of projectUpdateIds) {
-          socketSendJson('reject-change', { changeId: id });
-        }
-        setChanges(currentChanges.filter((c) => !isProjectDataUpdated(c)));
-        toast({ title: 'Projeto recarregado', status: 'success', duration: 3000, isClosable: true });
+        socketSendJson('reject-project-data-updates', { projectCode });
+        setChanges(useChangesStore.getState().changes.filter((c) => !isProjectDataUpdated(c)));
+        toast({ title: 'Projeto sincronizado com a nuvem', status: 'success', duration: 3000, isClosable: true });
       } catch (error) {
         toast({
-          title: 'Erro ao recarregar',
+          title: 'Erro ao sincronizar',
           description: maybeAxiosError(error),
           status: 'error',
           duration: 4000,
@@ -226,11 +236,10 @@ export default function ChangesBanner() {
         });
       } finally {
         setIsLoading(false);
-        onClose();
         setSelectedChange(null);
       }
     },
-    [projectCode, setChanges, toast, onClose],
+    [projectCode, setChanges, toast],
   );
 
   const openChangeModal = (change: ChangeItem) => {
@@ -238,119 +247,200 @@ export default function ChangesBanner() {
     onOpen();
   };
 
-  const handleApproveCurrent = useCallback(() => {
-    const current = changes[Math.min(currentIndex, changes.length - 1)];
-    if (!current) return;
-    if (isProjectDataUpdated(current)) {
-      handleReloadProject(current);
-    } else {
-      handleApprove(current as OntimeChange);
-    }
-  }, [changes, currentIndex, handleApprove, handleReloadProject]);
+  useEffect(() => {
+    setSyncIndex((i) => Math.min(i, Math.max(0, projectUpdates.length - 1)));
+  }, [projectUpdates.length]);
 
   useEffect(() => {
-    setCurrentIndex((i) => Math.min(i, Math.max(0, changes.length - 1)));
-  }, [changes.length]);
+    setApproveIndex((i) => Math.min(i, Math.max(0, ontimChanges.length - 1)));
+  }, [ontimChanges.length]);
 
-  if (changes.length === 0) return null;
+  if (!hasSync && !hasApprove) return null;
 
-  const safeIndex = Math.min(currentIndex, changes.length - 1);
-  const currentChange = changes[safeIndex];
-  const isProjectUpdate = currentChange && isProjectDataUpdated(currentChange);
-  const currentMessage = isProjectUpdate
-    ? (currentChange as ProjectDataUpdatedNotification).message ||
-      'Projeto editado na web. Recarregue para ver as alterações.'
-    : (currentChange as OntimeChange).field?.replace('custom.', '') || (currentChange as OntimeChange).eventId || 'Alteração';
-  const currentChangesList = isProjectUpdate ? (currentChange as ProjectDataUpdatedNotification).changes : undefined;
-  const currentAuthor =
-    ('authorName' in currentChange && currentChange.authorName) ||
-    ('authorEmail' in currentChange && currentChange.authorEmail) ||
-    ('author' in currentChange && currentChange.author);
+  const safeSyncIndex = Math.min(syncIndex, projectUpdates.length - 1);
+  const safeApproveIndex = Math.min(approveIndex, ontimChanges.length - 1);
+  const currentSync = projectUpdates[safeSyncIndex];
+  const currentApprove = ontimChanges[safeApproveIndex];
 
-  const toastContent = (
-    <Box
-      className={style.toast}
-      role="alert"
-      sx={{ position: 'fixed', top: '16px', right: '16px', zIndex: 99999 }}
-    >
-      <Box className={style.toastHeader}>
-        <span>{changes.length} alteração(ões) pendente(s)</span>
-        <Badge className={style.toastBadge} colorScheme="orange">
-          {safeIndex + 1} / {changes.length}
-        </Badge>
-      </Box>
-
-      <Box className={style.toastNav}>
-        <Button
-          size="xs"
-          variant="ontime-ghosted"
-          aria-label="Anterior"
-          onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-          isDisabled={safeIndex <= 0}
-        >
-          <IoChevronBack size={18} />
-        </Button>
-        <Box className={style.toastMessage} flex={1}>
-          <span>{currentMessage}</span>
-          {currentAuthor && (
-            <Box as="span" display="block" mt={1} fontSize="xs" opacity={0.85}>
-              {currentAuthor}
+  const stackContent = (
+    <Box className={style.stack} role="group" aria-label="Alterações pendentes">
+      {/* Card 1: Sincronizar com a nuvem (project_data_updated) */}
+      {hasSync && (
+        <Box className={style.card}>
+          <Box className={style.cardHeader}>
+            <span className={style.cardTitle}>Precisa sincronizar com a nuvem</span>
+            <Badge className={style.toastBadge} colorScheme="orange">
+              {projectUpdates.length > 0 ? `${safeSyncIndex + 1} / ${projectUpdates.length}` : '0'}
+            </Badge>
+          </Box>
+          <Box className={style.cardNav}>
+            <Button
+              size="xs"
+              variant="ontime-ghosted"
+              aria-label="Anterior"
+              onClick={() => setSyncIndex((i) => Math.max(0, i - 1))}
+              isDisabled={safeSyncIndex <= 0}
+            >
+              <IoChevronBack size={18} />
+            </Button>
+            <Box className={style.cardMessage} flex={1}>
+              {currentSync && (
+                <>
+                  <span>
+                    {(currentSync as ProjectDataUpdatedNotification).message ||
+                      'Projeto atualizado na web. Sincronize para ver as alterações.'}
+                  </span>
+                  {((currentSync as ProjectDataUpdatedNotification).authorName ||
+                    (currentSync as ProjectDataUpdatedNotification).authorEmail ||
+                    (currentSync as ProjectDataUpdatedNotification).author) && (
+                    <Box as="span" display="block" mt={1} fontSize="xs" opacity={0.85}>
+                      {(currentSync as ProjectDataUpdatedNotification).authorName ||
+                        (currentSync as ProjectDataUpdatedNotification).authorEmail ||
+                        (currentSync as ProjectDataUpdatedNotification).author}
+                    </Box>
+                  )}
+                  {(currentSync as ProjectDataUpdatedNotification).changes?.length ? (
+                    <Box className={style.toastChanges}>
+                      <ul>
+                        {(currentSync as ProjectDataUpdatedNotification).changes!.map((item, i) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </Box>
+                  ) : null}
+                </>
+              )}
             </Box>
-          )}
-          {currentChangesList && currentChangesList.length > 0 && (
-            <Box className={style.toastChanges}>
-              <ul>
-                {currentChangesList.map((item, i) => (
-                  <li key={i}>{item}</li>
-                ))}
-              </ul>
-            </Box>
-          )}
+            <Button
+              size="xs"
+              variant="ontime-ghosted"
+              aria-label="Próxima"
+              onClick={() => setSyncIndex((i) => Math.min(projectUpdates.length - 1, i + 1))}
+              isDisabled={safeSyncIndex >= projectUpdates.length - 1}
+            >
+              <IoChevronForward size={18} />
+            </Button>
+          </Box>
+          <Box className={style.cardActions}>
+            <Button
+              size="sm"
+              variant="ontime-filled"
+              leftIcon={<IoRefresh size={14} />}
+              onClick={handleReloadProject}
+              isLoading={isLoading}
+            >
+              Sincronizar
+            </Button>
+          </Box>
         </Box>
-        <Button
-          size="xs"
-          variant="ontime-ghosted"
-          aria-label="Próxima"
-          onClick={() => setCurrentIndex((i) => Math.min(changes.length - 1, i + 1))}
-          isDisabled={safeIndex >= changes.length - 1}
-        >
-          <IoChevronForward size={18} />
-        </Button>
-      </Box>
+      )}
 
-      <Box className={style.toastActions}>
-        <Button
-          size="sm"
-          variant="ontime-filled"
-          onClick={handleApproveCurrent}
-          isLoading={isLoading}
-          leftIcon={isProjectUpdate ? <IoRefresh size={14} /> : undefined}
-        >
-          {isProjectUpdate ? 'Aplicar' : 'Aprovar'}
-        </Button>
-        <Button
-          size="sm"
-          variant="ontime-outlined"
-          onClick={handleApplyAll}
-          isLoading={isLoading}
-          leftIcon={<IoRefresh size={14} />}
-        >
-          Aplicar tudo
-        </Button>
-        <Button
-          size="sm"
-          variant="ontime-ghosted-white"
-          onClick={() => openChangeModal(currentChange)}
-        >
-          Revisar
-        </Button>
-      </Box>
+      {/* Card 2: Aprovar alterações (OntimeChange) */}
+      {hasApprove && (
+        <Box className={style.card}>
+          <Box className={style.cardHeader}>
+            <span className={style.cardTitle}>{ontimChanges.length} alteração(ões) para aprovar</span>
+            <Badge className={style.toastBadge} colorScheme="orange">
+              {safeApproveIndex + 1} / {ontimChanges.length}
+            </Badge>
+          </Box>
+          <Box className={style.cardNav}>
+            <Button
+              size="xs"
+              variant="ontime-ghosted"
+              aria-label="Anterior"
+              onClick={() => setApproveIndex((i) => Math.max(0, i - 1))}
+              isDisabled={safeApproveIndex <= 0}
+            >
+              <IoChevronBack size={18} />
+            </Button>
+            <Box className={style.cardMessage} flex={1}>
+              {currentApprove && (() => {
+                const ch = currentApprove as OntimeChange;
+                const event = ch.eventId ? rundownData?.rundown?.[ch.eventId] : null;
+                const eventLabel = event
+                  ? 'cue' in event && 'title' in event
+                    ? `${(event as { cue: string }).cue} - ${(event as { title: string }).title}`
+                    : 'title' in event
+                      ? (event as { title: string }).title
+                      : ch.eventId
+                  : ch.eventId;
+                return (
+                  <>
+                    <span>
+                      {ch.field?.replace('custom.', '') || 'Alteração'}
+                    </span>
+                    {eventLabel && (
+                      <Box as="span" display="block" mt={0.5} fontSize="xs" opacity={0.9}>
+                        Evento: {eventLabel}
+                      </Box>
+                    )}
+                    {(ch.authorName || ch.authorEmail || ch.author) && (
+                      <Box as="span" display="block" mt={1} fontSize="xs" opacity={0.85}>
+                        {ch.authorName && ch.authorEmail
+                          ? `${ch.authorName} (${ch.authorEmail})`
+                          : ch.authorEmail || ch.authorName || ch.author}
+                      </Box>
+                    )}
+                  </>
+                );
+              })()}
+            </Box>
+            <Button
+              size="xs"
+              variant="ontime-ghosted"
+              aria-label="Próxima"
+              onClick={() => setApproveIndex((i) => Math.min(ontimChanges.length - 1, i + 1))}
+              isDisabled={safeApproveIndex >= ontimChanges.length - 1}
+            >
+              <IoChevronForward size={18} />
+            </Button>
+          </Box>
+          <Box className={style.cardActions}>
+            <Button
+              size="sm"
+              variant="ontime-filled"
+              onClick={() => currentApprove && handleApprove(currentApprove)}
+              isLoading={isLoading}
+            >
+              Aprovar
+            </Button>
+            <Button
+              size="sm"
+              variant="ontime-outlined"
+              onClick={() => currentApprove && handleReject(currentApprove)}
+              isLoading={isLoading}
+            >
+              Rejeitar
+            </Button>
+            <Button
+              size="sm"
+              variant="ontime-ghosted-white"
+              onClick={() => currentApprove && openChangeModal(currentApprove)}
+            >
+              Revisar
+            </Button>
+            {(ontimChanges.length > 1 || hasSync) && (
+              <Button
+                size="sm"
+                variant="ontime-outlined"
+                onClick={handleApplyAll}
+                isLoading={isLoading}
+                leftIcon={<IoRefresh size={14} />}
+                ml="auto"
+              >
+                Aplicar tudo
+              </Button>
+            )}
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 
   return (
     <>
-      {createPortal(toastContent, document.body)}
+      {createPortal(stackContent, document.body)}
 
       {selectedChange && (
         <ChangeModal
@@ -391,6 +481,17 @@ function ChangeModal({
 }: ChangeModalProps) {
   const isProjectUpdate = isProjectDataUpdated(change);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const { data: rundownData } = useRundown();
+
+  const ontimChange = isProjectUpdate ? null : (change as OntimeChange);
+  const event = ontimChange?.eventId ? rundownData?.rundown?.[ontimChange.eventId] : null;
+  const eventLabel = event
+    ? 'cue' in event && 'title' in event
+      ? `${(event as { cue: string }).cue} - ${(event as { title: string }).title}`
+      : 'title' in event
+        ? (event as { title: string }).title
+        : ontimChange?.eventId
+    : null;
 
   return (
     <AlertDialog variant="ontime" isOpen={isOpen} onClose={onClose} leastDestructiveRef={cancelRef}>
@@ -424,17 +525,21 @@ function ChangeModal({
                       (change as ProjectDataUpdatedNotification).author}
                   </p>
                 )}
-                {(change as ProjectDataUpdatedNotification).changes &&
-                  (change as ProjectDataUpdatedNotification).changes!.length > 0 && (
-                    <Box as="ul" mt={2} pl={4}>
-                      {(change as ProjectDataUpdatedNotification).changes!.map((item, i) => (
-                        <li key={i}>{item}</li>
-                      ))}
-                    </Box>
-                  )}
+                {(change as ProjectDataUpdatedNotification).changes?.length ? (
+                  <Box as="ul" mt={2} pl={4}>
+                    {(change as ProjectDataUpdatedNotification).changes!.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </Box>
+                ) : null}
               </Box>
             ) : (
               <Box>
+                {eventLabel && (
+                  <p>
+                    <strong>Evento:</strong> {eventLabel}
+                  </p>
+                )}
                 <p>
                   <strong>Campo:</strong> {(change as OntimeChange).field?.replace('custom.', '')}
                 </p>
@@ -454,9 +559,16 @@ function ChangeModal({
                     }}
                   />
                 </p>
-                {(change as OntimeChange).authorName && (
+                {((change as OntimeChange).authorName ||
+                  (change as OntimeChange).authorEmail ||
+                  (change as OntimeChange).author) && (
                   <p>
-                    <strong>Autor:</strong> {(change as OntimeChange).authorName}
+                    <strong>Autor:</strong>{' '}
+                    {(change as OntimeChange).authorName && (change as OntimeChange).authorEmail
+                      ? `${(change as OntimeChange).authorName} (${(change as OntimeChange).authorEmail})`
+                      : (change as OntimeChange).authorEmail ||
+                        (change as OntimeChange).authorName ||
+                        (change as OntimeChange).author}
                   </p>
                 )}
                 {(change as OntimeChange).createdAt && (

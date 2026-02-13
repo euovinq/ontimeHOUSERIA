@@ -40,8 +40,8 @@ function nl2br(html: string): string {
 }
 
 /**
- * Normaliza HTML: remove divs redundantes e padroniza quebras de linha.
- * Ex: <div><br><div><font>...</font></div></div> → <br /><font>...</font>
+ * Normaliza HTML: remove divs redundantes, padroniza quebras de linha
+ * e corrige estrutura malformada (ex: texto solto após </p>).
  */
 function normalizeHtml(html: string): string {
   let result = String(html ?? '')
@@ -54,6 +54,8 @@ function normalizeHtml(html: string): string {
     prev = result;
     result = result.replace(/<div><br\s*\/?>\s*<div>([\s\S]*?)<\/div>\s*<\/div>/gi, '<br />$1');
   } while (result !== prev);
+  // Corrige texto solto após </p> (ex: </p>e editado! :)</p> → </p><p>e editado! :)</p>)
+  result = result.replace(/<\/p>\s*([^<]+?)\s*<\/p>/g, '</p><p>$1</p>');
   return result;
 }
 
@@ -61,7 +63,9 @@ const headingStyles = {
   '& h1': { fontSize: '1.75em', fontWeight: 'bold', margin: '0.25em 0', lineHeight: 1.2 },
   '& h2': { fontSize: '1.35em', fontWeight: 'bold', margin: '0.25em 0', lineHeight: 1.3 },
   '& h3': { fontSize: '1.15em', fontWeight: 'bold', margin: '0.2em 0', lineHeight: 1.3 },
-  '& p': { fontSize: 'inherit', margin: '0.25em 0', lineHeight: 1.4 },
+  '& p': { fontSize: 'inherit', margin: '0.5em 0', lineHeight: 1.6, minHeight: '1em' },
+  '& p + p': { marginTop: '0.6em' },
+  '& br': { display: 'block', marginTop: '0.5em', marginBottom: '0.25em', lineHeight: 1.6 },
 };
 
 const contentEditableBoxStyles = {
@@ -338,7 +342,7 @@ export default function EventCustomFieldHTML(props: EventCustomFieldHTMLProps) {
         cursor='pointer'
         onClick={() => setIsEditing(true)}
         title='Clique para editar'
-        dangerouslySetInnerHTML={{ __html: nl2br(value) }}
+        dangerouslySetInnerHTML={{ __html: containsHTML ? normalizeHtml(value) : nl2br(value) }}
         sx={{
           '& *': {
             maxWidth: '100%',

@@ -13,7 +13,8 @@ export const projectSanitiser = [
   body('projectCode').optional().isString().trim(),
   body('custom').optional().isArray(),
   body('custom.*.title').optional().isString().trim().notEmpty(),
-  body('custom.*.value').optional().isString().trim().notEmpty(),
+  // value: sem trim para preservar espaços entre linhas (ex: "linha1\n \nlinha2")
+  body('custom.*.value').optional().isString().notEmpty(),
 
   (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req);

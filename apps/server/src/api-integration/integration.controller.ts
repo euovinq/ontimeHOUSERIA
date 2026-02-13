@@ -384,8 +384,29 @@ const actionHandlers: Record<string, ActionHandler> = {
       throw new Error('approve-change requires payload.change (object)');
     }
     const change = payload.change as import('houseriaapp-types').OntimeChange;
+    logger.info(LogOrigin.Server, `[approve-change] Recebido (change.id=${change?.id})`);
     const success = await supabaseAdapter.applyChangeAndRemove(change);
     return { payload: success ? 'success' : 'error' };
+  },
+  /**
+   * Aplica todas as alterações de uma vez: atualiza o rundown local e remove todas do array
+   * em uma única operação no Supabase (evita loop que aplicava só 1).
+   * Envia explicitamente ontime-changes com [] para garantir que o cliente limpe.
+   */
+  'approve-all-changes': async (payload) => {
+    assert.isObject(payload);
+    if (!('changes' in payload) || !Array.isArray(payload.changes)) {
+      throw new Error('approve-all-changes requires payload.changes (array)');
+    }
+    const changes = (payload.changes as import('houseriaapp-types').OntimeChange[]).filter(
+      (c): c is import('houseriaapp-types').OntimeChange => c != null && typeof c === 'object' && !!c.id
+    );
+    logger.info(LogOrigin.Server, `[approve-all-changes] Recebido com ${changes.length} alterações`);
+    const { applied, removed } = await supabaseAdapter.applyAllChangesAndRemoveAll(changes);
+    const failed = changes.length - applied;
+    // Garante que todos os clientes recebam o array vazio imediatamente (não depender do Realtime)
+    socket.sendAsJson({ type: 'ontime-changes', payload: [] });
+    return { payload: { applied, failed, removed, total: changes.length } };
   },
   'get-changes': async () => {
     const projectCode = getDataProvider().getProjectData()?.projectCode || '';
@@ -404,6 +425,24 @@ const actionHandlers: Record<string, ActionHandler> = {
     }
     const success = await supabaseAdapter.removeChangeFromArray(projectCode, payload.changeId);
     return { payload: success ? 'success' : 'error' };
+  },
+  /**
+   * Remove TODOS os project_data_updated do array em uma única operação.
+   * O banco já tem os dados; o client puxa o projeto e chama isto para limpar.
+   * O Realtime fará o broadcast do estado atualizado (changes restantes).
+   */
+  'reject-project-data-updates': async (payload) => {
+    const projectCode =
+      (payload && typeof payload === 'object' && 'projectCode' in payload && typeof payload.projectCode === 'string'
+        ? payload.projectCode
+        : null) || getDataProvider().getProjectData()?.projectCode || '';
+    if (!projectCode) {
+      throw new Error('No project code');
+    }
+    const removed = await supabaseAdapter.removeAllProjectDataUpdatedFromArray(projectCode);
+    const remaining = await supabaseAdapter.getChangesForProject(projectCode);
+    socket.sendAsJson({ type: 'ontime-changes', payload: remaining });
+    return { payload: { removed, success: true } };
   },
   togglepowerpoint: async () => {
     // Importa dinamicamente para evitar dependência circular
