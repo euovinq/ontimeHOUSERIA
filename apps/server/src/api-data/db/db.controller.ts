@@ -88,6 +88,55 @@ export async function quickProjectFile(req: Request, res: Response<{ filename: s
 }
 
 /**
+ * Creates a new project file from Supabase data and loads it.
+ * Used when loading a project by code - saves it locally so it appears in recent projects.
+ */
+export async function createProjectFromSupabaseData(
+  req: Request,
+  res: Response<{ filename: string } | ErrorResponse>,
+) {
+  try {
+    const { filename, data } = req.body;
+    const { cuesheet, ...rest } = data ?? {};
+    const projectData = {
+      ...rest,
+      rundown: cuesheet?.rundown ?? rest.rundown ?? [],
+      customFields: cuesheet?.customFields ?? rest.customFields ?? {},
+    };
+
+    const newFileName = await projectService.updateOrCreateProjectFromSupabaseData(
+      filename || 'untitled',
+      projectData,
+    );
+
+    res.status(200).send({
+      filename: newFileName,
+    });
+  } catch (error) {
+    const message = getErrorMessage(error);
+    res.status(500).send({ message });
+  }
+}
+
+/**
+ * Duplicates the current project with a new project code.
+ * Keeps the original file unchanged - creates a new file for the new code.
+ */
+export async function duplicateWithNewCode(req: Request, res: Response<{ filename: string } | ErrorResponse>) {
+  try {
+    const { newProjectCode } = req.body;
+    const newFileName = await projectService.duplicateCurrentProjectWithNewCode(newProjectCode);
+
+    res.status(200).send({
+      filename: newFileName,
+    });
+  } catch (error) {
+    const message = getErrorMessage(error);
+    res.status(500).send({ message });
+  }
+}
+
+/**
  * Allows downloading of current project file
  */
 export async function currentProjectDownload(_req: Request, res: Response) {

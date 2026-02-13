@@ -4,8 +4,9 @@ import { IoAdd, IoDownloadOutline, IoTrash } from 'react-icons/io5';
 import { Button, Input, Textarea } from '@chakra-ui/react';
 import { type ProjectData } from 'houseriaapp-types';
 
-import { projectLogoPath } from '../../../../common/api/constants';
+import { PROJECT_DATA, PROJECT_LIST, projectLogoPath } from '../../../../common/api/constants';
 import { postProjectData, uploadProjectLogo } from '../../../../common/api/project';
+import { ontimeQueryClient } from '../../../../common/queryClient';
 import { maybeAxiosError } from '../../../../common/api/utils';
 import useProjectData from '../../../../common/hooks-query/useProjectData';
 import { preventEscape } from '../../../../common/utils/keyEvent';
@@ -91,6 +92,10 @@ export default function ProjectData() {
   const onSubmit = async (formData: ProjectData) => {
     try {
       await postProjectData(formData);
+      await Promise.all([
+        ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA }),
+        ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_LIST }),
+      ]);
     } catch (error) {
       const message = maybeAxiosError(error);
       setError('root', { message });

@@ -2,9 +2,11 @@ import express from 'express';
 
 import {
   createProjectFile,
+  createProjectFromSupabaseData,
   currentProjectDownload,
   deleteProjectFile,
   duplicateProjectFile,
+  duplicateWithNewCode,
   listProjects,
   loadDemo,
   loadProject,
@@ -22,6 +24,8 @@ import {
   validateFilenameParam,
   validateNewFilenameBody,
   validateQuickProject,
+  validateCreateFromSupabase,
+  validateDuplicateWithNewCode,
 } from './db.validation.js';
 
 export const router = express.Router();
@@ -33,6 +37,8 @@ router.post('/upload', uploadProjectFile, postProjectFile);
 router.patch('/', validatePatchProject, patchPartialProjectFile);
 router.post('/new', validateFilenameBody, validateNewProject, createProjectFile);
 router.post('/quick', validateQuickProject, quickProjectFile);
+router.post('/save-from-supabase', validateCreateFromSupabase, createProjectFromSupabaseData);
+router.post('/duplicate-with-new-code', validateDuplicateWithNewCode, duplicateWithNewCode);
 
 router.get('/all', listProjects);
 

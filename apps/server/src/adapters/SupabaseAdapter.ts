@@ -3,6 +3,7 @@ import { eventStore } from '../stores/EventStore.js';
 import { logger } from '../classes/Logger.js';
 import { LogOrigin } from 'houseriaapp-types';
 import { getDataProvider } from '../classes/data-provider/DataProvider.js';
+import { generateEditAccessCode } from '../utils/editAccessCode.js';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { publicDir } from '../setup/index.js';
@@ -1208,13 +1209,36 @@ export class SupabaseAdapter {
     try {
       // Sanitizar projectCode para garantir consistência (trim + uppercase)
       const sanitizedProjectCode = (payload.projectCode || '').trim().toUpperCase();
-      
+
       if (!sanitizedProjectCode) {
         logger.warning(LogOrigin.Server, 'sendOptimizedData: projectCode vazio, não é possível salvar');
         return;
       }
 
-      // Garantir que o payload também tenha o projectCode sanitizado
+      // Buscar edit_access_codes existentes (coluna separada ou dentro de data para compatibilidade)
+      let existingEditAccessCodes: Record<string, string> = {};
+      const { data: existingRow } = await this.supabase
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('data, edit_access_codes')
+        .eq('id', sanitizedProjectCode)
+        .maybeSingle();
+
+      if (existingRow?.edit_access_codes && typeof existingRow.edit_access_codes === 'object') {
+        existingEditAccessCodes = { ...existingRow.edit_access_codes };
+      } else if (existingRow?.data?.edit_access_codes && typeof existingRow.data.edit_access_codes === 'object') {
+        existingEditAccessCodes = { ...existingRow.data.edit_access_codes };
+      }
+
+      // Gerar códigos para campos customizados que ainda não têm
+      const customFields = payload.cuesheet?.customFields || getDataProvider().getCustomFields() || {};
+      const customFieldKeys = Object.keys(customFields);
+      for (const key of customFieldKeys) {
+        if (!existingEditAccessCodes[key]) {
+          existingEditAccessCodes[key] = generateEditAccessCode();
+        }
+      }
+
+      // Payload para data (sem edit_access_codes - fica na coluna separada)
       const sanitizedPayload = {
         ...payload,
         projectCode: sanitizedProjectCode,
@@ -1223,6 +1247,7 @@ export class SupabaseAdapter {
           projectCode: sanitizedProjectCode
         }
       };
+      delete (sanitizedPayload as any).edit_access_codes;
 
       const { error } = await this.supabase
         .from(this.config.tableName || 'ontime_realtime')
@@ -1230,6 +1255,7 @@ export class SupabaseAdapter {
           id: sanitizedProjectCode,
           data: sanitizedPayload,
           project_code: sanitizedProjectCode,
+          edit_access_codes: existingEditAccessCodes,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'id'  // Usa id como chave primária (id = project_code)
@@ -1266,12 +1292,12 @@ export class SupabaseAdapter {
       }
       
       const rundown = getDataProvider().getRundown();
-      if (!rundown || rundown.length === 0) {
+      if (!rundown) {
         console.warn('Supabase: Skipping initial send - rundown not ready');
         return;
       }
-      
-      // Send initial project data
+
+      // Send initial project data (inclui edit_access_codes mesmo com rundown vazio)
       const payload = this.buildProjectPayload(currentData);
       await this.sendOptimizedData(payload);
       
@@ -1406,7 +1432,7 @@ export class SupabaseAdapter {
    */
   async getProjectDataReadOnly(
     projectCode: string,
-  ): Promise<{ data: any; user_id?: string | number | null } | null> {
+  ): Promise<{ data: any; edit_access_codes?: Record<string, string>; user_id?: string | number | null } | null> {
     const sanitizedCode = (projectCode || '').trim().toUpperCase();
     if (!sanitizedCode) return null;
     if (!this.config?.url || !this.config?.anonKey) {
@@ -1422,7 +1448,7 @@ export class SupabaseAdapter {
 
       const { data: allRecords, error: queryError } = await readClient
         .from(table)
-        .select('data, user_id, project_code, id, updated_at')
+        .select('data, edit_access_codes, user_id, project_code, id, updated_at')
         .eq('project_code', sanitizedCode)
         .order('updated_at', { ascending: false })
         .limit(10);
@@ -1430,12 +1456,13 @@ export class SupabaseAdapter {
       if (queryError) {
         const resultById = await readClient
           .from(table)
-          .select('data, user_id, project_code, id, updated_at')
+          .select('data, edit_access_codes, user_id, project_code, id, updated_at')
           .eq('id', sanitizedCode)
           .maybeSingle();
         if (resultById.data) {
           const d = resultById.data;
-          return { data: d.data, user_id: (d as any).user_id ?? null };
+          const codes = (d as any).edit_access_codes;
+          return { data: d.data, edit_access_codes: codes && typeof codes === 'object' ? codes : undefined, user_id: (d as any).user_id ?? null };
         }
         logger.info(LogOrigin.Server, `Erro read-only: ${queryError.message}`);
         return null;
@@ -1443,19 +1470,21 @@ export class SupabaseAdapter {
 
       if (allRecords && allRecords.length > 0) {
         const d = allRecords[0];
+        const codes = (d as any).edit_access_codes;
         logger.info(LogOrigin.Server, `✅ Projeto encontrado (read-only): ${sanitizedCode}`);
-        return { data: d.data, user_id: (d as any).user_id ?? null };
+        return { data: d.data, edit_access_codes: codes && typeof codes === 'object' ? codes : undefined, user_id: (d as any).user_id ?? null };
       }
 
       const resultById = await readClient
         .from(table)
-        .select('data, user_id, project_code, id, updated_at')
+        .select('data, edit_access_codes, user_id, project_code, id, updated_at')
         .eq('id', sanitizedCode)
         .maybeSingle();
 
       if (resultById.data) {
         const d = resultById.data;
-        return { data: d.data, user_id: (d as any).user_id ?? null };
+        const codes = (d as any).edit_access_codes;
+        return { data: d.data, edit_access_codes: codes && typeof codes === 'object' ? codes : undefined, user_id: (d as any).user_id ?? null };
       }
 
       return null;
@@ -1472,7 +1501,7 @@ export class SupabaseAdapter {
    */
   async getProjectData(
     projectCode: string,
-  ): Promise<{ data: any; user_id?: string | number | null } | null> {
+  ): Promise<{ data: any; edit_access_codes?: Record<string, string>; user_id?: string | number | null } | null> {
     // Sanitizar projectCode (trim + uppercase para garantir consistência)
     const sanitizedCode = (projectCode || '').trim().toUpperCase();
     
@@ -1493,7 +1522,7 @@ export class SupabaseAdapter {
       // então buscamos todos e pegamos o mais recente (ordenado por updated_at DESC)
       const { data: allRecords, error: queryError } = await this.supabase
         .from(this.config?.tableName || 'ontime_realtime')
-        .select('data, user_id, project_code, id, updated_at')
+        .select('data, edit_access_codes, user_id, project_code, id, updated_at')
         .eq('project_code', sanitizedCode)
         .order('updated_at', { ascending: false })
         .limit(10); // Limita a 10 para performance
@@ -1503,13 +1532,14 @@ export class SupabaseAdapter {
         logger.info(LogOrigin.Server, `Erro ao buscar por project_code, tentando por id: ${queryError.message}`);
         const resultById = await this.supabase
           .from(this.config?.tableName || 'ontime_realtime')
-          .select('data, user_id, project_code, id, updated_at')
+          .select('data, edit_access_codes, user_id, project_code, id, updated_at')
           .eq('id', sanitizedCode)
           .maybeSingle();
         
         if (resultById.data) {
           logger.info(LogOrigin.Server, `Encontrado por id (fallback): ${sanitizedCode}`);
           const data = resultById.data;
+          const codes = (data as any).edit_access_codes;
           
           // Se encontrou por id mas não tem project_code ou está diferente, atualiza
           if (!data.project_code || data.project_code.toUpperCase() !== sanitizedCode) {
@@ -1527,6 +1557,7 @@ export class SupabaseAdapter {
           
           return {
             data: data.data,
+            edit_access_codes: codes && typeof codes === 'object' ? codes : undefined,
             user_id: (data as any).user_id ?? null,
           };
         }
@@ -1538,6 +1569,7 @@ export class SupabaseAdapter {
       } else if (allRecords && allRecords.length > 0) {
         // Encontrou registros - pega o mais recente (já está ordenado)
         const data = allRecords[0];
+        const codes = (data as any).edit_access_codes;
         
         if (allRecords.length > 1) {
           logger.warning(LogOrigin.Server, `⚠️ Encontrados ${allRecords.length} registros com project_code="${sanitizedCode}". Usando o mais recente (id: ${data.id}, updated_at: ${data.updated_at})`);
@@ -1547,6 +1579,7 @@ export class SupabaseAdapter {
         
         return {
           data: data.data,
+          edit_access_codes: codes && typeof codes === 'object' ? codes : undefined,
           user_id: (data as any).user_id ?? null,
         };
       } else {
@@ -1554,12 +1587,13 @@ export class SupabaseAdapter {
         logger.info(LogOrigin.Server, `Não encontrado por project_code, tentando por id: ${sanitizedCode}`);
         const resultById = await this.supabase
           .from(this.config?.tableName || 'ontime_realtime')
-          .select('data, user_id, project_code, id, updated_at')
+          .select('data, edit_access_codes, user_id, project_code, id, updated_at')
           .eq('id', sanitizedCode)
           .maybeSingle();
         
         if (resultById.data) {
           const data = resultById.data;
+          const codes = (data as any).edit_access_codes;
           logger.info(LogOrigin.Server, `Encontrado por id (fallback): ${sanitizedCode}`);
           
           // Se encontrou por id mas não tem project_code ou está diferente, atualiza
@@ -1578,6 +1612,7 @@ export class SupabaseAdapter {
           
           return {
             data: data.data,
+            edit_access_codes: codes && typeof codes === 'object' ? codes : undefined,
             user_id: (data as any).user_id ?? null,
           };
         }

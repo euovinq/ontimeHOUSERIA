@@ -200,7 +200,8 @@ export async function getProjectData(req: Request, res: Response) {
     }
     
     res.status(200).json({ 
-      project: projectRecord.data
+      project: projectRecord.data,
+      edit_access_codes: projectRecord.edit_access_codes ?? undefined,
     });
   } catch (error) {
     logger.error(LogOrigin.Server, `Error getting project data: ${error}`);

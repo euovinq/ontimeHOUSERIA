@@ -117,3 +117,31 @@ export async function parseJsonFile(filePath: string): Promise<Partial<DatabaseM
   const rawdata = await readFile(filePath, 'utf-8');
   return JSON.parse(rawdata);
 }
+
+/**
+ * Finds a project file path by projectCode.
+ * Searches through all project files and returns the path of the first match.
+ * @param projectCode - The project code to search for (case-insensitive)
+ * @returns The full path to the file, or null if not found
+ */
+export async function findProjectFilePathByProjectCode(projectCode: string): Promise<string | null> {
+  const sanitizedCode = (projectCode || '').trim().toUpperCase();
+  if (!sanitizedCode) return null;
+
+  const allFiles = await getFilesFromFolder(publicDir.projectsDir);
+  const filteredFiles = filterProjectFiles(allFiles);
+
+  for (const file of filteredFiles) {
+    const filePath = join(publicDir.projectsDir, file);
+    try {
+      const fileData = await parseJsonFile(filePath);
+      const fileProjectCode = (fileData.project?.projectCode || '').trim().toUpperCase();
+      if (fileProjectCode === sanitizedCode) {
+        return filePath;
+      }
+    } catch {
+      /* skip corrupted or invalid files */
+    }
+  }
+  return null;
+}
