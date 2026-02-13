@@ -1,6 +1,6 @@
 {
   "name": "houseriaapp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Time keeping for live events",
   "keywords": [
     "houseriaapp",
@@ -31,6 +31,8 @@
     "build:localdocker": "turbo run build:localdocker",
     "dist-win": "turbo run dist-win",
     "dist-mac": "turbo run dist-mac",
+    "dist-mac:universal": "turbo run dist-mac:universal",
+    "dist-mac:universal:local": "turbo run dist-mac:universal:local",
     "dist-linux": "turbo run dist-linux",
     "e2e": "cross-env DEBUG=pw:webserver npx playwright test -c playwright.config.ts",
     "e2e:ui": "cross-env DEBUG=pw:webserver npx playwright test --ui -c playwright.config.ts",
