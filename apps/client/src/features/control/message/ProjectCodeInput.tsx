@@ -15,8 +15,8 @@ import {
 import { ProjectData } from 'houseriaapp-types';
 import { generateProjectCode } from 'houseriaapp-utils';
 
-import { CUSTOM_FIELDS, PROJECT_DATA, RUNDOWN } from '../../../common/api/constants';
-import { patchData } from '../../../common/api/db';
+import { CUSTOM_FIELDS, PROJECT_DATA, PROJECT_LIST, RUNDOWN } from '../../../common/api/constants';
+import { createProjectFromSupabaseData, duplicateWithNewCode } from '../../../common/api/db';
 import { postProjectData } from '../../../common/api/project';
 import { fetchSupabaseProject } from '../../../common/api/supabase';
 import { maybeAxiosError } from '../../../common/api/utils';
@@ -136,39 +136,34 @@ export default function ProjectCodeInput() {
         throw new Error('Projeto não encontrado no Supabase');
       }
 
-      const patchPayload: Record<string, unknown> = {};
+      const projectData: Record<string, unknown> = {};
 
       if (supabaseData.project) {
-        patchPayload.project = supabaseData.project;
+        projectData.project = supabaseData.project;
       }
       if (supabaseData.cuesheet?.rundown) {
-        patchPayload.rundown = supabaseData.cuesheet.rundown;
+        projectData.rundown = supabaseData.cuesheet.rundown;
       }
       if (supabaseData.cuesheet?.customFields) {
-        patchPayload.customFields = supabaseData.cuesheet.customFields;
+        projectData.customFields = supabaseData.cuesheet.customFields;
       }
-      // Não atualizar settings e automation para não parar o timer
-      // Esses campos podem afetar o comportamento do timer em execução
-      // if (supabaseData.settings) {
-      //   patchPayload.settings = supabaseData.settings;
-      // }
       if (supabaseData.viewSettings) {
-        patchPayload.viewSettings = supabaseData.viewSettings;
+        projectData.viewSettings = supabaseData.viewSettings;
       }
       if (supabaseData.urlPresets) {
-        patchPayload.urlPresets = supabaseData.urlPresets;
+        projectData.urlPresets = supabaseData.urlPresets;
       }
-      // if (supabaseData.automation) {
-      //   patchPayload.automation = supabaseData.automation;
-      // }
 
-      await patchData(patchPayload as any);
-      
-      // Invalidar apenas caches relacionados ao projeto e cuesheet (não timer/runtime)
+      const projectTitle = (supabaseData.project?.title || '').trim();
+      const filename = projectTitle || code;
+
+      await createProjectFromSupabaseData(filename, projectData as any);
+
       await Promise.all([
         ontimeQueryClient.invalidateQueries({ queryKey: RUNDOWN }),
         ontimeQueryClient.invalidateQueries({ queryKey: CUSTOM_FIELDS }),
         ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA }),
+        ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_LIST }),
       ]);
 
       const loadedCode = supabaseData.project?.projectCode || code;
@@ -176,7 +171,7 @@ export default function ProjectCodeInput() {
 
       toast({
         title: 'Projeto carregado',
-        description: `Código ${code} carregado do Supabase (timers preservados)`,
+        description: `Código ${code} carregado e salvo localmente`,
         status: 'success',
         duration: 3500,
         isClosable: true,
@@ -208,45 +203,58 @@ export default function ProjectCodeInput() {
     setIsGeneratingCode(true);
 
     try {
-      // Generate new project code
       const newCode = generateProjectCode();
-      
-      // Update local state immediately for better UX
       setProjectCode(newCode);
 
-      // Update project data on server
-      // postProjectData already calls forceProjectUpdate() on the server if Supabase is connected
-      if (!projectData) {
-        throw new Error('Dados do projeto não disponíveis');
-      }
-
-      const updatedProjectData: ProjectData = {
-        ...projectData,
-        projectCode: newCode,
-      };
-
-      await postProjectData(updatedProjectData);
-
-      // Invalidate project data cache to refresh UI
-      await ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA });
-
-      // Show success toast with sync status
       const isConnected = supabaseStatusRef.current.connected;
-      toast({
-        title: 'Novo código gerado',
-        description: isConnected 
-          ? `Código ${newCode} gerado e sincronizado com Supabase`
-          : `Código ${newCode} gerado localmente. Conecte ao Supabase para sincronizar.`,
-        status: 'success',
-        duration: 4000,
-        isClosable: true,
-      });
+
+      if (!isConnected) {
+        // Offline: duplica o projeto mantendo o original com o código antigo
+        // e criando um novo com o novo código (para sincronizar na nuvem quando online)
+        await duplicateWithNewCode(newCode);
+
+        await Promise.all([
+          ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA }),
+          ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_LIST }),
+          ontimeQueryClient.invalidateQueries({ queryKey: RUNDOWN }),
+          ontimeQueryClient.invalidateQueries({ queryKey: CUSTOM_FIELDS }),
+        ]);
+
+        toast({
+          title: 'Novo código gerado',
+          description: `Projeto duplicado com código ${newCode}. O projeto original foi mantido. Conecte ao Supabase para sincronizar na nuvem.`,
+          status: 'success',
+          duration: 4500,
+          isClosable: true,
+        });
+      } else {
+        // Online: atualiza o projeto atual
+        if (!projectData) {
+          throw new Error('Dados do projeto não disponíveis');
+        }
+
+        const updatedProjectData: ProjectData = {
+          ...projectData,
+          projectCode: newCode,
+        };
+
+        await postProjectData(updatedProjectData);
+
+        await ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA });
+
+        toast({
+          title: 'Novo código gerado',
+          description: `Código ${newCode} gerado e sincronizado com Supabase`,
+          status: 'success',
+          duration: 4000,
+          isClosable: true,
+        });
+      }
     } catch (error) {
-      // Revert to previous code on error
       if (projectData?.projectCode) {
         setProjectCode(projectData.projectCode);
       }
-      
+
       toast({
         title: 'Erro ao gerar novo código',
         description: maybeAxiosError(error),

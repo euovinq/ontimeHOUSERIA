@@ -27,6 +27,44 @@ export const validateNewProject = [
 ];
 
 /**
+ * @description Validates request for creating a project from Supabase data (save locally).
+ */
+export const validateCreateFromSupabase = [
+  body('filename')
+    .exists()
+    .isString()
+    .trim()
+    .customSanitizer((input: string) => sanitize(input))
+    .withMessage('Failed to sanitize the filename')
+    .notEmpty()
+    .withMessage('Filename was empty or contained only invalid characters')
+    .customSanitizer((input: string) => ensureJsonExtension(input)),
+  body('data').exists().isObject().withMessage('Data object is required'),
+  (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
+    next();
+  },
+];
+
+/**
+ * @description Validates request for duplicating with new project code.
+ */
+export const validateDuplicateWithNewCode = [
+  body('newProjectCode')
+    .exists()
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage('Project code is required'),
+  (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
+    next();
+  },
+];
+
+/**
  * @description Validates request for a quick project.
  */
 export const validateQuickProject = [

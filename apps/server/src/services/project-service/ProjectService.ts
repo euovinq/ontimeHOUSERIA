@@ -1,8 +1,9 @@
 import { DatabaseModel, LogOrigin, ProjectData, ProjectFileListResponse } from 'houseriaapp-types';
 import { getErrorMessage, generateProjectCode } from 'houseriaapp-utils';
 
+import sanitize from 'sanitize-filename';
 import { join } from 'path';
-import { copyFile } from 'fs/promises';
+import { copyFile, writeFile } from 'fs/promises';
 
 import { logger } from '../../classes/Logger.js';
 import { publicDir } from '../../setup/index.js';
@@ -35,6 +36,7 @@ import { runtimeService } from '../runtime-service/RuntimeService.js';
 import {
   copyCorruptFile,
   doesProjectExist,
+  findProjectFilePathByProjectCode,
   getPathToProject,
   getProjectFiles,
   moveCorruptFile,
@@ -303,6 +305,62 @@ export async function renameProjectFile(originalFile: string, newFilename: strin
 }
 
 /**
+ * Updates an existing project file or creates a new one from Supabase data.
+ * If a project with the same projectCode exists locally, updates it instead of creating a duplicate.
+ */
+export async function updateOrCreateProjectFromSupabaseData(
+  filename: string,
+  initialData: Partial<DatabaseModel>,
+): Promise<string> {
+  const projectCode = (initialData.project?.projectCode || '').trim().toUpperCase();
+
+  if (projectCode) {
+    const existingPath = await findProjectFilePathByProjectCode(projectCode);
+    if (existingPath) {
+      const existingFilename = getFileNameFromPath(existingPath);
+      const data = safeMerge(dbModel, initialData);
+
+      const isCurrentProject = await isLastLoadedProject(existingFilename);
+
+      if (isCurrentProject) {
+        await patchCurrentProject(initialData);
+        return existingFilename;
+      }
+
+      await writeFile(existingPath, JSON.stringify(data, null, 2), 'utf-8');
+      await loadProjectFile(existingFilename);
+      return existingFilename;
+    }
+  }
+
+  return createProject(filename || 'untitled', initialData);
+}
+
+/**
+ * Duplicates the current project with a new project code.
+ * Keeps the original project file unchanged and creates a new file with the new code.
+ * Used when generating a new code offline - so the new project can sync to cloud when online.
+ */
+export async function duplicateCurrentProjectWithNewCode(newProjectCode: string): Promise<string> {
+  const sanitizedCode = (newProjectCode || '').trim().toUpperCase();
+  if (!sanitizedCode) {
+    throw new Error('Project code is required');
+  }
+
+  const currentData = getDataProvider().getData();
+  const updatedData: Partial<DatabaseModel> = {
+    ...currentData,
+    project: {
+      ...currentData.project,
+      projectCode: sanitizedCode,
+    },
+  };
+
+  const filename = (currentData.project?.title || '').trim() || sanitizedCode;
+  return createProject(filename, updatedData);
+}
+
+/**
  * Creates a new project file and applies its result
  */
 export async function createProject(filename: string, initialData: Partial<DatabaseModel>) {
@@ -403,6 +461,29 @@ export async function editCurrentProjectData(newData: Partial<ProjectData>) {
   }
   
   const updatedProjectData = await getDataProvider().setProjectData(newData);
+
+  // Rename project file when title changes so it reflects in the project list
+  if (newData.title !== undefined) {
+    const currentFilename = await getLastLoadedProject();
+    if (currentFilename) {
+      const currentBaseName = removeFileExtension(currentFilename);
+      const sanitizedTitle = sanitize((newData.title || '').trim());
+      const newBaseName = sanitizedTitle || currentBaseName;
+
+      if (newBaseName && newBaseName !== currentBaseName) {
+        const newFilename = `${newBaseName}.json`;
+        try {
+          await renameProjectFile(currentFilename, newFilename);
+          logger.info(LogOrigin.Server, `Renamed project file to ${newFilename} (title changed)`);
+        } catch (error) {
+          logger.warning(
+            LogOrigin.Server,
+            `Could not rename project file: ${getErrorMessage(error)}`,
+          );
+        }
+      }
+    }
+  }
 
   // Delete the old logo if the logo has been removed
   if (!updatedProjectData.projectLogo && currentProjectData.projectLogo) {

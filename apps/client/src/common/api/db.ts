@@ -110,6 +110,28 @@ export async function quickProject(data: QuickStartData): Promise<MessageRespons
 }
 
 /**
+ * Duplicates the current project with a new project code.
+ * Keeps the original file unchanged - creates a new file for the new code.
+ * Used when generating new code offline so the new project can sync to cloud when online.
+ */
+export async function duplicateWithNewCode(newProjectCode: string): Promise<{ filename: string }> {
+  const res = await axios.post(`${dbPath}/duplicate-with-new-code`, { newProjectCode });
+  return res.data;
+}
+
+/**
+ * Creates a project file from Supabase data and loads it locally.
+ * Saves the project so it appears in the recent projects list.
+ */
+export async function createProjectFromSupabaseData(
+  filename: string,
+  data: Partial<DatabaseModel> & { cuesheet?: { rundown?: unknown[]; customFields?: Record<string, unknown> } },
+): Promise<{ filename: string }> {
+  const res = await axios.post(`${dbPath}/save-from-supabase`, { filename, data });
+  return res.data;
+}
+
+/**
  * HTTP request to get the list of available project files
  */
 export async function getProjects(): Promise<ProjectFileListResponse> {

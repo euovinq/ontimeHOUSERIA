@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { IoCheckmark, IoCopy, IoLink } from 'react-icons/io5';
+import { useCallback, useEffect, useState } from 'react';
+import { IoCheckmark, IoCopy, IoLink, IoRefresh } from 'react-icons/io5';
 import {
   Button,
   HStack as ChakraHStack,
@@ -13,6 +13,8 @@ import {
   ModalHeader,
   ModalOverlay,
   Select,
+  SimpleGrid,
+  Spinner,
   Text,
   Tooltip,
   useToast,
@@ -20,6 +22,8 @@ import {
 } from '@chakra-ui/react';
 import { ProjectData } from 'houseriaapp-types';
 
+import { fetchSupabaseProject } from '../../../common/api/supabase';
+import useCustomFields from '../../../common/hooks-query/useCustomFields';
 import { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
 import {
   type Country,
@@ -39,6 +43,12 @@ interface ProjectLinksModalProps {
 export default function ProjectLinksModal({ isOpen, onClose, projectCode, projectData }: ProjectLinksModalProps) {
   const toast = useToast();
   const { mutateAsync: updateProjectData, isPending: isSaving } = useProjectDataMutation();
+  const { data: customFields } = useCustomFields();
+
+  // Links de edição vindos do Supabase (edit_access_codes em tempo real)
+  const [editAccessCodes, setEditAccessCodes] = useState<Record<string, string>>({});
+  const [editCodesLoading, setEditCodesLoading] = useState(false);
+  const [selectedEditField, setSelectedEditField] = useState<string>('');
 
   // WhatsApp states
   const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY);
@@ -71,6 +81,37 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
     }
     setHasChanges(false);
   }, [projectData?.directorWhatsapp, isOpen]);
+
+  // Ao abrir o modal, buscar edit_access_codes do Supabase (dados em tempo real)
+  const loadEditAccessCodes = useCallback(async () => {
+    if (!isOpen || !projectCode) return;
+    setEditCodesLoading(true);
+    try {
+      const res = await fetchSupabaseProject(projectCode);
+      const codes = res.edit_access_codes;
+      setEditAccessCodes(codes && typeof codes === 'object' ? codes : {});
+    } catch {
+      setEditAccessCodes({});
+    } finally {
+      setEditCodesLoading(false);
+    }
+  }, [isOpen, projectCode]);
+
+  useEffect(() => {
+    loadEditAccessCodes();
+  }, [loadEditAccessCodes]);
+
+  // Ao carregar edit_access_codes ou customFields, selecionar primeiro campo disponível
+  useEffect(() => {
+    if (!isOpen || !customFields) return;
+    const keys = Object.keys(customFields);
+    if (keys.length === 0) return;
+    setSelectedEditField((prev) => {
+      if (keys.includes(prev)) return prev;
+      const withCode = keys.find((k) => editAccessCodes[k]);
+      return withCode ?? keys[0] ?? '';
+    });
+  }, [isOpen, customFields, editAccessCodes]);
 
   const handleSaveWhatsApp = async () => {
     if (!projectData) return;
@@ -138,28 +179,22 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
     setHasChanges(currentFormatted !== savedWhatsApp);
   };
 
+  const baseUrl = 'https://houseriasite.vercel.app';
   const links = [
-    {
-      label: 'A&B',
-      url: `https://houseriasite.vercel.app/AB/${projectCode}`,
-      description: 'Acesso ao site A&B do projeto',
-    },
-    {
-      label: 'Equipe',
-      url: `https://houseriasite.vercel.app/equipe/${projectCode}`,
-      description: 'Área da equipe do projeto',
-    },
-    {
-      label: 'Cliente',
-      url: `https://houseriasite.vercel.app/cliente/${projectCode}`,
-      description: 'Área do cliente do projeto',
-    },
-    {
-      label: 'Cliente TV',
-      url: `https://houseriasite.vercel.app/cliente-tv/${projectCode}`,
-      description: 'Versão TV para o cliente do projeto',
-    },
+    { label: 'Cliente', url: `${baseUrl}/cliente/${projectCode}`, description: 'Visualização principal: eventos e timers' },
+    { label: 'Cliente TV', url: `${baseUrl}/cliente-tv/${projectCode}`, description: 'Exibição em TV ou tela grande' },
+    { label: 'Equipe', url: `${baseUrl}/equipe/${projectCode}`, description: 'Visualização para equipe técnica' },
+    { label: 'Leitura', url: `${baseUrl}/leitura/${projectCode}`, description: 'Leitura e consulta rápida' },
+    { label: 'Notas', url: `${baseUrl}/notes/${projectCode}`, description: 'Notas do slide PowerPoint' },
+    { label: 'A&B', url: `${baseUrl}/AB/${projectCode}`, description: 'Visualização alternativa (AB)' },
   ];
+
+  /** Converte key do custom field para formato da URL (lowercase, underscores) */
+  const fieldKeyToUrl = (key: string) => key.toLowerCase().replace(/\s+/g, '_');
+
+  /** Gera link de edição com código de acesso do Supabase */
+  const buildEditLink = (fieldKey: string, code: string) =>
+    `${baseUrl}/edit/${fieldKeyToUrl(fieldKey)}/${projectCode}?code=${encodeURIComponent(code)}`;
 
   const copyToClipboard = async (url: string, label: string) => {
     try {
@@ -189,9 +224,9 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} variant='ontime' size='md'>
+    <Modal isOpen={isOpen} onClose={onClose} variant='ontime' size='lg'>
       <ModalOverlay />
-      <ModalContent>
+      <ModalContent maxW='5xl'>
         <ModalHeader>
           <HStack>
             <IoLink size='20px' />
@@ -286,11 +321,66 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
               </VStack>
             </div>
 
-            {links.map((link, index) => (
+            <SimpleGrid columns={[1, 2, 3, 4]} spacing={4}>
+              {links.map((link, index) => (
+                <div
+                  key={index}
+                  style={{
+                    padding: '12px',
+                    border: '1px solid var(--chakra-colors-gray-600)',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--chakra-colors-gray-800)',
+                  }}
+                >
+                  <VStack spacing={2} align='stretch'>
+                    <HStack justify='space-between'>
+                      <Text fontWeight='bold' fontSize='sm' color='white'>
+                        {link.label}
+                      </Text>
+                      <HStack spacing={1}>
+                        <Tooltip label='Abrir link' hasArrow>
+                          <IconButton
+                            size='xs'
+                            variant='ontime-subtle'
+                            aria-label={`Abrir ${link.label}`}
+                            icon={<IoLink size='14px' />}
+                            onClick={() => openLink(link.url)}
+                          />
+                        </Tooltip>
+                        <Tooltip label='Copiar link' hasArrow>
+                          <IconButton
+                            size='xs'
+                            variant='ontime-subtle'
+                            aria-label={`Copiar ${link.label}`}
+                            icon={<IoCopy size='14px' />}
+                            onClick={() => copyToClipboard(link.url, link.label)}
+                          />
+                        </Tooltip>
+                      </HStack>
+                    </HStack>
+                    <Text fontSize='xs' color='gray.300' noOfLines={2}>
+                      {link.description}
+                    </Text>
+                    <Text
+                      color='gray.400'
+                      fontFamily='mono'
+                      wordBreak='break-all'
+                      backgroundColor='var(--chakra-colors-gray-900)'
+                      padding='6px'
+                      borderRadius='4px'
+                      border='1px solid var(--chakra-colors-gray-600)'
+                      fontSize='10px'
+                    >
+                      {link.url}
+                    </Text>
+                  </VStack>
+                </div>
+              ))}
+
+              {/* Card Editar: select para escolher custom field + link com código do Supabase */}
               <div
-                key={index}
                 style={{
-                  padding: '16px',
+                  padding: '12px',
                   border: '1px solid var(--chakra-colors-gray-600)',
                   borderRadius: '8px',
                   backgroundColor: 'var(--chakra-colors-gray-800)',
@@ -298,48 +388,96 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
               >
                 <VStack spacing={2} align='stretch'>
                   <HStack justify='space-between'>
-                    <Text fontWeight='bold' fontSize='md' color='white'>
-                      {link.label}
+                    <Text fontWeight='bold' fontSize='sm' color='white'>
+                      Editar
                     </Text>
-                    <HStack spacing={2}>
-                      <Tooltip label='Abrir link' hasArrow>
+                    {editCodesLoading && (
+                      <Spinner size='xs' color='gray.400' />
+                    )}
+                    {!editCodesLoading && Object.keys(editAccessCodes).length > 0 && (
+                      <Tooltip label='Recarregar'>
                         <IconButton
-                          size='sm'
+                          size='xs'
                           variant='ontime-subtle'
-                          aria-label={`Abrir ${link.label}`}
-                          icon={<IoLink size='16px' />}
-                          onClick={() => openLink(link.url)}
+                          aria-label='Recarregar links de edição'
+                          icon={<IoRefresh size='14px' />}
+                          onClick={loadEditAccessCodes}
                         />
                       </Tooltip>
-                      <Tooltip label='Copiar link' hasArrow>
-                        <IconButton
-                          size='sm'
-                          variant='ontime-subtle'
-                          aria-label={`Copiar ${link.label}`}
-                          icon={<IoCopy size='16px' />}
-                          onClick={() => copyToClipboard(link.url, link.label)}
-                        />
-                      </Tooltip>
-                    </HStack>
+                    )}
                   </HStack>
-                  <Text fontSize='sm' color='gray.300'>
-                    {link.description}
+                  <Text fontSize='xs' color='gray.300' noOfLines={2}>
+                    Editar campo customizado no houseriasite (com código de acesso)
                   </Text>
-                  <Text
-                    fontSize='xs'
-                    color='gray.400'
-                    fontFamily='mono'
-                    wordBreak='break-all'
-                    backgroundColor='var(--chakra-colors-gray-900)'
-                    padding='8px'
-                    borderRadius='4px'
-                    border='1px solid var(--chakra-colors-gray-600)'
+                  <Select
+                    size='sm'
+                    value={selectedEditField}
+                    onChange={(e) => setSelectedEditField(e.target.value)}
+                    placeholder={Object.keys(customFields ?? {}).length === 0 ? 'Nenhum campo configurado' : 'Selecione o campo'}
+                    isDisabled={!customFields || Object.keys(customFields).length === 0}
+                    bg='var(--chakra-colors-gray-700)'
+                    borderColor='var(--chakra-colors-gray-600)'
+                    color='white'
+                    _hover={{ borderColor: 'var(--chakra-colors-gray-500)' }}
+                    _focus={{ borderColor: 'var(--chakra-colors-gray-500)' }}
                   >
-                    {link.url}
-                  </Text>
+                    {customFields && Object.entries(customFields).map(([key, { label }]) => (
+                      <option key={key} value={key} style={{ backgroundColor: '#2D3748', color: 'white' }}>
+                        {label}
+                      </option>
+                    ))}
+                  </Select>
+                  {selectedEditField && (() => {
+                    const code = editAccessCodes[selectedEditField];
+                    const label = customFields?.[selectedEditField]?.label ?? selectedEditField;
+                    if (!code) {
+                      return (
+                        <Text fontSize='xs' color='gray.500'>
+                          Sincronize o projeto com o Supabase para gerar o código deste campo.
+                        </Text>
+                      );
+                    }
+                    const editUrl = buildEditLink(selectedEditField, code);
+                    return (
+                      <>
+                        <HStack spacing={1}>
+                          <Tooltip label='Abrir link' hasArrow>
+                            <IconButton
+                              size='xs'
+                              variant='ontime-subtle'
+                              aria-label={`Abrir Editar ${label}`}
+                              icon={<IoLink size='14px' />}
+                              onClick={() => openLink(editUrl)}
+                            />
+                          </Tooltip>
+                          <Tooltip label='Copiar link' hasArrow>
+                            <IconButton
+                              size='xs'
+                              variant='ontime-subtle'
+                              aria-label={`Copiar Editar ${label}`}
+                              icon={<IoCopy size='14px' />}
+                              onClick={() => copyToClipboard(editUrl, `Editar ${label}`)}
+                            />
+                          </Tooltip>
+                        </HStack>
+                        <Text
+                          color='gray.400'
+                          fontFamily='mono'
+                          wordBreak='break-all'
+                          backgroundColor='var(--chakra-colors-gray-900)'
+                          padding='6px'
+                          borderRadius='4px'
+                          border='1px solid var(--chakra-colors-gray-600)'
+                          fontSize='10px'
+                        >
+                          {editUrl}
+                        </Text>
+                      </>
+                    );
+                  })()}
                 </VStack>
               </div>
-            ))}
+            </SimpleGrid>
           </VStack>
         </ModalBody>
         <ModalFooter>

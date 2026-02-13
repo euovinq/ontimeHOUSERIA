@@ -4,6 +4,8 @@ import { apiEntryUrl } from './constants';
 
 interface SupabaseProjectResponse {
   project: any;
+  /** Códigos de acesso para edição por campo customizado (ex: { PALCO: "abc123", ROTEIRO: "def456" }) */
+  edit_access_codes?: Record<string, string>;
 }
 
 interface AuthHeadersResponse {
