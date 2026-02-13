@@ -306,6 +306,14 @@ export const connectSocket = () => {
           );
           break;
         }
+        case 'approve-all-changes': {
+          window.dispatchEvent(
+            new CustomEvent('approve-all-changes-response', {
+              detail: payload,
+            }),
+          );
+          break;
+        }
       }
     } catch (_) {
       // ignore unhandled

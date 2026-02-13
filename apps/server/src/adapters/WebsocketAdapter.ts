@@ -29,6 +29,13 @@ import { authenticateSocket } from '../middleware/authenticate.js';
 
 let instance: SocketServer | null = null;
 
+/** Buffer para agrupar approve-change em lote (cliente antigo envia um por vez) */
+const approveChangeBuffer = new Map<
+  string,
+  { changes: unknown[]; timer: ReturnType<typeof setTimeout> }
+>();
+const APPROVE_BATCH_DELAY_MS = 100;
+
 export class SocketServer implements IAdapter {
   private readonly MAX_PAYLOAD = 1024 * 256; // 256Kb
 
@@ -95,6 +102,11 @@ export class SocketServer implements IAdapter {
       ws.on('error', console.error);
 
       ws.on('close', () => {
+        const buf = approveChangeBuffer.get(clientId);
+        if (buf) {
+          clearTimeout(buf.timer);
+          approveChangeBuffer.delete(clientId);
+        }
         this.clients.delete(clientId);
         logger.info(LogOrigin.Client, `${this.clients.size} Connections with disconnected: ${clientId}`);
         this.sendClientList();
@@ -184,6 +196,38 @@ export class SocketServer implements IAdapter {
             if (payload.level && payload.origin && payload.text) {
               logger.emit(payload.level, payload.origin, payload.text);
             }
+            return;
+          }
+
+          // Buffer approve-change para processar em lote (cliente antigo envia um por vez)
+          if (type === 'approve-change' && payload?.change) {
+            logger.info(LogOrigin.Server, `[approve-change buffer] Mensagem recebida (clientId=${clientId})`);
+            const existing = approveChangeBuffer.get(clientId);
+            if (existing) {
+              clearTimeout(existing.timer);
+            }
+            const changes = existing ? [...existing.changes, payload.change] : [payload.change];
+            const timer = setTimeout(async () => {
+              approveChangeBuffer.delete(clientId);
+              try {
+                if (changes.length > 1) {
+                  logger.info(LogOrigin.Server, `[approve-change buffer] Processando ${changes.length} alterações em lote`);
+                  const reply = await dispatchFromAdapter('approve-all-changes', { changes }, 'ws');
+                  this.sendAsJson({ type: 'ontime-changes', payload: [] });
+                  if (reply) {
+                    ws.send(JSON.stringify({ type: 'approve-all-changes', payload: reply.payload }));
+                  }
+                } else {
+                  const reply = await dispatchFromAdapter('approve-change', { change: changes[0] }, 'ws');
+                  if (reply) {
+                    ws.send(JSON.stringify({ type: 'approve-change', payload: reply.payload }));
+                  }
+                }
+              } catch (err) {
+                logger.error(LogOrigin.Rx, `WS IN (approve batch): ${err}`);
+              }
+            }, APPROVE_BATCH_DELAY_MS);
+            approveChangeBuffer.set(clientId, { changes, timer });
             return;
           }
 

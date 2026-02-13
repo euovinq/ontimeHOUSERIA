@@ -57,6 +57,9 @@ export class SupabaseAdapter {
   private changesRealtimeChannel: any = null;
   private lastChangesProjectCode: string = '';
   private changesCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private realtimeBroadcastDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private realtimeBroadcastDebounceMs = 150;
+  private pendingRealtimeChanges: unknown[] | null = null;
 
   constructor() {
     // Set config file path
@@ -191,6 +194,11 @@ export class SupabaseAdapter {
    * Teardown changes Realtime subscription
    */
   private teardownChangesRealtimeSubscription() {
+    if (this.realtimeBroadcastDebounceTimer) {
+      clearTimeout(this.realtimeBroadcastDebounceTimer);
+      this.realtimeBroadcastDebounceTimer = null;
+    }
+    this.pendingRealtimeChanges = null;
     if (this.changesRealtimeChannel) {
       try {
         this.changesRealtimeChannel.unsubscribe();
@@ -254,6 +262,8 @@ export class SupabaseAdapter {
 
   /**
    * Handle realtime updates received from Supabase (from changes listener)
+   * Debounce: quando há muitas atualizações rápidas (ex: 26 approve-change em paralelo),
+   * broadcast apenas o estado final para evitar flood no cliente.
    */
   private async handleRealtimeUpdate(payload: any) {
     try {
@@ -291,13 +301,24 @@ export class SupabaseAdapter {
         return;
       }
 
-      // Process changes column - ALWAYS broadcast (independent of toggle)
+      // Process changes column - SEMPRE broadcast (inclusive quando vazio, para o cliente limpar)
       const raw = newData.changes;
       const toBroadcast = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
-      if (toBroadcast.length > 0) {
-        logger.info(LogOrigin.Server, `Supabase: Broadcasting changes to clients (${toBroadcast.length} item(s))`);
-        socket.sendAsJson({ type: 'ontime-changes', payload: toBroadcast });
+
+      // Debounce: evita flood quando há muitas atualizações em sequência
+      if (this.realtimeBroadcastDebounceTimer) {
+        clearTimeout(this.realtimeBroadcastDebounceTimer);
       }
+      this.pendingRealtimeChanges = toBroadcast;
+      this.realtimeBroadcastDebounceTimer = setTimeout(() => {
+        this.realtimeBroadcastDebounceTimer = null;
+        const toSend = this.pendingRealtimeChanges;
+        this.pendingRealtimeChanges = null;
+        if (toSend != null) {
+          logger.info(LogOrigin.Server, `Supabase: Broadcasting changes to clients (${toSend.length} item(s)) [debounced]`);
+          socket.sendAsJson({ type: 'ontime-changes', payload: toSend });
+        }
+      }, this.realtimeBroadcastDebounceMs);
 
       // NÃO aplica os dados automaticamente - requer aprovação do usuário.
       // Os dados (project, rundown, customFields, etc.) só serão aplicados quando
@@ -1726,9 +1747,176 @@ export class SupabaseAdapter {
   }
 
   /**
-   * Apply an OntimeChange (custom action) to the local project and remove it from the array
+   * Remove múltiplos changes do array em uma única operação (evita loop SELECT/UPDATE).
+   * Retorna quantos foram removidos.
    */
-  async applyChangeAndRemove(change: OntimeChange): Promise<boolean> {
+  async removeMultipleChangesFromArray(projectCode: string, changeIds: string[]): Promise<number> {
+    const client = this.getSupabaseClientForDb();
+    if (!client || !this.config || !changeIds.length) {
+      return 0;
+    }
+
+    try {
+      const sanitizedCode = (projectCode || '').trim().toUpperCase();
+      if (!sanitizedCode) return 0;
+
+      const idsSet = new Set(changeIds);
+
+      let row: { id: string; changes?: unknown[] } | null = null;
+      const byProjectCode = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('id, changes')
+        .eq('project_code', sanitizedCode)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (!byProjectCode.error && byProjectCode.data?.length) {
+        row = byProjectCode.data[0];
+      } else {
+        const byId = await client
+          .from(this.config.tableName || 'ontime_realtime')
+          .select('id, changes')
+          .eq('id', sanitizedCode)
+          .maybeSingle();
+        if (!byId.error && byId.data) row = byId.data;
+      }
+
+      if (!row) return 0;
+
+      const currentChanges = Array.isArray(row.changes) ? row.changes : row.changes != null ? [row.changes] : [];
+      const newChanges = currentChanges.filter((c: any) => !idsSet.has(c?.id));
+      const removed = currentChanges.length - newChanges.length;
+
+      const { error } = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .update({
+          changes: newChanges,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+
+      if (error) {
+        logger.error(LogOrigin.Server, `removeMultipleChangesFromArray error: ${error.message}`);
+        return 0;
+      }
+
+      logger.info(LogOrigin.Server, `removeMultipleChangesFromArray: Removed ${removed} changes from project ${sanitizedCode}`);
+      return removed;
+    } catch (error) {
+      logger.error(LogOrigin.Server, `removeMultipleChangesFromArray error: ${error}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Remove TODOS os itens type=project_data_updated do array em uma única operação.
+   * O banco já tem os dados atualizados; o client só precisa puxar e limpar.
+   */
+  async removeAllProjectDataUpdatedFromArray(projectCode: string): Promise<number> {
+    const client = this.getSupabaseClientForDb();
+    if (!client || !this.config) return 0;
+
+    try {
+      const sanitizedCode = (projectCode || '').trim().toUpperCase();
+      if (!sanitizedCode) return 0;
+
+      let row: { id: string; changes?: unknown[] } | null = null;
+      const byProjectCode = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('id, changes')
+        .eq('project_code', sanitizedCode)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (!byProjectCode.error && byProjectCode.data?.length) {
+        row = byProjectCode.data[0];
+      } else {
+        const byId = await client
+          .from(this.config.tableName || 'ontime_realtime')
+          .select('id, changes')
+          .eq('id', sanitizedCode)
+          .maybeSingle();
+        if (!byId.error && byId.data) row = byId.data;
+      }
+
+      if (!row) return 0;
+
+      const currentChanges = Array.isArray(row.changes) ? row.changes : row.changes != null ? [row.changes] : [];
+      const newChanges = currentChanges.filter((c: any) => c?.type !== 'project_data_updated');
+      const removed = currentChanges.length - newChanges.length;
+
+      if (removed === 0) return 0;
+
+      const { error } = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .update({
+          changes: newChanges,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+
+      if (error) {
+        logger.error(LogOrigin.Server, `removeAllProjectDataUpdatedFromArray error: ${error.message}`);
+        return 0;
+      }
+
+      logger.info(
+        LogOrigin.Server,
+        `removeAllProjectDataUpdatedFromArray: Removed ${removed} project_data_updated from project ${sanitizedCode}`,
+      );
+      return removed;
+    } catch (error) {
+      logger.error(LogOrigin.Server, `removeAllProjectDataUpdatedFromArray error: ${error}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Aplica várias alterações de uma vez: atualiza o rundown local e remove todas do array
+   * em uma única operação no Supabase (evita loop que aplicava só 1).
+   */
+  async applyAllChangesAndRemoveAll(changes: OntimeChange[]): Promise<{ applied: number; removed: number }> {
+    const projectData = getDataProvider().getProjectData();
+    const projectCode = projectData?.projectCode || '';
+    if (!projectCode) {
+      logger.warning(LogOrigin.Server, 'applyAllChangesAndRemoveAll: No project code');
+      return { applied: 0, removed: 0 };
+    }
+
+    let applied = 0;
+    for (const change of changes) {
+      if (!change?.id || !change.eventId) continue;
+      try {
+        if (change.path === 'cuesheet.rundown' && change.field?.startsWith('custom.')) {
+          const fieldName = change.field.replace('custom.', '');
+          updateEvent({ id: change.eventId, custom: { [fieldName]: change.after } } as any);
+        } else if (change.path === 'cuesheet.rundown' && change.eventId) {
+          updateEvent({ id: change.eventId, [change.field]: change.after } as any);
+        } else {
+          logger.warning(LogOrigin.Server, `applyAllChangesAndRemoveAll: Unsupported ${change.path}/${change.field}`);
+          continue;
+        }
+        applied++;
+      } catch (err) {
+        logger.error(LogOrigin.Server, `applyAllChangesAndRemoveAll: Error applying ${change.id}: ${err}`);
+      }
+    }
+
+    const ids = changes.map((c) => c.id).filter(Boolean);
+    const removed = ids.length > 0 ? await this.removeMultipleChangesFromArray(projectCode, ids) : 0;
+
+    if (applied > 0) {
+      await this.syncDataToSupabase();
+    }
+
+    return { applied, removed };
+  }
+
+  /**
+   * Apply an OntimeChange (custom action) to the local project and remove it from the array
+   * @param options.skipSync - quando true (ex: bulk approve-all), não sincroniza após cada um; sync deve ser feito uma vez no final
+   */
+  async applyChangeAndRemove(change: OntimeChange, options?: { skipSync?: boolean }): Promise<boolean> {
     try {
       if (change.path === 'cuesheet.rundown' && change.eventId && change.field?.startsWith('custom.')) {
         const fieldName = change.field.replace('custom.', '');
@@ -1756,8 +1944,12 @@ export class SupabaseAdapter {
 
       const removed = await this.removeChangeFromArray(projectCode, change.id);
       if (removed) {
-        await new Promise((r) => setTimeout(r, 250));
-        await this.syncDataToSupabase();
+        if (!options?.skipSync) {
+          await new Promise((r) => setTimeout(r, 250));
+          await this.syncDataToSupabase();
+        } else {
+          await new Promise((r) => setTimeout(r, 80)); // breve delay para Supabase consolidar
+        }
         return true;
       }
       return false;

@@ -3,6 +3,7 @@ import { Button, Textarea } from '@chakra-ui/react';
 import { OntimeEvent } from 'houseriaapp-types';
 
 import { useEventAction } from '../../../common/hooks/useEventAction';
+import { htmlToPlainText, isHTML } from '../../../common/utils/htmlFormat';
 import type { EditEvent } from '../Operator';
 
 import style from './EditModal.module.scss';
@@ -56,7 +57,11 @@ export default function EditModal(props: EditModalProps) {
               }}
               variant='ontime-filled'
               placeholder={`Add value for ${field.label} field`}
-              defaultValue={field.value}
+              defaultValue={
+                typeof field.value === 'string' && isHTML(field.value)
+                  ? htmlToPlainText(field.value)
+                  : (field.value ?? '')
+              }
               data-field={field.id}
               isDisabled={loading}
               resize='none'
