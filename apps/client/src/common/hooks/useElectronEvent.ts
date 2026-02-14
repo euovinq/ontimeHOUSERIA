@@ -2,6 +2,8 @@ import { useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { addDialog } from '../stores/dialogStore';
+import type { UpdateCheckPayload } from '../stores/updateCheckStore';
+import { useUpdateCheckStore } from '../stores/updateCheckStore';
 
 const isElectron = window.process?.type === 'renderer';
 const ipcRenderer = isElectron ? window.require('electron').ipcRenderer : null;
@@ -31,6 +33,10 @@ export function useElectronListener() {
         if (dialog === 'welcome') {
           addDialog('welcome');
         }
+      });
+
+      ipcRenderer.on('update-check-result', (_event: unknown, payload: UpdateCheckPayload) => {
+        useUpdateCheckStore.getState().setUpdateCheckResult(payload);
       });
     }
 

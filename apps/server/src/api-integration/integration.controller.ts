@@ -385,7 +385,8 @@ const actionHandlers: Record<string, ActionHandler> = {
     }
     const change = payload.change as import('houseriaapp-types').OntimeChange;
     logger.info(LogOrigin.Server, `[approve-change] Recebido (change.id=${change?.id})`);
-    const success = await supabaseAdapter.applyChangeAndRemove(change);
+    // skipSync: true - o handler genérico já dispara forceUpdate em 100ms, evita envio duplicado
+    const success = await supabaseAdapter.applyChangeAndRemove(change, { skipSync: true });
     return { payload: success ? 'success' : 'error' };
   },
   /**

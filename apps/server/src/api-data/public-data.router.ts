@@ -17,6 +17,7 @@ import { getUrlPresets } from './url-presets/urlPresets.controller.js';
 import { getViewSettings } from './view-settings/viewSettings.controller.js';
 import { getAll as getReportAll } from './report/report.controller.js';
 import { rundownGetAll, rundownGetNormalised } from './rundown/rundown.controller.js';
+import { softwareRouter } from './software/software.router.js';
 
 export const publicDataRouter = express.Router();
 
@@ -101,3 +102,6 @@ publicDataRouter.get('/rundowns', (req, res, next) => {
 publicDataRouter.get('/rundowns/current', (req, res, next) => {
   rundownGetNormalised(req, res).catch(next);
 });
+
+// GET /data/software/latest - Versão mais recente do software (para verificação de atualização)
+publicDataRouter.use('/software', softwareRouter);

@@ -456,9 +456,64 @@ function startApplication() {
 
     const clientUrl = getClientUrl(port);
     const serverUrl = getServerUrl(port);
+    // Em dev, o client está na 3000 mas o servidor API está na 4001
+    const serverPortForApi = isProduction ? port : 4001;
+    const serverUrlForApi = getServerUrl(serverPortForApi);
     console.log('Client URL:', clientUrl);
     console.log('Server URL:', serverUrl);
-    
+
+    const checkForUpdates = async () => {
+      if (!win) return;
+      const platform = process.platform;
+      const currentVersion = app.getVersion();
+      const url = `${serverUrlForApi}/data/software/latest?platform=${platform}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          const errText = await res.text();
+          if (!isProduction) {
+            console.log('Update check API error:', res.status, errText);
+          }
+          win.webContents.send('update-check-result', {
+            hasUpdate: false,
+            error: 'Não foi possível verificar atualizações.',
+          });
+          return;
+        }
+        const data = await res.json();
+        const semver = require('semver');
+        // semver.coerce trata "v1.0.2", "1.0.2 ", etc.
+        const latest = semver.coerce(String(data.version || ''));
+        const current = semver.coerce(String(currentVersion || ''));
+        const hasUpdate = latest && current && semver.gt(latest, current);
+
+        if (!isProduction) {
+          console.log('Update check:', {
+            latestFromApi: data.version,
+            currentVersion,
+            hasUpdate,
+          });
+        }
+
+        if (hasUpdate) {
+          win.webContents.send('update-check-result', {
+            hasUpdate: true,
+            version: latest.version,
+            release_notes: data.release_notes || '',
+            download_url: data.download_url || null,
+          });
+        } else {
+          win.webContents.send('update-check-result', { hasUpdate: false });
+        }
+      } catch (err) {
+        console.error('Check for updates error:', err);
+        win.webContents.send('update-check-result', {
+          hasUpdate: false,
+          error: 'Não foi possível verificar atualizações.',
+        });
+      }
+    };
+
     const menu = getApplicationMenu(
       askToQuit,
       clientUrl,
@@ -470,6 +525,7 @@ function startApplication() {
           win.webContents.downloadURL(url);
         }
       },
+      checkForUpdates,
     );
     Menu.setApplicationMenu(menu);
 

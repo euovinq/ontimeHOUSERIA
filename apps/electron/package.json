@@ -1,6 +1,6 @@
 {
   "name": "houseriaapp-electron",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "author": "Vinicius Queiroz",
   "description": "Time keeping for live events",
   "keywords": [
@@ -12,7 +12,8 @@
   "main": "src/main.js",
   "dependencies": {
     "keytar": "^7.9.0",
-    "node-machine-id": "^1.1.12"
+    "node-machine-id": "^1.1.12",
+    "semver": "^7.6.2"
   },
   "devDependencies": {
     "electron": "36.3.1",

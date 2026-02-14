@@ -11,6 +11,7 @@ import useAppSettingsNavigation from '../app-settings/useAppSettingsNavigation';
 import { EditorOverview } from '../overview/Overview';
 
 import Finder from './finder/Finder';
+import UpdateCheckPlacement from './update-check/UpdateCheckPlacement';
 import WelcomePlacement from './welcome/WelcomePlacement';
 
 import styles from './Editor.module.scss';
@@ -55,6 +56,7 @@ export default function Editor() {
   return (
     <div className={styles.mainContainer} data-testid='event-editor'>
       <WelcomePlacement />
+      <UpdateCheckPlacement />
       <Finder isOpen={isFinderOpen} onClose={onFinderClose} />
       <NavigationMenu isOpen={isMenuOpen} onClose={onClose} />
       <EditorOverview>
