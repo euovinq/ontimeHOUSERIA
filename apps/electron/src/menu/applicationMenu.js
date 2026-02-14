@@ -25,10 +25,10 @@ const {
  * @param {function} download - function to download a resource from url
  * @returns {Menu} - application menu
  */
-function getApplicationMenu(askToQuit, clientUrl, serverUrl, redirectWindow, showDialog, download) {
+function getApplicationMenu(askToQuit, clientUrl, serverUrl, redirectWindow, showDialog, download, checkForUpdates) {
   const template = [
     ...(isMac ? [makeMacMenu(askToQuit)] : []),
-    makeFileMenu(serverUrl, redirectWindow, showDialog, download),
+    makeFileMenu(serverUrl, redirectWindow, showDialog, download, checkForUpdates),
     makeEditMenu(),
     makeViewMenu(clientUrl),
     makeSettingsMenu(redirectWindow),
@@ -83,9 +83,10 @@ function makeEditMenu() {
  * @param {function} redirectWindow - function to redirect main window content
  * @param {function} showDialog - asks the react app to show a user dialog
  * @param {function} download - function to download a resource from url
+ * @param {function} checkForUpdates - function to check for software updates
  * @returns {Object}
  */
-function makeFileMenu(serverUrl, redirectWindow, showDialog, download) {
+function makeFileMenu(serverUrl, redirectWindow, showDialog, download, checkForUpdates) {
   const downloadProject = () => {
     try {
       download(serverUrl + downloadPath);
@@ -120,6 +121,10 @@ function makeFileMenu(serverUrl, redirectWindow, showDialog, download) {
       {
         label: 'Download project',
         click: downloadProject,
+      },
+      {
+        label: 'Buscar atualização...',
+        click: () => checkForUpdates && checkForUpdates(),
       },
       { type: 'separator' },
       {

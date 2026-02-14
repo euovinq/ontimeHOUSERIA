@@ -1940,10 +1940,7 @@ export class SupabaseAdapter {
     const ids = changes.map((c) => c.id).filter(Boolean);
     const removed = ids.length > 0 ? await this.removeMultipleChangesFromArray(projectCode, ids) : 0;
 
-    if (applied > 0) {
-      await this.syncDataToSupabase();
-    }
-
+    // Não chama syncDataToSupabase - o handler genérico já dispara forceUpdate em 100ms
     return { applied, removed };
   }
 
@@ -1982,9 +1979,8 @@ export class SupabaseAdapter {
         if (!options?.skipSync) {
           await new Promise((r) => setTimeout(r, 250));
           await this.syncDataToSupabase();
-        } else {
-          await new Promise((r) => setTimeout(r, 80)); // breve delay para Supabase consolidar
         }
+        // skipSync: handler genérico dispara forceUpdate em 100ms
         return true;
       }
       return false;

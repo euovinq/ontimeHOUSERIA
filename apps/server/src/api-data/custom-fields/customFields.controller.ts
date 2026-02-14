@@ -3,6 +3,8 @@ import { CustomField, CustomFields, ErrorResponse } from 'houseriaapp-types';
 import type { Request, Response } from 'express';
 
 import { getErrorMessage } from 'houseriaapp-utils';
+
+import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import {
   createCustomField,
   editCustomField,
@@ -19,6 +21,7 @@ export async function postCustomField(req: Request, res: Response<CustomFields |
   try {
     const newField = req.body as CustomField;
     const allFields = await createCustomField(newField);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(201).send(allFields);
   } catch (error) {
     const message = getErrorMessage(error);
@@ -31,6 +34,7 @@ export async function putCustomField(req: Request, res: Response<CustomFields | 
     const oldLabel = req.params.label;
     const { colour, type, label } = req.body;
     const newFields = await editCustomField(oldLabel, { label, colour, type });
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(200).send(newFields);
   } catch (error) {
     const message = getErrorMessage(error);
@@ -43,6 +47,7 @@ export async function deleteCustomField(req: Request, res: Response<CustomFields
   try {
     const fieldToDelete = req.params.label;
     await removeCustomField(fieldToDelete);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.sendStatus(204);
   } catch (error) {
     const message = getErrorMessage(error);

@@ -6,9 +6,9 @@ import { type ProjectData } from 'houseriaapp-types';
 
 import { PROJECT_DATA, PROJECT_LIST, projectLogoPath } from '../../../../common/api/constants';
 import { postProjectData, uploadProjectLogo } from '../../../../common/api/project';
-import { ontimeQueryClient } from '../../../../common/queryClient';
 import { maybeAxiosError } from '../../../../common/api/utils';
 import useProjectData from '../../../../common/hooks-query/useProjectData';
+import { ontimeQueryClient } from '../../../../common/queryClient';
 import { preventEscape } from '../../../../common/utils/keyEvent';
 import { validateLogo } from '../../../../common/utils/uploadUtils';
 import { documentationUrl, websiteUrl } from '../../../../externals';

@@ -10,6 +10,7 @@ import { getErrorMessage } from 'houseriaapp-utils';
 
 import type { Request, Response } from 'express';
 
+import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { failEmptyObjects } from '../../utils/routerUtils.js';
 import {
   addEvent,
@@ -90,6 +91,7 @@ export async function rundownPost(req: Request, res: Response<OntimeRundownEntry
 
   try {
     const newEvent = await addEvent(req.body);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(201).send(newEvent);
   } catch (error) {
     const message = getErrorMessage(error);
@@ -104,6 +106,7 @@ export async function rundownPut(req: Request, res: Response<OntimeRundownEntry 
 
   try {
     const event = await editEvent(req.body);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(200).send(event);
   } catch (error) {
     const message = getErrorMessage(error);
@@ -119,6 +122,7 @@ export async function rundownBatchPut(req: Request, res: Response<MessageRespons
   try {
     const { data, ids } = req.body;
     await batchEditEvents(ids, data);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(200).send({ message: 'Batch edit successful' });
   } catch (error) {
     const message = getErrorMessage(error);
@@ -134,6 +138,7 @@ export async function rundownReorder(req: Request, res: Response<OntimeRundownEn
   try {
     const { eventId, from, to } = req.body;
     const event = await reorderEvent(eventId, from, to);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(200).send(event.newEvent);
   } catch (error) {
     const message = getErrorMessage(error);
@@ -149,6 +154,7 @@ export async function rundownSwap(req: Request, res: Response<MessageResponse | 
   try {
     const { from, to } = req.body;
     await swapEvents(from, to);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(200).send({ message: 'Swap successful' });
   } catch (error) {
     const message = getErrorMessage(error);
@@ -159,6 +165,7 @@ export async function rundownSwap(req: Request, res: Response<MessageResponse | 
 export async function rundownApplyDelay(req: Request, res: Response<MessageResponse | ErrorResponse>) {
   try {
     await applyDelay(req.params.eventId);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(200).send({ message: 'Delay applied' });
   } catch (error) {
     const message = getErrorMessage(error);
@@ -169,6 +176,7 @@ export async function rundownApplyDelay(req: Request, res: Response<MessageRespo
 export async function rundownDelete(_req: Request, res: Response<MessageResponse | ErrorResponse>) {
   try {
     await deleteAllEvents();
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(204).send({ message: 'All events deleted' });
   } catch (error) {
     const message = getErrorMessage(error);
@@ -179,6 +187,7 @@ export async function rundownDelete(_req: Request, res: Response<MessageResponse
 export async function deletesEventById(req: Request, res: Response<MessageResponse | ErrorResponse>) {
   try {
     await deleteEvent(req.body.ids);
+    setTimeout(() => supabaseAdapter.forceProjectUpdate(), 100);
     res.status(204).send({ message: 'Events deleted' });
   } catch (error) {
     const message = getErrorMessage(error);
