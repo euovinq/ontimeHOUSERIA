@@ -34,7 +34,7 @@ class AuthService {
     this.userData = null;
     this.sessionData = null;
     this.machineId = getMachineId();
-    console.log('🖥️ Machine ID obtido:', this.machineId ? `${this.machineId.substring(0, 8)}...` : '(fallback)');
+    console.log(' Machine ID obtido:', this.machineId ? `${this.machineId.substring(0, 8)}...` : '(fallback)');
   }
 
   /**
@@ -68,7 +68,7 @@ class AuthService {
     
     // Log em desenvolvimento para debug
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`🔗 Construindo URL: ${baseUrl} + prefixo "${prefix || '(nenhum)'}" + ${endpoint} = ${finalUrl}`);
+      console.log(` Construindo URL: ${baseUrl} + prefixo "${prefix || '(nenhum)'}" + ${endpoint} = ${finalUrl}`);
     }
     
     return finalUrl;
@@ -88,34 +88,34 @@ class AuthService {
     // Se API_URL estiver configurada (ex: Vercel), usar ela (prioridade máxima)
     // Isso permite usar servidor remoto tanto em dev quanto em produção
     if (config.apiUrl) {
-      console.log(`🌐 Usando API_URL: ${config.apiUrl}`);
+      console.log(` Usando API_URL: ${config.apiUrl}`);
       return config.apiUrl;
     }
     
     // Se REMOTE_API_URL estiver configurada, usar ela (mesmo em produção)
     if (config.remoteApiUrl) {
-      console.log(`🌐 Usando REMOTE_API_URL: ${config.remoteApiUrl}`);
+      console.log(` Usando REMOTE_API_URL: ${config.remoteApiUrl}`);
       return config.remoteApiUrl;
     }
     
     // Se não houver API_URL nem REMOTE_API_URL, usar servidor remoto padrão
     // Isso garante que login/logout sempre usem a API externa quando não configurado explicitamente
     if (config.defaultRemoteApiUrl) {
-      console.log(`🌐 Usando servidor remoto padrão: ${config.defaultRemoteApiUrl}`);
-      console.log(`💡 Para usar outro servidor, configure API_URL ou REMOTE_API_URL`);
+      console.log(` Usando servidor remoto padrão: ${config.defaultRemoteApiUrl}`);
+      console.log(` Para usar outro servidor, configure API_URL ou REMOTE_API_URL`);
       return config.defaultRemoteApiUrl;
     }
     
     // Servidor local só como último recurso (quando não há nenhuma API externa configurada)
     if (isProduction && port) {
       const localUrl = getServerUrl(port);
-      console.log(`🏠 [PROD] Usando servidor local (fallback): ${localUrl}`);
-      console.log(`⚠️ Nenhuma API externa configurada. Configure API_URL ou REMOTE_API_URL para usar API externa.`);
+      console.log(` [PROD] Usando servidor local (fallback): ${localUrl}`);
+      console.log(` Nenhuma API externa configurada. Configure API_URL ou REMOTE_API_URL para usar API externa.`);
       return localUrl;
     }
     
     // Fallback final: localhost (não deveria chegar aqui)
-    console.log(`🏠 [FALLBACK] Usando localhost:4001`);
+    console.log(` [FALLBACK] Usando localhost:4001`);
     return 'http://localhost:4001';
   }
 
@@ -134,7 +134,7 @@ class AuthService {
       const apiUrl = this.getApiBaseUrl(port);
       const loginUrl = this.buildApiUrl(apiUrl, '/auth/desktop/login');
       
-      console.log(`🔗 Tentando login em (desktop): ${loginUrl}`);
+      console.log(` Tentando login em (desktop): ${loginUrl}`);
 
       const response = await fetch(loginUrl, {
         method: 'POST',
@@ -156,8 +156,8 @@ class AuthService {
       const responseText = await response.text();
       
       if (!isJson) {
-        console.error('❌ Resposta não é JSON. Content-Type:', contentType);
-        console.error('❌ Resposta recebida (primeiros 500 caracteres):', responseText.substring(0, 500));
+        console.error(' Resposta não é JSON. Content-Type:', contentType);
+        console.error(' Resposta recebida (primeiros 500 caracteres):', responseText.substring(0, 500));
         
         // Se for HTML, provavelmente é uma página de erro 404 ou similar
         if (contentType && contentType.includes('text/html')) {
@@ -181,8 +181,8 @@ class AuthService {
       try {
         data = JSON.parse(responseText);
       } catch (parseError) {
-        console.error('❌ Erro ao fazer parse do JSON:', parseError);
-        console.error('❌ Resposta recebida:', responseText);
+        console.error(' Erro ao fazer parse do JSON:', parseError);
+        console.error(' Resposta recebida:', responseText);
         throw new Error(
           `Erro ao processar resposta da API: ${parseError.message}\n` +
           `Status: ${response.status} ${response.statusText}\n` +
@@ -191,34 +191,34 @@ class AuthService {
       }
 
       // Log da resposta completa para debug
-      console.log('📥 Resposta do servidor (status):', response.status, response.statusText);
-      console.log('📥 Resposta do servidor (dados):', JSON.stringify(data, null, 2));
-      console.log('📥 Campos presentes na resposta:', Object.keys(data));
+      console.log(' Resposta do servidor (status):', response.status, response.statusText);
+      console.log(' Resposta do servidor (dados):', JSON.stringify(data, null, 2));
+      console.log(' Campos presentes na resposta:', Object.keys(data));
 
       if (!response.ok) {
-        console.log('❌ Resposta não OK, tratando erro...');
+        console.log(' Resposta não OK, tratando erro...');
         throw this.handleLoginError(data, response.status);
       }
 
-      console.log('✅ Resposta OK, validando dados...');
+      console.log(' Resposta OK, validando dados...');
 
       // Validar que o token foi retornado (endpoint desktop: success, token, user, session, licenseExpiresAt)
       if (!data.token) {
-        console.error('❌ Token não retornado pela API. Resposta recebida:', JSON.stringify(data, null, 2));
+        console.error(' Token não retornado pela API. Resposta recebida:', JSON.stringify(data, null, 2));
         throw new Error(
           'O servidor não retornou um token JWT. A resposta não contém o campo "token".'
         );
       }
 
-      console.log('✅ Token encontrado, validando formato...');
+      console.log(' Token encontrado, validando formato...');
 
       // Validar que token é uma string não vazia
       if (typeof data.token !== 'string' || data.token.trim() === '') {
-        console.error('❌ Token inválido recebido:', typeof data.token, data.token);
+        console.error(' Token inválido recebido:', typeof data.token, data.token);
         throw new Error('Token JWT inválido recebido da API.');
       }
 
-      console.log('✅ Token válido, preparando dados do usuário...');
+      console.log(' Token válido, preparando dados do usuário...');
 
       // Armazenar dados (formato endpoint desktop: user, session com id, activeMachines, maxLimit, reused)
       this.token = data.token;
@@ -241,7 +241,7 @@ class AuthService {
         sessionId: rawSession.id ?? rawSession.sessionId,
       };
 
-      console.log('✅ Dados preparados:', {
+      console.log(' Dados preparados:', {
         hasToken: !!this.token,
         hasUserData: !!this.userData,
         hasSessionData: !!this.sessionData,
@@ -250,11 +250,11 @@ class AuthService {
       });
 
       // Salvar no keychain de forma segura
-      console.log('💾 Salvando token no keychain...');
+      console.log(' Salvando token no keychain...');
       await this.saveTokenSecurely(this.token);
-      console.log('💾 Salvando dados do usuário no keychain...');
+      console.log(' Salvando dados do usuário no keychain...');
       await this.saveUserData(this.userData, this.sessionData, data.licenseExpiresAt);
-      console.log('✅ Dados salvos com sucesso!');
+      console.log(' Dados salvos com sucesso!');
 
       const result = {
         success: true,
@@ -264,7 +264,7 @@ class AuthService {
         licenseExpiresAt: data.licenseExpiresAt,
       };
 
-      console.log('✅ Login (desktop) concluído com sucesso! Retornando resultado...');
+      console.log(' Login (desktop) concluído com sucesso! Retornando resultado...');
       return result;
     } catch (error) {
       console.error('Erro no login:', error.message);
@@ -286,7 +286,7 @@ class AuthService {
     try {
       const apiUrl = this.getApiBaseUrl(port);
       const logoutUrl = this.buildApiUrl(apiUrl, '/auth/desktop/logout');
-      console.log(`🔗 Tentando logout em (desktop): ${logoutUrl}`);
+      console.log(` Tentando logout em (desktop): ${logoutUrl}`);
       
       await fetch(logoutUrl, {
         method: 'POST',
@@ -434,7 +434,7 @@ class AuthService {
       const token = await this.loadTokenSecurely();
       if (!token || this.isTokenExpired(token)) return false;
       if (this.isLicenseExpired(token)) {
-        console.log('📅 Período de acesso expirado (licenseExpiresAt). Limpando dados salvos.');
+        console.log(' Período de acesso expirado (licenseExpiresAt). Limpando dados salvos.');
         await this.clearStoredData();
         this.token = null;
         this.userData = null;

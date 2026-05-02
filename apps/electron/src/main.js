@@ -1,3 +1,7 @@
+// Prevent EPIPE crashes when stdout/stderr pipes are closed (e.g. running via turbo/npm scripts)
+process.stdout.on('error', (err) => { if (err.code !== 'EPIPE') throw err; });
+process.stderr.on('error', (err) => { if (err.code !== 'EPIPE') throw err; });
+
 const { app, BrowserWindow, Menu, globalShortcut, Tray, dialog, ipcMain, shell, Notification } = require('electron');
 const path = require('path');
 
@@ -63,7 +67,7 @@ async function handleLicenseExpired(payload) {
     message: messageBase,
     detail: 'Reabra o HouseriaAPP e faça login novamente para continuar usando o sistema.',
   });
-  console.log('🔌 Shutting down app after license expiration...');
+  console.log(' Shutting down app after license expiration...');
   appShutdown();
 }
 
@@ -85,14 +89,14 @@ function createLoginLockFile() {
         JSON.stringify({ timestamp: Date.now() }),
         'utf8'
       );
-      console.log('✅ Login lock file created:', lockFilePath);
+      console.log(' Login lock file created:', lockFilePath);
     } else {
       console.warn(
-        '⚠️ Could not resolve AppDataPath when creating login lock file.'
+        ' Could not resolve AppDataPath when creating login lock file.'
       );
     }
   } catch (lockError) {
-    console.error('❌ Error creating login lock file:', lockError);
+    console.error(' Error creating login lock file:', lockError);
   }
 }
 
@@ -315,8 +319,7 @@ function createLoginWindow() {
     },
   });
 
-  const loginPath = path.join('file://', __dirname, '/login/login.html');
-  loginWindow.loadURL(loginPath);
+  loginWindow.loadFile(path.join(__dirname, 'login', 'login.html'));
 
   loginWindow.once('ready-to-show', () => {
     loginWindow.show();
@@ -348,8 +351,7 @@ function createWindow() {
     skipTaskbar: true,
   });
   splash.setIgnoreMouseEvents(true);
-  const splashPath = path.join('file://', __dirname, '/splash/splash.html');
-  splash.loadURL(splashPath);
+  splash.loadFile(path.join(__dirname, 'splash', 'splash.html'));
 
   win = new BrowserWindow({
     width: 1920,
@@ -605,7 +607,7 @@ function startApplication() {
 ipcMain.on('login-submit', async (event, credentials) => {
   const { username, password } = credentials || {};
   console.log(
-    '🔐 Login submitted:',
+    ' Login submitted:',
     username ? `for user "${username}"` : 'without username'
   );
 
@@ -621,12 +623,12 @@ ipcMain.on('login-submit', async (event, credentials) => {
       port = await ensureBackendStarted();
     }
 
-    console.log('🔐 Iniciando processo de login...');
+    console.log(' Iniciando processo de login...');
     
     // Usar AuthService para fazer login
     const loginResult = await authService.login(username, password, port);
     
-    console.log('📥 Resultado do login recebido:', {
+    console.log(' Resultado do login recebido:', {
       hasResult: !!loginResult,
       success: loginResult?.success,
       hasToken: !!loginResult?.token,
@@ -636,8 +638,8 @@ ipcMain.on('login-submit', async (event, credentials) => {
     });
 
     if (loginResult && loginResult.success) {
-      console.log('✅ Login successful. Token armazenado com segurança.');
-      console.log(`📊 Máquinas ativas: ${loginResult.session.activeSessions}/${loginResult.session.maxLimit}`);
+      console.log(' Login successful. Token armazenado com segurança.');
+      console.log(` Máquinas ativas: ${loginResult.session.activeSessions}/${loginResult.session.maxLimit}`);
       
       // Enviar sucesso com dados completos
       event.sender.send('login-success', {
@@ -650,22 +652,22 @@ ipcMain.on('login-submit', async (event, credentials) => {
 
       // Fechar janela de login
       if (loginWindow) {
-        console.log('🔒 Closing login window after successful login...');
+        console.log(' Closing login window after successful login...');
         loginWindow.close();
         loginWindow = null;
       }
 
       // Iniciar aplicação normalmente
-      console.log('🚀 Starting application...');
+      console.log(' Starting application...');
       startApplication();
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
     
-    console.error('❌ Error during login:', errorMsg);
-    console.error('❌ Error stack:', errorStack);
-    console.error('❌ Error completo:', error);
+    console.error(' Error during login:', errorMsg);
+    console.error(' Error stack:', errorStack);
+    console.error(' Error completo:', error);
     
     // Tratar erros específicos
     let friendlyMessage = errorMsg;
@@ -689,7 +691,7 @@ ipcMain.on('login-submit', async (event, credentials) => {
  */
 ipcMain.on('logout', async () => {
   try {
-    console.log('🔓 Logout requested...');
+    console.log(' Logout requested...');
     
     // Obter porta do servidor se necessário
     let port = null;
@@ -697,7 +699,7 @@ ipcMain.on('logout', async () => {
       try {
         port = await ensureBackendStarted();
       } catch (error) {
-        console.warn('⚠️ Could not get server port for logout, continuing anyway');
+        console.warn(' Could not get server port for logout, continuing anyway');
       }
     }
 
@@ -706,7 +708,7 @@ ipcMain.on('logout', async () => {
       licenseCheckIntervalId = null;
     }
     await authService.logout(port);
-    console.log('✅ Logout realizado com sucesso');
+    console.log(' Logout realizado com sucesso');
 
     // Fechar janela principal
     if (win) {
@@ -722,7 +724,7 @@ ipcMain.on('logout', async () => {
       loginWindow.focus();
     }
   } catch (error) {
-    console.error('❌ Erro ao fazer logout:', error);
+    console.error(' Erro ao fazer logout:', error);
     // Mesmo se logout falhar, limpar estado local
     if (win) {
       win.close();
@@ -746,12 +748,12 @@ ipcMain.handle('get-license-info', async () => {
  * Retorna dados de autenticação do usuário para uso em headers de requisições
  */
 ipcMain.handle('get-auth-headers', async () => {
-  console.log('🔐 [get-auth-headers] Handler chamado');
+  console.log(' [get-auth-headers] Handler chamado');
   const userData = authService.getUserData();
-  console.log('🔐 [get-auth-headers] userData:', userData ? { hasId: !!userData.id, hasUserId: !!userData.userId, isAdmin: userData.isAdmin } : 'null');
+  console.log(' [get-auth-headers] userData:', userData ? { hasId: !!userData.id, hasUserId: !!userData.userId, isAdmin: userData.isAdmin } : 'null');
   
   if (!userData) {
-    console.warn('⚠️ [get-auth-headers] userData não encontrado');
+    console.warn(' [get-auth-headers] userData não encontrado');
     return { userId: null, isAdmin: false };
   }
   
@@ -759,7 +761,7 @@ ipcMain.handle('get-auth-headers', async () => {
   const userId = userData.id || userData.userId || null;
   const isAdmin = Boolean(userData.isAdmin);
   
-  console.log('✅ [get-auth-headers] Retornando:', { userId, isAdmin });
+  console.log(' [get-auth-headers] Retornando:', { userId, isAdmin });
   return { userId, isAdmin };
 });
 
@@ -795,18 +797,23 @@ app.whenReady().then(async () => {
     app.setAppUserModelId(app.name);
   }
 
-  // Tentar carregar token salvo
-  console.log('📱 Electron ready, verificando token salvo...');
-  const hasStoredToken = await authService.loadStoredToken();
-  
-  if (hasStoredToken && authService.isAuthenticated()) {
-    console.log('✅ Token válido encontrado, iniciando aplicação diretamente...');
-    createLoginLockFile();
-    startApplication();
-  } else {
-    console.log('📱 Nenhum token válido encontrado, mostrando janela de login...');
-    // Criar e mostrar janela de login
-    createLoginWindow();
+  try {
+    console.log('Electron ready, checking stored token...');
+    const hasStoredToken = await authService.loadStoredToken();
+
+    if (hasStoredToken && authService.isAuthenticated()) {
+      console.log('Stored token valid, starting app...');
+      createLoginLockFile();
+      startApplication();
+    } else {
+      console.log('No valid token found, showing login window...');
+      createLoginWindow();
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('Startup error:', msg);
+    dialog.showErrorBox('Erro ao iniciar', msg);
+    app.quit();
   }
 });
 
@@ -817,7 +824,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   if (!isQuitting) {
     isQuitting = true;
-    console.log('🛑 Usuário solicitou fechamento do app');
+    console.log(' Usuário solicitou fechamento do app');
   }
 });
 
@@ -847,7 +854,7 @@ ipcMain.on('shutdown', () => {
  */
 ipcMain.on('auth-license-expired', async (_event, payload) => {
   try {
-    console.log('🔒 Auth license expired IPC received:', payload);
+    console.log(' Auth license expired IPC received:', payload);
     if (licenseCheckIntervalId) {
       clearInterval(licenseCheckIntervalId);
       licenseCheckIntervalId = null;
@@ -855,7 +862,7 @@ ipcMain.on('auth-license-expired', async (_event, payload) => {
     await handleLicenseExpired(payload);
   } catch (error) {
     console.error(
-      '❌ Unexpected error handling auth-license-expired IPC:',
+      ' Unexpected error handling auth-license-expired IPC:',
       error instanceof Error ? error.message : String(error)
     );
     appShutdown();

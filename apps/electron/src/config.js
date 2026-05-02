@@ -24,10 +24,10 @@ try {
   const path = require('path');
   const envPath = path.join(__dirname, '../.env');
   dotenv.config({ path: envPath });
-  console.log('📝 Arquivo .env carregado (se existir)');
+  console.log(' Arquivo .env carregado (se existir)');
 } catch (error) {
   // dotenv não instalado, ignora
-  // console.log('💡 Dica: Instale dotenv para usar arquivo .env');
+  // console.log(' Dica: Instale dotenv para usar arquivo .env');
 }
 
 /**
@@ -60,7 +60,7 @@ const config = {
 
 // Log das configurações em desenvolvimento
 if (process.env.NODE_ENV !== 'production') {
-  console.log('🔧 Configurações carregadas:');
+  console.log(' Configurações carregadas:');
   console.log('  - API_URL:', config.apiUrl || '(não definida)');
   console.log('  - REMOTE_API_URL:', config.remoteApiUrl || '(não definida)');
   console.log('  - DEFAULT_REMOTE_API_URL:', config.defaultRemoteApiUrl);
