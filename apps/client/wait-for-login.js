@@ -4,6 +4,33 @@
  * Isso garante que o servidor de desenvolvimento só inicie após o login
  */
 
+// Force UTF-8 on stdout/stderr on Windows so libuv doesn't crash on accented chars.
+if (process.platform === 'win32') {
+  for (const stream of [process.stdout, process.stderr]) {
+    try {
+      if (typeof stream.setDefaultEncoding === 'function') {
+        stream.setDefaultEncoding('utf8');
+      }
+      const origWrite = stream.write.bind(stream);
+      stream.write = (chunk, encoding, cb) => {
+        try {
+          let payload = chunk;
+          if (Buffer.isBuffer(payload)) payload = payload.toString('utf8');
+          if (typeof payload === 'string') {
+            payload = Buffer.from(payload, 'utf8').toString('utf8');
+          }
+          return origWrite(payload, 'utf8', cb);
+        } catch {
+          if (typeof cb === 'function') cb();
+          return true;
+        }
+      };
+    } catch {
+      // ignore
+    }
+  }
+}
+
 import { spawn } from 'child_process';
 import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { dirname, join } from 'path';

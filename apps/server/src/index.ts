@@ -1,4 +1,7 @@
 /* eslint-disable no-console */
+// MUST be the very first import — patches stdout/stderr so console.log calls
+// with accented chars don't crash the server on Windows (libuv UTF-8 issue).
+import './utils/stdio-utf8.js';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { consoleHighlight, consoleError } from './utils/console.js';

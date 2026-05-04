@@ -2,6 +2,40 @@
 process.stdout.on('error', (err) => { if (err.code !== 'EPIPE') throw err; });
 process.stderr.on('error', (err) => { if (err.code !== 'EPIPE') throw err; });
 
+// Force UTF-8 on stdout/stderr on Windows.
+// Without this, libuv crashes with "Windows stdio in console mode does not support
+// writing non-UTF-8 byte sequences" whenever a console.log contains accented chars
+// (ã, ç, ñ, emojis, etc.) and the host console isn't in UTF-8 code page.
+if (process.platform === 'win32') {
+  for (const stream of [process.stdout, process.stderr]) {
+    try {
+      if (typeof stream.setDefaultEncoding === 'function') {
+        stream.setDefaultEncoding('utf8');
+      }
+      const origWrite = stream.write.bind(stream);
+      stream.write = (chunk, encoding, cb) => {
+        try {
+          let payload = chunk;
+          if (Buffer.isBuffer(payload)) {
+            payload = payload.toString('utf8');
+          }
+          // Strip lone surrogates / invalid sequences before forwarding
+          if (typeof payload === 'string') {
+            payload = Buffer.from(payload, 'utf8').toString('utf8');
+          }
+          return origWrite(payload, 'utf8', cb);
+        } catch {
+          // Swallow any write failure — never crash the app over a log line.
+          if (typeof cb === 'function') cb();
+          return true;
+        }
+      };
+    } catch {
+      // ignore — keep original stream if patching fails
+    }
+  }
+}
+
 const { app, BrowserWindow, Menu, globalShortcut, Tray, dialog, ipcMain, shell, Notification } = require('electron');
 const path = require('path');
 

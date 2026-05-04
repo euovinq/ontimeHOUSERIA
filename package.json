@@ -21,7 +21,7 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "node scripts/dev.cjs",
     "dev:electron": "turbo run dev --filter=houseriaapp",
     "dev:server": "turbo run dev --filter=houseriaapp-server",
     "lint": "turbo run lint",
