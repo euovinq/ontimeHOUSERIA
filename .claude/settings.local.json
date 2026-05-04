@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where pnpm *)",
+      "Bash(where node *)",
+      "Bash(pnpm --version)",
+      "PowerShell(Get-Command pnpm -ErrorAction SilentlyContinue)",
+      "PowerShell(pnpm --version 2>&1)",
+      "PowerShell(node --version)",
+      "PowerShell($env:PNPM_HOME = \"$env:APPDATA\\\\npm\"; pnpm --version 2>&1)",
+      "PowerShell($version = \\(Get-Content \"C:\\\\Users\\\\apena\\\\ontimeHOUSERIA\\\\.claude\\\\worktrees\\\\blissful-feistel-65eb21\\\\package.json\" | ConvertFrom-Json\\).version; \"export const ONTIME_VERSION = '$version';\" | Out-File -FilePath \"C:\\\\Users\\\\apena\\\\ontimeHOUSERIA\\\\.claude\\\\worktrees\\\\blissful-feistel-65eb21\\\\apps\\\\client\\\\src\\\\ONTIME_VERSION.js\" -Encoding utf8 -NoNewline; Write-Output \"Created ONTIME_VERSION.js with version $version\")",
+      "PowerShell($env:PNPM_HOME = \"$env:APPDATA\\\\npm\"; Set-Location \"C:\\\\Users\\\\apena\\\\ontimeHOUSERIA\\\\.claude\\\\worktrees\\\\blissful-feistel-65eb21\"; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"`$env:PNPM_HOME='$env:APPDATA\\\\npm'; Set-Location 'C:\\\\Users\\\\apena\\\\ontimeHOUSERIA\\\\.claude\\\\worktrees\\\\blissful-feistel-65eb21'; pnpm dev\" -PassThru | Select-Object Id; Write-Output \"Dev server started in new window\")",
+      "PowerShell(Get-Process | Where-Object { $_.Name -match \"electron|HouseriaAPP|Houseria\" } | Select-Object Id, Name, CPU, StartTime)",
+      "PowerShell($env:NODE_ENV = \"development\"; Set-Location \"C:\\\\Users\\\\apena\\\\ontimeHOUSERIA\\\\.claude\\\\worktrees\\\\blissful-feistel-65eb21\\\\apps\\\\electron\"; & \"..\\\\..\\\\node_modules\\\\.bin\\\\electron.cmd\" . 2>&1 | Select-Object -First 40)",
+      "Bash(NODE_ENV=development ../../node_modules/.bin/electron .)",
+      "Bash(kill %1)",
+      "Bash(wait)",
+      "Bash(grep \"\\\\.js$\")",
+      "Bash(python3 -c ' *)",
+      "Bash(git checkout *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git config *)",
+      "Bash(Test-Path \"C:/Users/apena/ontimeHOUSERIA/apps/server/node_modules/.modules.yaml\")",
+      "PowerShell(try { $tcp = New-Object System.Net.Sockets.TcpClient; $tcp.Connect\\(\"localhost\", 4001\\); $tcp.Close\\(\\); \"Port 4001: OPEN\" } catch { \"Port 4001: CLOSED\" })"
+    ]
+  }
+}
