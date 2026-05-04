@@ -9,6 +9,9 @@ node_modules/
 .DS_Store
 *.local
 
+# Claude Code internals
+.claude/
+
 # environment variables
 .env
 .env.local
