@@ -3,8 +3,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 
-const supabaseUrl = 'https://YOUR_PROJECT.supabase.co'
-const supabaseKey = 'YOUR_SUPABASE_ANON_KEY'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 const supabase = createClient(supabaseUrl, supabaseKey)
 

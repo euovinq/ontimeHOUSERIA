@@ -11,11 +11,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const SUPABASE_CONFIG = {
-  url: 'https://YOUR_PROJECT.supabase.co',
-  anonKey: 'YOUR_SUPABASE_ANON_KEY',
-  tableName: 'ontime_realtime',
-  enabled: true
+  url: process.env.SUPABASE_URL,
+  anonKey: process.env.SUPABASE_ANON_KEY,
+  tableName: process.env.SUPABASE_TABLE_NAME || 'ontime_realtime',
+  enabled: process.env.SUPABASE_ENABLED || 'true',
 };
+
+if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey) {
+  console.error('Erro: SUPABASE_URL e SUPABASE_ANON_KEY devem estar definidas como variáveis de ambiente.');
+  console.error('Exemplo: SUPABASE_URL=https://xyz.supabase.co SUPABASE_ANON_KEY=eyJ... node setup-supabase.js');
+  process.exit(1);
+}
 
 function createEnvFile() {
   const envContent = `# Supabase Configuration

@@ -2,8 +2,13 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://YOUR_PROJECT.supabase.co';
-const supabaseKey = 'YOUR_SUPABASE_ANON_KEY';
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Erro: SUPABASE_URL e SUPABASE_ANON_KEY devem estar definidas como variáveis de ambiente.');
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Substitua com suas credenciais do Supabase
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 console.log('🧪 TESTE DE CONEXÃO SUPABASE - PowerPoint\n');
