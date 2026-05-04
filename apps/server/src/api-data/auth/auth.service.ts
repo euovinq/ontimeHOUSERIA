@@ -1,20 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { hashPassword } from '../../utils/hash.js';
 
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
-const SUPABASE_ANON_KEY =
-  process.env.SUPABASE_ANON_KEY ||
-  'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  // Em runtime real isso deve ser configurado corretamente
-  // Aqui apenas garantimos que exista algum valor para evitar crash imediato.
-  // Os erros reais serão tratados nas chamadas.
   // eslint-disable-next-line no-console
-  console.warn(
-    '[AUTH] Variáveis de ambiente do Supabase não configuradas. Usando valores padrão do projeto.'
-  );
+  console.warn('[AUTH] SUPABASE_URL e SUPABASE_ANON_KEY não configuradas. Operações de auth falharão.');
 }
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

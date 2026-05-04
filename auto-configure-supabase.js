@@ -2,10 +2,15 @@
 // Execute este script após o servidor estar rodando
 
 const SUPABASE_CONFIG = {
-  url: 'https://YOUR_PROJECT.supabase.co',
-  anonKey: 'YOUR_SUPABASE_ANON_KEY',
-  tableName: 'ontime_realtime',
+  url: process.env.SUPABASE_URL,
+  anonKey: process.env.SUPABASE_ANON_KEY,
+  tableName: process.env.SUPABASE_TABLE_NAME || 'ontime_realtime',
   enabled: true
+}
+
+if (!SUPABASE_CONFIG.url || !SUPABASE_CONFIG.anonKey) {
+  console.error('Erro: SUPABASE_URL e SUPABASE_ANON_KEY devem estar definidas como variáveis de ambiente.')
+  process.exit(1)
 }
 
 async function configureSupabase() {
