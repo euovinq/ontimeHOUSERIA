@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://gxcgwhscnroiizjwswqv.supabase.co';
 const SUPABASE_ANON_KEY =
   process.env.SUPABASE_ANON_KEY ||
-  'YOUR_SUPABASE_ANON_KEY';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4Y2d3aHNjbnJvaWl6andzd3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDMwNjMsImV4cCI6MjA3NTM3OTA2M30.suNBGtPXUr0YY8BaJEHcSja2m-vdxuCrA2CdOPip5fg';
 
 const PLATFORM_MAP: Record<string, string> = {
   win32: 'download_url_windows',
