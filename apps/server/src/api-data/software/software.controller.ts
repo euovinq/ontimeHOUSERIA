@@ -22,7 +22,7 @@ export async function getLatestVersion(req: Request, res: Response) {
       return;
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = createClient(SUPABASE_URL ?? '', SUPABASE_ANON_KEY ?? '');
 
     const { data, error } = await supabase
       .from('software_versions')
