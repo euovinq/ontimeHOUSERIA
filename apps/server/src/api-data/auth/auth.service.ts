@@ -9,7 +9,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn('[AUTH] SUPABASE_URL e SUPABASE_ANON_KEY não configuradas. Operações de auth falharão.');
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase = createClient(SUPABASE_URL ?? '', SUPABASE_ANON_KEY ?? '');
 
 type AuthErrorCode = 'invalid_credentials' | 'period_expired';
 

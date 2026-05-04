@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs -I{} git grep -l \"gxcgwhscnroiizjwswqv\" {})",
+      "Bash(git filter-repo *)",
+      "Bash(python -m git_filter_repo --version)",
+      "Bash(pip install *)",
+      "Bash(python -c \"import git_filter_repo; print\\('ok'\\)\")",
+      "Bash(pip show *)",
+      "Bash(\"C:\\\\Users\\\\apena\\\\AppData\\\\Roaming\\\\Python\\\\Python314\\\\Scripts\\\\git-filter-repo.exe\" --replace-text filter-secrets.txt --force)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
