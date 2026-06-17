@@ -1,3 +1,6 @@
 import express from 'express';
 
-export const bodyParser = [express.urlencoded({ extended: true }), express.json({ limit: '1mb' })];
+export const bodyParser = [
+  express.urlencoded({ limit: '16mb', extended: true }),
+  express.json({ limit: '16mb' }),
+];
