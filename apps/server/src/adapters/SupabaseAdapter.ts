@@ -62,6 +62,17 @@ export class SupabaseAdapter {
   private realtimeBroadcastDebounceMs = 150;
   private pendingRealtimeChanges: unknown[] | null = null;
 
+  // ── Broadcast (caminho "quente") ──────────────────────────────────────
+  // Emite timer/delay/evento por pub/sub WebSocket, SEM tocar no Postgres.
+  // As telas (equipe/cliente/AB/cliente-tv/leitura) já escutam o evento
+  // 'timer-state' no canal `ontime-live-<projectCode>`. Aditivo: o upsert na
+  // tabela continua acontecendo (compatível com versões antigas do site/app),
+  // só que com throttle no caminho frequente (delay).
+  private broadcastClient: any = null;
+  private broadcastChannel: any = null;
+  private broadcastProjectCode: string = '';
+  private broadcastReady: boolean = false; // true só após SUBSCRIBED no canal
+
   constructor() {
     // Set config file path
     this.configFilePath = join(publicDir.root, 'supabase-config.json');
@@ -149,6 +160,10 @@ export class SupabaseAdapter {
             this.lastChangesProjectCode = '';
           }
         });
+
+      // Assina o canal de broadcast CEDO (quando o projeto carrega), pra a
+      // primeira transição (ex.: entrar em atraso) já encontrar o canal pronto.
+      this.ensureBroadcastChannel(projectCode);
     } catch (error) {
       logger.error(LogOrigin.Server, `Supabase: Error setting up changes listener: ${error}`);
     }
@@ -210,6 +225,111 @@ export class SupabaseAdapter {
     }
     this.changesSupabaseClient = null;
     this.lastChangesProjectCode = '';
+    // Projeto saiu/trocou → derruba também o canal de broadcast.
+    this.teardownBroadcastChannel();
+  }
+
+  // ── Broadcast helpers ─────────────────────────────────────────────────
+
+  /**
+   * Garante um canal de broadcast inscrito para o projeto atual.
+   * Reutiliza o canal enquanto o projectCode não mudar.
+   */
+  private ensureBroadcastChannel(projectCode: string): any {
+    if (!this.config?.url || !this.config?.anonKey) return null;
+    const code = (projectCode || '').trim().toLowerCase();
+    if (!code) return null;
+
+    if (this.broadcastChannel && this.broadcastProjectCode === code) {
+      return this.broadcastChannel;
+    }
+
+    // Projeto mudou (ou primeiro uso): derruba o canal antigo
+    this.teardownBroadcastChannel();
+
+    try {
+      if (!this.broadcastClient) {
+        this.broadcastClient = createClient(this.config.url, this.config.anonKey);
+      }
+      this.broadcastProjectCode = code;
+      this.broadcastReady = false;
+      // Mesmo nome de canal que as telas do site escutam.
+      this.broadcastChannel = this.broadcastClient.channel(`ontime-live-${code}`);
+      this.broadcastChannel.subscribe((status: string) => {
+        this.broadcastReady = status === 'SUBSCRIBED';
+        logger.info(LogOrigin.Server, `Supabase broadcast: canal ontime-live-${code} status=${status}`);
+      });
+      return this.broadcastChannel;
+    } catch (error) {
+      logger.warning(LogOrigin.Server, `Supabase broadcast: erro ao criar canal: ${error}`);
+      this.broadcastChannel = null;
+      this.broadcastProjectCode = '';
+      return null;
+    }
+  }
+
+  /**
+   * Derruba o canal de broadcast atual.
+   */
+  private teardownBroadcastChannel() {
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.unsubscribe();
+      } catch {
+        // ignore
+      }
+      this.broadcastChannel = null;
+    }
+    this.broadcastProjectCode = '';
+    this.broadcastReady = false;
+  }
+
+  /**
+   * Emite o estado QUENTE (timer/delay/evento) por broadcast — NÃO toca no
+   * Postgres. As telas já fundem esse payload via o listener 'timer-state'.
+   * Falha silenciosa: se o broadcast não sair, o snapshot no banco (upsert)
+   * continua sendo o fallback.
+   */
+  private broadcastHotState(payload: any) {
+    try {
+      const code = (payload?.projectCode || '').trim().toLowerCase();
+      if (!code) return;
+      const channel = this.ensureBroadcastChannel(code);
+      if (!channel) return;
+      // Só envia quando o canal está realmente inscrito (evita perder mensagem
+      // por enviar antes do SUBSCRIBED). O upsert no banco é o fallback.
+      if (!this.broadcastReady) return;
+      channel.send({
+        type: 'broadcast',
+        event: 'timer-state',
+        payload: {
+          timer: payload.timer,
+          delay: payload.delay,
+          currentEvent: payload.currentEvent,
+          nextEvent: payload.nextEvent,
+          status: payload.status,
+        },
+      });
+    } catch (error) {
+      logger.warning(LogOrigin.Server, `Supabase broadcast: erro ao enviar: ${error}`);
+    }
+  }
+
+  /**
+   * Sinaliza por broadcast que o dado FRIO (rundown/projeto) mudou, pra que a
+   * Fase 3 (site broadcast-only) saiba rebaixar o snapshot do banco. Aditivo:
+   * ninguém escuta hoje — deixa o desktop pronto pra Fase 3 sem nova distribuição.
+   */
+  private broadcastSnapshotChanged(projectCode: string) {
+    try {
+      const code = (projectCode || '').trim().toLowerCase();
+      if (!code) return;
+      const channel = this.ensureBroadcastChannel(code);
+      if (!channel || !this.broadcastReady) return;
+      channel.send({ type: 'broadcast', event: 'snapshot-changed', payload: { ts: Date.now() } });
+    } catch (error) {
+      logger.warning(LogOrigin.Server, `Supabase broadcast: erro snapshot-changed: ${error}`);
+    }
   }
 
   /**
@@ -689,6 +809,10 @@ export class SupabaseAdapter {
       
       
       const payload = this.buildTimerPayload(updatedData, playback);
+      // Caminho QUENTE: emite por broadcast (não toca no Postgres).
+      this.broadcastHotState(payload);
+      // Mudança de estado (play/pause/stop/startedAt) é snapshot-crítica e
+      // infrequente → grava o snapshot no banco imediatamente.
       await this.sendOptimizedData(payload);
     }, 200); // Increased delay to 200ms to allow eventStore to be fully updated
   }
@@ -702,6 +826,8 @@ export class SupabaseAdapter {
     logger.info(LogOrigin.Server, `Supabase: Project changed to ${currentData.project?.projectCode}`);
     
     const payload = this.buildProjectPayload(currentData);
+    this.broadcastHotState(payload);
+    this.broadcastSnapshotChanged(payload.projectCode);
     await this.sendOptimizedData(payload);
   }
 
@@ -712,6 +838,8 @@ export class SupabaseAdapter {
     logger.info(LogOrigin.Server, 'Supabase: Rundown changed');
     
     const payload = this.buildRundownPayload(currentData);
+    this.broadcastHotState(payload);
+    this.broadcastSnapshotChanged(payload.projectCode);
     await this.sendOptimizedData(payload);
   }
 
@@ -847,6 +975,8 @@ export class SupabaseAdapter {
   private disconnect() {
     this.isConnected = false;
     this.supabase = null;
+    // Caminho de broadcast (envio) só vale quando conectado → derruba o canal.
+    this.teardownBroadcastChannel();
     // Keep config so we can reconnect later
     // Changes listener (changesSupabaseClient) stays active - independent of toggle
   }
@@ -866,6 +996,13 @@ export class SupabaseAdapter {
     
     const payload = this.buildDelayPayload(currentData);
     if (payload) {
+      // Caminho QUENTE: emite por broadcast (não toca no Postgres).
+      this.broadcastHotState(payload);
+      // IMPORTANTE: handleDelayChange só é chamado em TRANSIÇÕES (entrou/saiu/
+      // compensou atraso) — é raro e snapshot-crítico (carrega delay_subindo,
+      // que faz a web começar a extrapolar o atraso localmente). NÃO pode ter
+      // throttle: o upsert tem que ir sempre, senão a web não recebe a
+      // transição e o "tempo de atraso" trava.
       await this.sendOptimizedData(payload);
     }
   }
