@@ -1,6 +1,9 @@
+// Deve ser o primeiro import: carrega o .env antes de qualquer módulo que leia
+// process.env no topo (auth.service, software.controller, SupabaseAdapter, etc.).
+import './loadEnv.js';
+
 import { LogOrigin, Playback, runtimeStorePlaceholder, SimpleDirection, SimplePlayback } from 'houseriaapp-types';
 
-import 'dotenv/config';
 import express from 'express';
 import http, { type Server } from 'http';
 import cors from 'cors';

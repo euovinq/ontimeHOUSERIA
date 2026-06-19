@@ -9,7 +9,14 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn('[AUTH] SUPABASE_URL e SUPABASE_ANON_KEY não configuradas. Operações de auth falharão.');
 }
 
-export const supabase = createClient(SUPABASE_URL ?? '', SUPABASE_ANON_KEY ?? '');
+// Usa um fallback com URL/key em formato válido quando as variáveis não estão
+// configuradas. createClient lança "supabaseUrl is required" se a URL for vazia,
+// o que derrubaria todo o backend já no carregamento do módulo. Com o fallback o
+// servidor sobe normalmente e apenas as operações de auth falham em runtime.
+export const supabase = createClient(
+  SUPABASE_URL || 'http://localhost:54321',
+  SUPABASE_ANON_KEY || 'missing-anon-key',
+);
 
 type AuthErrorCode = 'invalid_credentials' | 'period_expired';
 

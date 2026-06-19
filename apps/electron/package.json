@@ -1,6 +1,6 @@
 {
   "name": "houseriaapp-electron",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "author": "Vinicius Queiroz",
   "description": "Time keeping for live events",
   "keywords": [
@@ -177,6 +177,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../../.env",
+        "to": "extraResources/server/.env"
       }
     ]
   }
