@@ -13,6 +13,14 @@ interface AuthHeadersResponse {
   isAdmin: boolean;
 }
 
+/** Link de edição multi-campo (coluna edit_share_links). */
+export interface EditShareLink {
+  token: string;
+  fields: string[];
+  label?: string;
+  createdAt: string;
+}
+
 /**
  * Obtém headers de autenticação do Electron (se disponível)
  * Usa o mesmo padrão que funciona em produção (ProjectPanel.tsx)
@@ -82,5 +90,42 @@ export async function fetchSupabaseProject(projectCode: string): Promise<Supabas
     },
   });
   return res.data;
+}
+
+/** Lista os links de edição multi-campo do projeto. */
+export async function fetchShareLinks(projectCode: string): Promise<EditShareLink[]> {
+  const sanitizedCode = projectCode.trim().toUpperCase();
+  const authHeaders = await getAuthHeaders();
+  const res = await axios.get(`${apiEntryUrl}/supabase/project/${sanitizedCode}/share-links`, {
+    withCredentials: true,
+    headers: { ...authHeaders },
+  });
+  return (res.data?.links as EditShareLink[]) ?? [];
+}
+
+/** Cria um novo link de edição multi-campo. */
+export async function createShareLink(
+  projectCode: string,
+  fields: string[],
+  label?: string,
+): Promise<EditShareLink> {
+  const sanitizedCode = projectCode.trim().toUpperCase();
+  const authHeaders = await getAuthHeaders();
+  const res = await axios.post(
+    `${apiEntryUrl}/supabase/project/${sanitizedCode}/share-links`,
+    { fields, label },
+    { withCredentials: true, headers: { ...authHeaders } },
+  );
+  return res.data.link as EditShareLink;
+}
+
+/** Revoga (remove) um link de edição multi-campo pelo token. */
+export async function deleteShareLink(projectCode: string, token: string): Promise<void> {
+  const sanitizedCode = projectCode.trim().toUpperCase();
+  const authHeaders = await getAuthHeaders();
+  await axios.delete(`${apiEntryUrl}/supabase/project/${sanitizedCode}/share-links/${encodeURIComponent(token)}`, {
+    withCredentials: true,
+    headers: { ...authHeaders },
+  });
 }
 

@@ -7,3 +7,11 @@ import { randomBytes } from 'node:crypto';
 export function generateEditAccessCode(): string {
   return randomBytes(6).toString('hex');
 }
+
+/**
+ * Gera um token de 32 caracteres hexadecimais (16 bytes) para links de edição
+ * multi-campo (coluna edit_share_links). Mais longo por ser "chave ao portador".
+ */
+export function generateShareToken(): string {
+  return randomBytes(16).toString('hex');
+}

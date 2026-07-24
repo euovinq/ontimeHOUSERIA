@@ -3,7 +3,7 @@ import { eventStore } from '../stores/EventStore.js';
 import { logger } from '../classes/Logger.js';
 import { LogOrigin } from 'houseriaapp-types';
 import { getDataProvider } from '../classes/data-provider/DataProvider.js';
-import { generateEditAccessCode } from '../utils/editAccessCode.js';
+import { generateEditAccessCode, generateShareToken } from '../utils/editAccessCode.js';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { publicDir } from '../setup/index.js';
@@ -18,6 +18,22 @@ export interface SupabaseConfig {
   enabled?: boolean;
 }
 
+/** Link de edição multi-campo (coluna edit_share_links). Chave ao portador. */
+export interface EditShareLink {
+  token: string;
+  fields: string[];
+  label?: string;
+  createdAt: string;
+}
+
+function parseShareLinks(raw: unknown): EditShareLink[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (l): l is EditShareLink =>
+      !!l && typeof l === 'object' && typeof (l as any).token === 'string' && Array.isArray((l as any).fields),
+  );
+}
+
 export class SupabaseAdapter {
   private supabase: any = null;
   private config: SupabaseConfig | null = null;
@@ -28,6 +44,9 @@ export class SupabaseAdapter {
   private lastTimerState: string = 'stop';
   private lastProjectCode: string = '';
   private lastRundownHash: string = '';
+  private lastRundownHashTime: number = 0;
+  private readonly RUNDOWN_HASH_THROTTLE_MS = 1000; // Rundown-grande: evita JSON.stringify a cada tick
+  private forceProjectUpdateTimer: ReturnType<typeof setTimeout> | null = null;
   private lastDelayUpdate: number = 0;
   private readonly DELAY_UPDATE_DEBOUNCE = 1000; // 1 second
   private lastSkipLogType: string = '';
@@ -61,6 +80,8 @@ export class SupabaseAdapter {
   private realtimeBroadcastDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private realtimeBroadcastDebounceMs = 150;
   private pendingRealtimeChanges: unknown[] | null = null;
+  // Guarda contra reentrância enquanto o auto-apply de edições da web roda.
+  private autoApplyInFlight = false;
 
   // ── Broadcast (caminho "quente") ──────────────────────────────────────
   // Emite timer/delay/evento por pub/sub WebSocket, SEM tocar no Postgres.
@@ -200,10 +221,52 @@ export class SupabaseAdapter {
       if (toBroadcast.length > 0) {
         logger.info(LogOrigin.Server, `Supabase: Broadcasting initial changes (${toBroadcast.length} item(s))`);
         socket.sendAsJson({ type: 'ontime-changes', payload: toBroadcast });
+        // Aplica na hora as edições que ficaram na fila enquanto o desktop
+        // estava fechado (o realtime não cobre o período offline).
+        this.maybeAutoApplyChanges(toBroadcast);
       }
     } catch (err) {
       logger.warning(LogOrigin.Server, `Supabase: Error fetching initial changes: ${err}`);
     }
+  }
+
+  /**
+   * Auto-aplica as edições de custom action (OntimeChange) presentes na lista,
+   * sem exigir clique em "Aplicar". A web enfileira; o desktop (autoritativo do
+   * `data`) aplica no projeto local e remove da fila. Usado tanto no fetch
+   * inicial (edições feitas com o desktop FECHADO ficam na fila e são aplicadas
+   * quando ele abre) quanto no realtime (edições ao vivo).
+   *
+   * ProjectDataUpdatedNotification (edição de projeto inteiro) NÃO é auto-
+   * aplicada — continua manual, via card de recarregar.
+   */
+  private maybeAutoApplyChanges(items: unknown[]) {
+    const ontimeChanges = (Array.isArray(items) ? items : []).filter(
+      (c: any) => c && typeof c === 'object' && 'path' in c && 'field' in c && !('type' in c),
+    ) as OntimeChange[];
+
+    if (ontimeChanges.length === 0 || this.autoApplyInFlight) return;
+
+    this.autoApplyInFlight = true;
+    this.applyAllChangesAndRemoveAll(ontimeChanges)
+      .then(async ({ applied, removed }) => {
+        logger.info(
+          LogOrigin.Server,
+          `Supabase: Auto-aplicadas ${applied} edição(ões) da web (removidas ${removed} da fila)`,
+        );
+        // Se o toggle está ligado, o forceUpdate do handler genérico já
+        // republica o `data`. Se está desligado, empurra uma vez (conecta,
+        // envia, desconecta) pra edição chegar à nuvem e às telas web.
+        if (applied > 0 && !this.isConnected) {
+          await this.syncDataToSupabase();
+        }
+      })
+      .catch((err) => {
+        logger.error(LogOrigin.Server, `Supabase: Erro no auto-apply de changes: ${err}`);
+      })
+      .finally(() => {
+        this.autoApplyInFlight = false;
+      });
   }
 
   /**
@@ -441,9 +504,9 @@ export class SupabaseAdapter {
         }
       }, this.realtimeBroadcastDebounceMs);
 
-      // NÃO aplica os dados automaticamente - requer aprovação do usuário.
-      // Os dados (project, rundown, customFields, etc.) só serão aplicados quando
-      // o usuário clicar em "Aplicar" ou "Aplicar tudo" no toast de alterações.
+      // Auto-aplica as edições de custom action (OntimeChange) vindas da web,
+      // sem exigir clique em "Aplicar" — em tempo real.
+      this.maybeAutoApplyChanges(toBroadcast);
     } catch (error) {
       logger.error(LogOrigin.Server, `Supabase: Error handling realtime update: ${error}`);
       console.error('Supabase handleRealtimeUpdate error:', error);
@@ -612,11 +675,17 @@ export class SupabaseAdapter {
     }
 
     // Rundown changes (events modified) - check DataProvider directly since eventStore doesn't contain rundown
-    const rundownHash = this.calculateRundownHash(rundown);
-    if (this.lastRundownHash !== rundownHash) {
-      this.lastRundownHash = rundownHash;
-      logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Rundown atualizado`);
-      this.handleRundownChange(currentData);
+    // Throttle: com rundown grande, serializar a rundown inteira a cada tick do timer
+    // fritava a CPU. Basta checar no máximo 1x/s — mudança de rundown ainda é detectada.
+    const nowHash = Date.now();
+    if (nowHash - this.lastRundownHashTime >= this.RUNDOWN_HASH_THROTTLE_MS) {
+      this.lastRundownHashTime = nowHash;
+      const rundownHash = this.calculateRundownHash(rundown);
+      if (this.lastRundownHash !== rundownHash) {
+        this.lastRundownHash = rundownHash;
+        logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Rundown atualizado`);
+        this.handleRundownChange(currentData);
+      }
     }
 
     // Delay changes (offset/relativeOffset) - detect any offset movement
@@ -873,17 +942,27 @@ export class SupabaseAdapter {
       return;
     }
 
-    try {
-      const currentData = eventStore.poll();
-      if (!currentData) {
+    // Debounce: saves seguidos (ex: salvar WhatsApp várias vezes) não devem cada um
+    // disparar um upsert da rundown INTEIRA. Coalesce numa única subida.
+    if (this.forceProjectUpdateTimer) {
+      clearTimeout(this.forceProjectUpdateTimer);
+    }
+    this.forceProjectUpdateTimer = setTimeout(async () => {
+      this.forceProjectUpdateTimer = null;
+      if (!this.isConnected || !this.config?.enabled) {
         return;
       }
-
-      logger.info(LogOrigin.Server, 'Supabase: Force project update triggered');
-      await this.handleProjectChange(currentData);
-    } catch (error) {
-      logger.error(LogOrigin.Server, `Supabase: Error forcing project update: ${error}`);
-    }
+      try {
+        const currentData = eventStore.poll();
+        if (!currentData) {
+          return;
+        }
+        logger.info(LogOrigin.Server, 'Supabase: Force project update triggered');
+        await this.handleProjectChange(currentData);
+      } catch (error) {
+        logger.error(LogOrigin.Server, `Supabase: Error forcing project update: ${error}`);
+      }
+    }, 400);
   }
 
   /**
@@ -975,6 +1054,11 @@ export class SupabaseAdapter {
   private disconnect() {
     this.isConnected = false;
     this.supabase = null;
+    // Cancela subida de projeto pendente para não fazer upsert após desconectar.
+    if (this.forceProjectUpdateTimer) {
+      clearTimeout(this.forceProjectUpdateTimer);
+      this.forceProjectUpdateTimer = null;
+    }
     // Caminho de broadcast (envio) só vale quando conectado → derruba o canal.
     this.teardownBroadcastChannel();
     // Keep config so we can reconnect later
@@ -2123,6 +2207,95 @@ export class SupabaseAdapter {
       return false;
     } catch (error) {
       logger.error(LogOrigin.Server, `applyChangeAndRemove error: ${error}`);
+      return false;
+    }
+  }
+
+  // ── Links de edição multi-campo (coluna edit_share_links) ──
+  // Lê/grava a coluna top-level edit_share_links. O upsert de data não seta
+  // essa coluna, então ela sobrevive ao sync. Funciona com toggle on/off
+  // (getSupabaseClientForDb).
+
+  async getShareLinks(projectCode: string): Promise<EditShareLink[]> {
+    const client = this.getSupabaseClientForDb();
+    if (!client || !this.config) return [];
+    const sanitized = (projectCode || '').trim().toUpperCase();
+    if (!sanitized) return [];
+    try {
+      const { data, error } = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('edit_share_links')
+        .eq('id', sanitized)
+        .maybeSingle();
+      if (error || !data) return [];
+      return parseShareLinks(data.edit_share_links);
+    } catch (err) {
+      logger.error(LogOrigin.Server, `getShareLinks error: ${err}`);
+      return [];
+    }
+  }
+
+  async addShareLink(projectCode: string, fields: string[], label?: string): Promise<EditShareLink | null> {
+    const client = this.getSupabaseClientForDb();
+    if (!client || !this.config) return null;
+    const sanitized = (projectCode || '').trim().toUpperCase();
+    if (!sanitized || !Array.isArray(fields) || fields.length === 0) return null;
+    try {
+      const { data: row, error: fetchError } = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('id, edit_share_links')
+        .eq('id', sanitized)
+        .maybeSingle();
+      if (fetchError || !row) return null;
+
+      const existing = parseShareLinks(row.edit_share_links);
+      const link: EditShareLink = {
+        token: generateShareToken(),
+        fields: Array.from(new Set(fields)),
+        label: label?.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      };
+
+      const { error } = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .update({ edit_share_links: [...existing, link], updated_at: new Date().toISOString() })
+        .eq('id', row.id);
+      if (error) {
+        logger.error(LogOrigin.Server, `addShareLink update error: ${error.message}`);
+        return null;
+      }
+      return link;
+    } catch (err) {
+      logger.error(LogOrigin.Server, `addShareLink error: ${err}`);
+      return null;
+    }
+  }
+
+  async removeShareLink(projectCode: string, token: string): Promise<boolean> {
+    const client = this.getSupabaseClientForDb();
+    if (!client || !this.config) return false;
+    const sanitized = (projectCode || '').trim().toUpperCase();
+    if (!sanitized || !token) return false;
+    try {
+      const { data: row, error: fetchError } = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .select('id, edit_share_links')
+        .eq('id', sanitized)
+        .maybeSingle();
+      if (fetchError || !row) return false;
+
+      const remaining = parseShareLinks(row.edit_share_links).filter((l) => l.token !== token);
+      const { error } = await client
+        .from(this.config.tableName || 'ontime_realtime')
+        .update({ edit_share_links: remaining, updated_at: new Date().toISOString() })
+        .eq('id', row.id);
+      if (error) {
+        logger.error(LogOrigin.Server, `removeShareLink update error: ${error.message}`);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      logger.error(LogOrigin.Server, `removeShareLink error: ${err}`);
       return false;
     }
   }

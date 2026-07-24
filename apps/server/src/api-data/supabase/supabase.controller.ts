@@ -211,6 +211,91 @@ export async function getProjectData(req: Request, res: Response) {
   }
 }
 
+/** Valida acesso do usuário ao projeto (dono ou admin) para gerir share links. */
+async function assertProjectAccess(
+  req: Request,
+  res: Response,
+): Promise<{ sanitizedCode: string } | null> {
+  const { projectCode } = req.params;
+  const sanitizedCode = (projectCode || '').trim().toUpperCase();
+  if (!sanitizedCode) {
+    res.status(400).json({ error: 'Project code is required' });
+    return null;
+  }
+  const authUser = (req as RequestWithAuthUser).authUser as AuthSession | undefined;
+  if (!authUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return null;
+  }
+  const connectionStatus = supabaseAdapter.getConnectionStatus();
+  const projectRecord = connectionStatus.connected
+    ? await supabaseAdapter.getProjectData(sanitizedCode)
+    : await supabaseAdapter.getProjectDataReadOnly(sanitizedCode);
+  if (!projectRecord) {
+    res.status(404).json({ error: 'Project not found' });
+    return null;
+  }
+  const isAdmin = Boolean(authUser.isAdmin);
+  const isOwner = projectRecord.user_id != null && projectRecord.user_id === authUser.userId;
+  if (!isAdmin && !isOwner) {
+    res.status(403).json({ error: 'not_owner', message: 'Você não é o proprietário deste projeto.' });
+    return null;
+  }
+  return { sanitizedCode };
+}
+
+/** Lista os links de edição multi-campo do projeto. */
+export async function getShareLinksController(req: Request, res: Response) {
+  try {
+    const access = await assertProjectAccess(req, res);
+    if (!access) return;
+    const links = await supabaseAdapter.getShareLinks(access.sanitizedCode);
+    res.status(200).json({ links });
+  } catch (error) {
+    logger.error(LogOrigin.Server, `Error listing share links: ${error}`);
+    res.status(500).json({ error: 'Failed to list share links' });
+  }
+}
+
+/** Cria um novo link de edição multi-campo. */
+export async function addShareLinkController(req: Request, res: Response) {
+  try {
+    const access = await assertProjectAccess(req, res);
+    if (!access) return;
+    const { fields, label } = req.body as { fields?: unknown; label?: unknown };
+    const cleanFields = Array.isArray(fields) ? fields.filter((f): f is string => typeof f === 'string') : [];
+    if (cleanFields.length === 0) {
+      return res.status(400).json({ error: 'Informe ao menos um campo.' });
+    }
+    const link = await supabaseAdapter.addShareLink(
+      access.sanitizedCode,
+      cleanFields,
+      typeof label === 'string' ? label : undefined,
+    );
+    if (!link) return res.status(500).json({ error: 'Falha ao gerar link.' });
+    res.status(200).json({ link });
+  } catch (error) {
+    logger.error(LogOrigin.Server, `Error adding share link: ${error}`);
+    res.status(500).json({ error: 'Failed to add share link' });
+  }
+}
+
+/** Revoga (remove) um link de edição multi-campo pelo token. */
+export async function removeShareLinkController(req: Request, res: Response) {
+  try {
+    const access = await assertProjectAccess(req, res);
+    if (!access) return;
+    const token = (req.params.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Token é obrigatório.' });
+    const ok = await supabaseAdapter.removeShareLink(access.sanitizedCode, token);
+    if (!ok) return res.status(500).json({ error: 'Falha ao revogar link.' });
+    res.status(200).json({ success: true });
+  } catch (error) {
+    logger.error(LogOrigin.Server, `Error removing share link: ${error}`);
+    res.status(500).json({ error: 'Failed to remove share link' });
+  }
+}
+
 /**
  * Controller para toggle do Supabase via REST API (Stream Deck)
  */

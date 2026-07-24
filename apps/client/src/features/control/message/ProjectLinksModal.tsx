@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { IoCheckmark, IoCopy, IoLink, IoRefresh } from 'react-icons/io5';
+import { IoCheckmark, IoCopy, IoLink, IoRefresh, IoTrash } from 'react-icons/io5';
 import {
   Button,
+  Checkbox,
   HStack as ChakraHStack,
   HStack,
   IconButton,
@@ -19,10 +20,18 @@ import {
   Tooltip,
   useToast,
   VStack,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react';
 import { ProjectData } from 'houseriaapp-types';
 
-import { fetchSupabaseProject } from '../../../common/api/supabase';
+import {
+  createShareLink,
+  deleteShareLink,
+  type EditShareLink,
+  fetchShareLinks,
+  fetchSupabaseProject,
+} from '../../../common/api/supabase';
 import QrShareButton from '../../../common/components/qr-share/QrShareButton';
 import useCustomFields from '../../../common/hooks-query/useCustomFields';
 import { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
@@ -50,6 +59,12 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
   const [editAccessCodes, setEditAccessCodes] = useState<Record<string, string>>({});
   const [editCodesLoading, setEditCodesLoading] = useState(false);
   const [selectedEditField, setSelectedEditField] = useState<string>('');
+
+  // Links de edição multi-campo (coluna edit_share_links)
+  const [shareLinks, setShareLinks] = useState<EditShareLink[]>([]);
+  const [shareFields, setShareFields] = useState<Record<string, boolean>>({});
+  const [shareLabel, setShareLabel] = useState('');
+  const [isGeneratingShare, setIsGeneratingShare] = useState(false);
 
   // WhatsApp states
   const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY);
@@ -101,6 +116,51 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
   useEffect(() => {
     loadEditAccessCodes();
   }, [loadEditAccessCodes]);
+
+  // Carregar links de edição multi-campo ao abrir o modal.
+  const loadShareLinks = useCallback(async () => {
+    if (!isOpen || !projectCode) return;
+    try {
+      setShareLinks(await fetchShareLinks(projectCode));
+    } catch {
+      setShareLinks([]);
+    }
+  }, [isOpen, projectCode]);
+
+  useEffect(() => {
+    loadShareLinks();
+  }, [loadShareLinks]);
+
+  const selectedShareFields = Object.keys(shareFields).filter((k) => shareFields[k]);
+
+  const handleGenerateShareLink = async () => {
+    if (!projectCode || selectedShareFields.length === 0) return;
+    setIsGeneratingShare(true);
+    try {
+      const link = await createShareLink(projectCode, selectedShareFields, shareLabel);
+      setShareLinks((prev) => [...prev, link]);
+      setShareFields({});
+      setShareLabel('');
+      toast({ title: 'Link gerado!', status: 'success', duration: 2000, isClosable: true, position: 'top' });
+    } catch {
+      toast({ title: 'Erro ao gerar link', status: 'error', duration: 3000, isClosable: true, position: 'top' });
+    } finally {
+      setIsGeneratingShare(false);
+    }
+  };
+
+  const handleRevokeShareLink = async (token: string) => {
+    if (!projectCode) return;
+    try {
+      await deleteShareLink(projectCode, token);
+      setShareLinks((prev) => prev.filter((l) => l.token !== token));
+      toast({ title: 'Link revogado', status: 'success', duration: 2000, isClosable: true, position: 'top' });
+    } catch {
+      toast({ title: 'Erro ao revogar', status: 'error', duration: 3000, isClosable: true, position: 'top' });
+    }
+  };
+
+  const buildShareUrl = (token: string) => `${baseUrl}/editar/${projectCode}?token=${token}`;
 
   // Ao carregar edit_access_codes ou customFields, selecionar primeiro campo disponível
   useEffect(() => {
@@ -492,6 +552,142 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
                 </VStack>
               </div>
             </SimpleGrid>
+
+            {/* Card: link de edição multi-campo (edit_share_links) */}
+            {customFields && Object.keys(customFields).length > 0 && (
+              <div
+                style={{
+                  padding: '12px',
+                  border: '1px solid var(--chakra-colors-gray-600)',
+                  borderRadius: '8px',
+                  backgroundColor: 'var(--chakra-colors-gray-800)',
+                }}
+              >
+                <VStack spacing={2} align='stretch'>
+                  <Text fontWeight='bold' fontSize='sm' color='white'>
+                    Link de edição multi-campo
+                  </Text>
+                  <Text fontSize='xs' color='gray.300'>
+                    Gere um único link que edita vários campos. Escolha os campos e envie para alguém de
+                    confiança — sem senha. Pode revogar quando quiser.
+                  </Text>
+
+                  <Wrap spacing={2}>
+                    {Object.entries(customFields).map(([key, { label }]) => (
+                      <WrapItem key={key}>
+                        <Checkbox
+                          size='sm'
+                          colorScheme='blue'
+                          color='gray.200'
+                          isChecked={!!shareFields[key]}
+                          onChange={(e) => setShareFields((prev) => ({ ...prev, [key]: e.target.checked }))}
+                        >
+                          {label || key}
+                        </Checkbox>
+                      </WrapItem>
+                    ))}
+                  </Wrap>
+
+                  <HStack spacing={3}>
+                    <Button
+                      size='xs'
+                      variant='ontime-subtle'
+                      onClick={() =>
+                        setShareFields(Object.fromEntries(Object.keys(customFields).map((k) => [k, true])))
+                      }
+                    >
+                      Selecionar todos
+                    </Button>
+                    <Button size='xs' variant='ontime-subtle' onClick={() => setShareFields({})}>
+                      Limpar
+                    </Button>
+                  </HStack>
+
+                  <Input
+                    size='sm'
+                    placeholder='Rótulo do link (ex.: Roteirista Fulano) — opcional'
+                    value={shareLabel}
+                    onChange={(e) => setShareLabel(e.target.value)}
+                    bg='var(--chakra-colors-gray-700)'
+                    borderColor='var(--chakra-colors-gray-600)'
+                    color='white'
+                  />
+                  <Button
+                    size='sm'
+                    variant='ontime-filled'
+                    leftIcon={<IoLink size='14px' />}
+                    isLoading={isGeneratingShare}
+                    isDisabled={selectedShareFields.length === 0}
+                    onClick={handleGenerateShareLink}
+                  >
+                    Gerar link ({selectedShareFields.length} campo(s))
+                  </Button>
+
+                  {shareLinks.length > 0 && (
+                    <VStack spacing={2} align='stretch' pt={1}>
+                      {shareLinks.map((link) => {
+                        const url = buildShareUrl(link.token);
+                        const fieldLabels = link.fields
+                          .map((f) => customFields?.[f]?.label ?? f)
+                          .join(', ');
+                        return (
+                          <div
+                            key={link.token}
+                            style={{
+                              padding: '8px',
+                              border: '1px solid var(--chakra-colors-gray-700)',
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--chakra-colors-gray-900)',
+                            }}
+                          >
+                            <HStack justify='space-between' align='start'>
+                              <VStack spacing={0} align='start' flex={1} minW={0}>
+                                <Text fontSize='sm' color='white' noOfLines={1}>
+                                  {link.label || 'Link de edição'}
+                                </Text>
+                                <Text fontSize='11px' color='gray.400' noOfLines={1}>
+                                  {fieldLabels}
+                                </Text>
+                              </VStack>
+                              <HStack spacing={1}>
+                                <Tooltip label='Abrir link' hasArrow>
+                                  <IconButton
+                                    size='xs'
+                                    variant='ontime-subtle'
+                                    aria-label='Abrir link'
+                                    icon={<IoLink size='14px' />}
+                                    onClick={() => openLink(url)}
+                                  />
+                                </Tooltip>
+                                <Tooltip label='Copiar link' hasArrow>
+                                  <IconButton
+                                    size='xs'
+                                    variant='ontime-subtle'
+                                    aria-label='Copiar link'
+                                    icon={<IoCopy size='14px' />}
+                                    onClick={() => copyToClipboard(url, link.label || 'Link de edição')}
+                                  />
+                                </Tooltip>
+                                <Tooltip label='Revogar link' hasArrow>
+                                  <IconButton
+                                    size='xs'
+                                    variant='ontime-subtle'
+                                    colorScheme='red'
+                                    aria-label='Revogar link'
+                                    icon={<IoTrash size='14px' />}
+                                    onClick={() => handleRevokeShareLink(link.token)}
+                                  />
+                                </Tooltip>
+                              </HStack>
+                            </HStack>
+                          </div>
+                        );
+                      })}
+                    </VStack>
+                  )}
+                </VStack>
+              </div>
+            )}
           </VStack>
         </ModalBody>
         <ModalFooter>
