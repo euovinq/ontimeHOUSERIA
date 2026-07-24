@@ -13,6 +13,12 @@ export interface DiscoveredServer {
   port: number;
   device_name: string;
   timestamp: number;
+  // Identidade da instância (multi-instância / grupos). Opcionais p/ compat com apps antigos.
+  instance_id?: string;
+  machine_name?: string;
+  group_id?: string;
+  group_name?: string;
+  priority?: number;
 }
 
 export class PowerPointDiscoveryService extends EventEmitter {
@@ -80,10 +86,15 @@ export class PowerPointDiscoveryService extends EventEmitter {
               port: data.port,
               device_name: data.device_name || 'Unknown',
               timestamp: data.timestamp || Date.now(),
+              instance_id: data.instance_id || '',
+              machine_name: data.machine_name || data.device_name || '',
+              group_id: data.group_id || '',
+              group_name: data.group_name || '',
+              priority: typeof data.priority === 'number' ? data.priority : Number(data.priority) || 1,
             };
 
-            // Usa IP:PORT como chave única
-            const key = `${discoveredServer.ip}:${discoveredServer.port}`;
+            // Chave única: prefere instance_id (estável); cai pra IP:PORT em apps antigos
+            const key = discoveredServer.instance_id || `${discoveredServer.ip}:${discoveredServer.port}`;
             
             // Atualiza timestamp se já existe
             const existing = this.discoveredServers.get(key);

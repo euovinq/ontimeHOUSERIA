@@ -532,8 +532,12 @@ export class PowerPointSupabaseService {
       }
 
       const data = {
-        id: this.projectCode, // Usa project_code como id
+        id: this.projectCode, // Usa project_code como id (pode ser projectCode:groupId no modo multi-grupo)
         data: {
+          // Identidade do grupo (multi-instância) — presente quando alimentado pelo multisource
+          groupId: status.groupId ?? null,
+          groupName: status.groupName ?? null,
+          machineName: status.machineName ?? null,
           currentSlide: status.currentSlide + 1, // Converte de 0-based para 1-based (1, 2, 3...)
           slideCount: status.slideCount,
           visibleSlideCount: status.visibleSlideCount,

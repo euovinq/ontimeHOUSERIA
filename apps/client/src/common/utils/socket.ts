@@ -290,6 +290,15 @@ export const connectSocket = () => {
           }
           break;
         }
+        case 'powerpoint-groups': {
+          // Estado dos grupos multi-instância (para o painel de fontes PowerPoint)
+          if (Array.isArray(payload)) {
+            window.dispatchEvent(new CustomEvent('powerpoint-groups', {
+              detail: { groups: payload },
+            }));
+          }
+          break;
+        }
         case 'ontime-changes':
         case 'get-changes': {
           if (Array.isArray(payload) || (payload && typeof payload === 'object')) {

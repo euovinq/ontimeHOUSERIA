@@ -19,6 +19,9 @@ import {
   stopDiscoveryBroadcastController,
   discoverServersController,
   getDiscoveryStatusController,
+  getPowerPointGroupsController,
+  setPowerPointGroupConsumeController,
+  setPowerPointGroupCloudController,
 } from './powerpoint.controller.js';
 
 export const router = express.Router();
@@ -65,4 +68,11 @@ router.post('/discovery/broadcast/stop', stopDiscoveryBroadcastController);
 router.get('/discovery/servers', discoverServersController);
 
 router.get('/discovery/status', getDiscoveryStatusController);
+
+// Rotas multi-instância (grupos): listar, consumir e publicar na nuvem por grupo
+router.get('/groups', getPowerPointGroupsController);
+
+router.post('/groups/consume', setPowerPointGroupConsumeController);
+
+router.post('/groups/cloud', setPowerPointGroupCloudController);
 

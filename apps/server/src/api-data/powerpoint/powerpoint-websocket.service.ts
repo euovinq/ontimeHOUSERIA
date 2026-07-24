@@ -64,6 +64,15 @@ export class PowerPointWebSocketService extends EventEmitter {
   private slideNotesCache: Map<number, string> = new Map(); // Cache de notas por slide_index (preserva notas de current_slide)
   private slideTitlesCache: Map<number, string> = new Map(); // Cache de títulos por slide_index (preserva títulos de current_slide)
 
+  // Identidade da instância (grupo) aprendida do próprio stream (multi-instância)
+  private identity: {
+    instanceId?: string;
+    machineName?: string;
+    groupId?: string;
+    groupName?: string;
+    priority?: number;
+  } = {};
+
   constructor(config: PowerPointWebSocketConfig = {}) {
     super();
     this.url = config.url || '';
@@ -154,6 +163,32 @@ export class PowerPointWebSocketService extends EventEmitter {
   }
 
   /**
+   * Envia uma mensagem JSON para o app PPT (ex: capture_state — canal de volta).
+   */
+  send(payload: Record<string, unknown>): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    try {
+      this.ws.send(JSON.stringify(payload));
+      return true;
+    } catch (error) {
+      logger.error(
+        LogOrigin.Server,
+        `PowerPoint WebSocket - Erro ao enviar mensagem: ${error instanceof Error ? error.message : 'desconhecido'}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * URL atual desta conexão.
+   */
+  getUrl(): string {
+    return this.url;
+  }
+
+  /**
    * Estabelece conexão WebSocket
    */
   private connect(): void {
@@ -219,6 +254,17 @@ export class PowerPointWebSocketService extends EventEmitter {
    * Processa mensagens recebidas do WebSocket
    */
   private handleMessage(message: WebSocketMessage): void {
+    // Aprende a identidade de grupo do próprio stream (todo pacote do PPT a carrega)
+    if (message.instance_id || message.group_id || message.group_name) {
+      this.identity = {
+        instanceId: message.instance_id ?? this.identity.instanceId,
+        machineName: message.machine_name ?? this.identity.machineName,
+        groupId: message.group_id ?? this.identity.groupId,
+        groupName: message.group_name ?? this.identity.groupName,
+        priority: typeof message.priority === 'number' ? message.priority : this.identity.priority,
+      };
+    }
+
     switch (message.type) {
       case 'connected':
         break;
@@ -441,6 +487,13 @@ export class PowerPointWebSocketService extends EventEmitter {
         status.video.time = `${h}:${m}:${s}`;
       }
     }
+
+    // Anexa a identidade de grupo (usada pelo multisource e pelo upsert do Supabase)
+    status.groupId = this.identity.groupId;
+    status.groupName = this.identity.groupName;
+    status.instanceId = this.identity.instanceId;
+    status.machineName = this.identity.machineName;
+    status.priority = this.identity.priority;
 
     // Atualiza último status
     this.lastStatus = status;

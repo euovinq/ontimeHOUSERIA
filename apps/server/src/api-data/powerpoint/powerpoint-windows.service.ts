@@ -49,6 +49,12 @@ export type PowerPointStatus = {
   };
   error?: string;
   timestamp?: number;
+  // Identidade do grupo/instância (multi-instância). Anexado pelo multisource manager.
+  groupId?: string;
+  groupName?: string;
+  instanceId?: string;
+  machineName?: string;
+  priority?: number;
 };
 
 interface PowerPointWindowsConfig {

@@ -8,6 +8,7 @@ import { PowerPointSupabaseService } from './powerpoint-supabase.service.js';
 import { PowerPointOscService } from './powerpoint-osc.service.js';
 import { PowerPointWebSocketService } from './powerpoint-websocket.service.js';
 import { getDiscoveryService, PowerPointDiscoveryService, DiscoveredServer } from './powerpoint-discovery.service.js';
+import { getMultiSourceService } from './powerpoint-multisource.service.js';
 import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 import { socket } from '../../adapters/WebsocketAdapter.js';
@@ -1621,50 +1622,18 @@ async function initializeDiscoveryService(): Promise<void> {
 
   try {
     discoveryService = getDiscoveryService();
-    
+
     // Inicia escuta de broadcasts (modo passivo - muito leve)
     discoveryService.startListening();
-    
-    // Configura callback para quando encontrar servidor (apenas uma vez por servidor único)
-    const connectedServers = new Set<string>();
-    discoveryService.setOnServerFoundCallback((server: DiscoveredServer) => {
-      const serverKey = `${server.ip}:${server.port}`;
-      
-      // Evita múltiplas conexões ao mesmo servidor
-      if (connectedServers.has(serverKey)) {
-        // Já conectado a este servidor, ignorando...
-        return;
-      }
-      
-      // Se já existe WebSocket conectado a algum servidor, não reconecta automaticamente
-      if (websocketService && websocketService.isServiceConnected()) {
-        // Já existe conexão WebSocket ativa, ignorando novos servidores...
-        return;
-      }
-      
-      logger.info(
-        LogOrigin.Server,
-        `🔍 PowerPoint Discovery - Servidor encontrado: ${server.device_name} em ${server.ip}:${server.port} - Conectando via WebSocket...`
-      );
-      
-      // Conecta automaticamente ao servidor encontrado
-      connectToDiscoveredServer(server);
-      connectedServers.add(serverKey);
-    });
 
-    // Busca ativa inicial (5 segundos)
-    const initialServers = await discoveryService.discoverServers(5000);
-    
-    if (initialServers.length > 0) {
-      // Conecta ao primeiro servidor encontrado (callback já foi chamado durante discoverServers)
-      // Mas garantimos que conecta mesmo assim se ainda não conectou
-      if (!websocketService || !websocketService.isServiceConnected()) {
-        connectToDiscoveredServer(initialServers[0]);
-      }
-    } else {
-      // Inicia busca periódica (a cada 30 segundos) apenas se não encontrou servidor
-      discoveryService.startPeriodicSearch();
-    }
+    // Multi-instância: o MultiSourceService assume a orquestração
+    // (agrupa por group_id, escolhe a ativa por prioridade, failover, capture_state
+    // e publicação por grupo no Supabase). Substitui o antigo auto-connect single-source.
+    getMultiSourceService().start();
+    logger.info(
+      LogOrigin.Server,
+      '🎛️  PowerPoint - modo multi-instância ativo (agrupamento por group_id + failover)',
+    );
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
     logger.error(LogOrigin.Server, `❌ PowerPoint Discovery - Erro ao inicializar: ${errorMsg}`);
@@ -1944,5 +1913,56 @@ export async function getDiscoveryStatusController(
       success: false,
       error: errorMsg,
     });
+  }
+}
+
+/**
+ * GET /groups — lista os grupos multi-instância descobertos (com máquinas e ativa).
+ */
+export async function getPowerPointGroupsController(_req: Request, res: Response): Promise<void> {
+  try {
+    res.status(200).json({
+      success: true,
+      groups: getMultiSourceService().getSnapshot(),
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    res.status(500).json({ success: false, error: errorMsg });
+  }
+}
+
+/**
+ * POST /groups/consume — { groupId, consume } liga/desliga o consumo de um grupo.
+ */
+export async function setPowerPointGroupConsumeController(req: Request, res: Response): Promise<void> {
+  try {
+    const { groupId, consume } = req.body ?? {};
+    if (typeof groupId !== 'string' || !groupId) {
+      res.status(400).json({ success: false, error: 'groupId é obrigatório' });
+      return;
+    }
+    getMultiSourceService().setConsumed(groupId, consume !== false);
+    res.status(200).json({ success: true, groups: getMultiSourceService().getSnapshot() });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    res.status(500).json({ success: false, error: errorMsg });
+  }
+}
+
+/**
+ * POST /groups/cloud — { groupId, cloud } liga/desliga a publicação de um grupo no Supabase.
+ */
+export async function setPowerPointGroupCloudController(req: Request, res: Response): Promise<void> {
+  try {
+    const { groupId, cloud } = req.body ?? {};
+    if (typeof groupId !== 'string' || !groupId) {
+      res.status(400).json({ success: false, error: 'groupId é obrigatório' });
+      return;
+    }
+    getMultiSourceService().setCloud(groupId, cloud === true);
+    res.status(200).json({ success: true, groups: getMultiSourceService().getSnapshot() });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+    res.status(500).json({ success: false, error: errorMsg });
   }
 }

@@ -14,6 +14,7 @@ import {
 
 import CopyTag from '../../../common/components/copy-tag/CopyTag';
 import useInfo from '../../../common/hooks-query/useInfo';
+import PowerPointGroupsPanel from './PowerPointGroupsPanel';
 
 interface PowerPointConfigModalProps {
   isOpen: boolean;
@@ -124,6 +125,26 @@ export default function PowerPointConfigModal({ isOpen, onClose }: PowerPointCon
         </ModalHeader>
         <ModalBody>
           <VStack spacing={4} align='stretch'>
+            {/* Fontes PowerPoint (multi-instância / grupos + failover + nuvem) */}
+            <div
+              style={{
+                padding: '16px',
+                border: '1px solid var(--chakra-colors-gray-600)',
+                borderRadius: '8px',
+                backgroundColor: 'var(--chakra-colors-gray-800)',
+              }}
+            >
+              <VStack spacing={3} align='stretch'>
+                <Text fontWeight='bold' fontSize='md' color='white' textAlign='center'>
+                  Fontes PowerPoint
+                </Text>
+                <Text fontSize='sm' color='gray.300' textAlign='center'>
+                  Grupos na rede, máquina ativa e backup. Ligue a nuvem por grupo.
+                </Text>
+                <PowerPointGroupsPanel />
+              </VStack>
+            </div>
+
             {/* Informações do Servidor para Stream Deck/Companion */}
             <div
               style={{
