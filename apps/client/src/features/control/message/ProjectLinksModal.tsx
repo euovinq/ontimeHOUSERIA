@@ -23,6 +23,7 @@ import {
 import { ProjectData } from 'houseriaapp-types';
 
 import { fetchSupabaseProject } from '../../../common/api/supabase';
+import QrShareButton from '../../../common/components/qr-share/QrShareButton';
 import useCustomFields from '../../../common/hooks-query/useCustomFields';
 import { useProjectDataMutation } from '../../../common/hooks-query/useProjectData';
 import {
@@ -181,7 +182,11 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
 
   const baseUrl = 'https://houseriasite.vercel.app';
   const links = [
-    { label: 'Cliente', url: `${baseUrl}/cliente/${projectCode}`, description: 'Visualização principal: eventos e timers' },
+    {
+      label: 'Cliente',
+      url: `${baseUrl}/cliente/${projectCode}`,
+      description: 'Visualização principal: eventos e timers',
+    },
     { label: 'Cliente TV', url: `${baseUrl}/cliente-tv/${projectCode}`, description: 'Exibição em TV ou tela grande' },
     { label: 'Equipe', url: `${baseUrl}/equipe/${projectCode}`, description: 'Visualização para equipe técnica' },
     { label: 'Leitura', url: `${baseUrl}/leitura/${projectCode}`, description: 'Leitura e consulta rápida' },
@@ -356,6 +361,7 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
                             onClick={() => copyToClipboard(link.url, link.label)}
                           />
                         </Tooltip>
+                        <QrShareButton url={link.url} label={link.label} projectCode={projectCode} eyebrow='Link' />
                       </HStack>
                     </HStack>
                     <Text fontSize='xs' color='gray.300' noOfLines={2}>
@@ -391,9 +397,7 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
                     <Text fontWeight='bold' fontSize='sm' color='white'>
                       Editar
                     </Text>
-                    {editCodesLoading && (
-                      <Spinner size='xs' color='gray.400' />
-                    )}
+                    {editCodesLoading && <Spinner size='xs' color='gray.400' />}
                     {!editCodesLoading && Object.keys(editAccessCodes).length > 0 && (
                       <Tooltip label='Recarregar'>
                         <IconButton
@@ -413,7 +417,9 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
                     size='sm'
                     value={selectedEditField}
                     onChange={(e) => setSelectedEditField(e.target.value)}
-                    placeholder={Object.keys(customFields ?? {}).length === 0 ? 'Nenhum campo configurado' : 'Selecione o campo'}
+                    placeholder={
+                      Object.keys(customFields ?? {}).length === 0 ? 'Nenhum campo configurado' : 'Selecione o campo'
+                    }
                     isDisabled={!customFields || Object.keys(customFields).length === 0}
                     bg='var(--chakra-colors-gray-700)'
                     borderColor='var(--chakra-colors-gray-600)'
@@ -421,60 +427,68 @@ export default function ProjectLinksModal({ isOpen, onClose, projectCode, projec
                     _hover={{ borderColor: 'var(--chakra-colors-gray-500)' }}
                     _focus={{ borderColor: 'var(--chakra-colors-gray-500)' }}
                   >
-                    {customFields && Object.entries(customFields).map(([key, { label }]) => (
-                      <option key={key} value={key} style={{ backgroundColor: '#2D3748', color: 'white' }}>
-                        {label}
-                      </option>
-                    ))}
+                    {customFields &&
+                      Object.entries(customFields).map(([key, { label }]) => (
+                        <option key={key} value={key} style={{ backgroundColor: '#2D3748', color: 'white' }}>
+                          {label}
+                        </option>
+                      ))}
                   </Select>
-                  {selectedEditField && (() => {
-                    const code = editAccessCodes[selectedEditField];
-                    const label = customFields?.[selectedEditField]?.label ?? selectedEditField;
-                    if (!code) {
+                  {selectedEditField &&
+                    (() => {
+                      const code = editAccessCodes[selectedEditField];
+                      const label = customFields?.[selectedEditField]?.label ?? selectedEditField;
+                      if (!code) {
+                        return (
+                          <Text fontSize='xs' color='gray.500'>
+                            Sincronize o projeto com o Supabase para gerar o código deste campo.
+                          </Text>
+                        );
+                      }
+                      const editUrl = buildEditLink(selectedEditField, code);
                       return (
-                        <Text fontSize='xs' color='gray.500'>
-                          Sincronize o projeto com o Supabase para gerar o código deste campo.
-                        </Text>
+                        <>
+                          <HStack spacing={1}>
+                            <Tooltip label='Abrir link' hasArrow>
+                              <IconButton
+                                size='xs'
+                                variant='ontime-subtle'
+                                aria-label={`Abrir Editar ${label}`}
+                                icon={<IoLink size='14px' />}
+                                onClick={() => openLink(editUrl)}
+                              />
+                            </Tooltip>
+                            <Tooltip label='Copiar link' hasArrow>
+                              <IconButton
+                                size='xs'
+                                variant='ontime-subtle'
+                                aria-label={`Copiar Editar ${label}`}
+                                icon={<IoCopy size='14px' />}
+                                onClick={() => copyToClipboard(editUrl, `Editar ${label}`)}
+                              />
+                            </Tooltip>
+                            <QrShareButton
+                              url={editUrl}
+                              label={`Editar ${label}`}
+                              projectCode={projectCode}
+                              eyebrow='Edição'
+                            />
+                          </HStack>
+                          <Text
+                            color='gray.400'
+                            fontFamily='mono'
+                            wordBreak='break-all'
+                            backgroundColor='var(--chakra-colors-gray-900)'
+                            padding='6px'
+                            borderRadius='4px'
+                            border='1px solid var(--chakra-colors-gray-600)'
+                            fontSize='10px'
+                          >
+                            {editUrl}
+                          </Text>
+                        </>
                       );
-                    }
-                    const editUrl = buildEditLink(selectedEditField, code);
-                    return (
-                      <>
-                        <HStack spacing={1}>
-                          <Tooltip label='Abrir link' hasArrow>
-                            <IconButton
-                              size='xs'
-                              variant='ontime-subtle'
-                              aria-label={`Abrir Editar ${label}`}
-                              icon={<IoLink size='14px' />}
-                              onClick={() => openLink(editUrl)}
-                            />
-                          </Tooltip>
-                          <Tooltip label='Copiar link' hasArrow>
-                            <IconButton
-                              size='xs'
-                              variant='ontime-subtle'
-                              aria-label={`Copiar Editar ${label}`}
-                              icon={<IoCopy size='14px' />}
-                              onClick={() => copyToClipboard(editUrl, `Editar ${label}`)}
-                            />
-                          </Tooltip>
-                        </HStack>
-                        <Text
-                          color='gray.400'
-                          fontFamily='mono'
-                          wordBreak='break-all'
-                          backgroundColor='var(--chakra-colors-gray-900)'
-                          padding='6px'
-                          borderRadius='4px'
-                          border='1px solid var(--chakra-colors-gray-600)'
-                          fontSize='10px'
-                        >
-                          {editUrl}
-                        </Text>
-                      </>
-                    );
-                  })()}
+                    })()}
                 </VStack>
               </div>
             </SimpleGrid>
