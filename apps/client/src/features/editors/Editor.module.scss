@@ -44,10 +44,13 @@ $panel-gap: 0.5rem;
   display: flex;
   flex-direction: column;
   gap: $panel-gap;
+  min-height: 0; /* permite que os filhos encolham e rolem em telas baixas */
 }
 
 .messages {
   flex: 1;
+  min-height: 0; /* necessário para o overflow funcionar dentro do flex column */
+  overflow-y: auto; /* rola o Project Code e seus botões quando a tela é pequena */
 }
 
 .content {
