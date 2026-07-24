@@ -60,6 +60,9 @@ export class PowerPointMultiSourceService {
   private consumedGroups = new Set<string>(); // grupos que o operador escolheu consumir
   private consumeAll = true; // enquanto o operador não escolher, consome todos
   private cloudGroups = new Set<string>(); // grupos publicados na nuvem
+  // Instâncias cuja conexão caiu agora (failover imediato, sem esperar o timeout
+  // de 12s). Limpo assim que a máquina volta a anunciar via discovery.
+  private unhealthy = new Set<string>();
   private tickTimer: NodeJS.Timeout | null = null;
   private started = false;
 
@@ -95,6 +98,9 @@ export class PowerPointMultiSourceService {
     const groupName = s.group_name || s.machine_name || s.device_name || 'PowerPoint';
     let priority = Number(s.priority);
     if (!Number.isFinite(priority) || priority < 1) priority = 1;
+
+    // Anunciou de novo → está viva: sai da lista de "caiu" (permite reassumir)
+    this.unhealthy.delete(instanceId);
 
     this.instances.set(instanceId, {
       instanceId,
@@ -132,16 +138,23 @@ export class PowerPointMultiSourceService {
   private pickActive(members: Instance[]): Instance | null {
     if (members.length === 0) return null;
     // menor prioridade vence; desempata determinístico por instanceId
-    return [...members].sort(
-      (a, b) => a.priority - b.priority || a.instanceId.localeCompare(b.instanceId),
-    )[0];
+    const byPriority = (a: Instance, b: Instance) =>
+      a.priority - b.priority || a.instanceId.localeCompare(b.instanceId);
+    // Prefere quem NÃO caiu; se todas caíram (ex: máquina única), mantém o alvo
+    // pra a pipe seguir tentando reconectar quando ela voltar.
+    const healthy = members.filter((m) => !this.unhealthy.has(m.instanceId));
+    const pool = healthy.length > 0 ? healthy : members;
+    return [...pool].sort(byPriority)[0];
   }
 
   // --- reconciliação ---
   private tick(): void {
     const now = Date.now();
     for (const [id, i] of this.instances) {
-      if (now - i.lastSeen > STALE_MS) this.instances.delete(id);
+      if (now - i.lastSeen > STALE_MS) {
+        this.instances.delete(id);
+        this.unhealthy.delete(id);
+      }
     }
     this.reconcile();
     this.pushSnapshot();
@@ -168,6 +181,7 @@ export class PowerPointMultiSourceService {
         group = { groupId, groupName, pipe, supabase: null, activeInstanceId: null };
         this.groups.set(groupId, group);
         pipe.on('connected', () => this.onPipeConnected(group as Group));
+        pipe.on('disconnected', () => this.onPipeDisconnected(group as Group));
       } else {
         group.groupName = groupName;
       }
@@ -206,6 +220,21 @@ export class PowerPointMultiSourceService {
       consumers: 1,
       group_name: group.groupName,
     });
+  }
+
+  private onPipeDisconnected(group: Group): void {
+    // A máquina ativa caiu: marca como fora e failover IMEDIATO pra próxima
+    // prioridade, sem esperar o timeout de discovery (~12s). Se ela voltar a
+    // anunciar, sai de "unhealthy" e reassume no próximo reconcile.
+    const fallen = group.activeInstanceId;
+    if (!fallen) return;
+    this.unhealthy.add(fallen);
+    logger.info(
+      LogOrigin.Server,
+      `🎛️  PowerPoint MultiSource - conexão caiu no grupo "${group.groupName}" → failover imediato`,
+    );
+    this.reconcile();
+    this.pushSnapshot();
   }
 
   private syncCloud(group: Group): void {
