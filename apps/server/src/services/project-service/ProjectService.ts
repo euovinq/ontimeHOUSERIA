@@ -440,9 +440,10 @@ export async function patchCurrentProject(data: Partial<DatabaseModel>) {
 export async function editCurrentProjectData(newData: Partial<ProjectData>) {
   const currentProjectData = getDataProvider().getProjectData();
   
-  logger.info(LogOrigin.Server, `editCurrentProjectData called with: ${JSON.stringify(newData)}`);
-  logger.info(LogOrigin.Server, `Current project data: ${JSON.stringify(currentProjectData)}`);
-  
+  // Loga só as chaves alteradas — serializar o projeto inteiro (2x) a cada save
+  // era transmitido por WebSocket a todos os clientes e pesava no caminho quente.
+  logger.info(LogOrigin.Server, `editCurrentProjectData: updating fields [${Object.keys(newData).join(', ')}]`);
+
   // Check if projectCode is being changed
   const isProjectCodeChanging = newData.projectCode && 
     newData.projectCode !== currentProjectData.projectCode;

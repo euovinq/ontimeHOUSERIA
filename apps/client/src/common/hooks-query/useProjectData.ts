@@ -26,9 +26,10 @@ export function useProjectDataMutation() {
     mutationFn: postProjectData,
     onError: (error) => logAxiosError('Error saving project data', error),
     onSuccess: (data) => {
+      // O servidor devolve o projeto já atualizado; gravar no cache evita um
+      // GET completo extra a cada save (o invalidate anterior forçava refetch).
       ontimeQueryClient.setQueryData(PROJECT_DATA, data.data);
     },
-    onSettled: () => ontimeQueryClient.invalidateQueries({ queryKey: PROJECT_DATA }),
   });
   return { isPending, mutateAsync };
 }
