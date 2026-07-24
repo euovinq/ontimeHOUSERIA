@@ -91,6 +91,17 @@ export class PowerPointMultiSourceService {
 
   // --- descoberta ---
   private onServerFound(s: DiscoveredServer): void {
+    try {
+      this.handleServerFound(s);
+    } catch (error) {
+      logger.error(
+        LogOrigin.Server,
+        `PowerPoint MultiSource - erro em onServerFound: ${error instanceof Error ? error.message : 'desconhecido'}`,
+      );
+    }
+  }
+
+  private handleServerFound(s: DiscoveredServer): void {
     if (!s.ip || !s.port) return;
     const instanceId = s.instance_id || `${s.ip}:${s.port}`;
     // Sem group_id (app antigo ou sem grupo definido): vira um feed avulso próprio
@@ -149,15 +160,23 @@ export class PowerPointMultiSourceService {
 
   // --- reconciliação ---
   private tick(): void {
-    const now = Date.now();
-    for (const [id, i] of this.instances) {
-      if (now - i.lastSeen > STALE_MS) {
-        this.instances.delete(id);
-        this.unhealthy.delete(id);
+    try {
+      const now = Date.now();
+      for (const [id, i] of this.instances) {
+        if (now - i.lastSeen > STALE_MS) {
+          this.instances.delete(id);
+          this.unhealthy.delete(id);
+        }
       }
+      this.reconcile();
+      this.pushSnapshot();
+    } catch (error) {
+      // Nunca deixa o loop de reconciliação derrubar o servidor
+      logger.error(
+        LogOrigin.Server,
+        `PowerPoint MultiSource - erro no tick: ${error instanceof Error ? error.message : 'desconhecido'}`,
+      );
     }
-    this.reconcile();
-    this.pushSnapshot();
   }
 
   private reconcile(): void {
@@ -223,18 +242,25 @@ export class PowerPointMultiSourceService {
   }
 
   private onPipeDisconnected(group: Group): void {
-    // A máquina ativa caiu: marca como fora e failover IMEDIATO pra próxima
-    // prioridade, sem esperar o timeout de discovery (~12s). Se ela voltar a
-    // anunciar, sai de "unhealthy" e reassume no próximo reconcile.
-    const fallen = group.activeInstanceId;
-    if (!fallen) return;
-    this.unhealthy.add(fallen);
-    logger.info(
-      LogOrigin.Server,
-      `🎛️  PowerPoint MultiSource - conexão caiu no grupo "${group.groupName}" → failover imediato`,
-    );
-    this.reconcile();
-    this.pushSnapshot();
+    try {
+      // A máquina ativa caiu: marca como fora e failover IMEDIATO pra próxima
+      // prioridade, sem esperar o timeout de discovery (~12s). Se ela voltar a
+      // anunciar, sai de "unhealthy" e reassume no próximo reconcile.
+      const fallen = group.activeInstanceId;
+      if (!fallen) return;
+      this.unhealthy.add(fallen);
+      logger.info(
+        LogOrigin.Server,
+        `🎛️  PowerPoint MultiSource - conexão caiu no grupo "${group.groupName}" → failover imediato`,
+      );
+      this.reconcile();
+      this.pushSnapshot();
+    } catch (error) {
+      logger.error(
+        LogOrigin.Server,
+        `PowerPoint MultiSource - erro no failover: ${error instanceof Error ? error.message : 'desconhecido'}`,
+      );
+    }
   }
 
   private syncCloud(group: Group): void {

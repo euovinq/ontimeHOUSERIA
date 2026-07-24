@@ -110,11 +110,29 @@ export class PowerPointWebSocketService extends EventEmitter {
     }
 
     if (this.ws) {
-      this.ws.removeAllListeners();
-      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-        this.ws.close();
-      }
+      const ws = this.ws;
       this.ws = null;
+      // Remove handlers de dados, mas mantém um 'error' no-op: fechar um socket
+      // ainda em CONNECTING faz o ws emitir 'error' de forma ASSÍNCRONA; sem
+      // listener, o Node trata como exceção não capturada e derruba o processo.
+      ws.removeAllListeners('open');
+      ws.removeAllListeners('message');
+      ws.removeAllListeners('close');
+      ws.removeAllListeners('error');
+      ws.on('error', () => {
+        /* engole erros de fechamento durante o handshake */
+      });
+      try {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
+      } catch {
+        try {
+          ws.terminate();
+        } catch {
+          /* ignora */
+        }
+      }
     }
 
     this.isConnected = false;
