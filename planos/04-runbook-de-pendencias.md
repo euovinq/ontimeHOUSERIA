@@ -1,7 +1,7 @@
 # Runbook — o que ficou pendente
 
-> Complementa [PLANO_OTIMIZACAO_EGRESS.md](./PLANO_OTIMIZACAO_EGRESS.md) e
-> [PLANO_SEGURANCA_MULTITENANCY.md](./PLANO_SEGURANCA_MULTITENANCY.md).
+> Complementa [01-egress-e-saude-do-servidor.md](01-egress-e-saude-do-servidor.md) e
+> [02-seguranca-e-multitenancy.md](02-seguranca-e-multitenancy.md).
 > Este arquivo é a lista do que **ainda precisa ser feito**, com comando, verificação
 > e reversão de cada item.
 
@@ -41,9 +41,26 @@ pendentes. Foram os campos que mudaram de origem.
 
 ## Pendências
 
-### A — Dois índices para dropar (seguro com evento rodando)
+### A — Índices ~~para dropar~~ **DROPADOS em 04/08/2026** ✅
 
-Não foram aplicados porque a execução de SQL em produção ficou com você.
+Aplicados com dois eventos ao vivo, sem interrupção. Foram **seis**, não dois — a
+verificação mostrou que os três GIN também tinham uso zero, e um deles
+(`edit_access_codes`) era reescrito a CADA upsert:
+
+| índice | usos antes |
+|---|---|
+| `idx_powerpoint_realtime_updated_at` | 0 — era o que impedia o HOT update |
+| `idx_ontime_realtime_background_color` | 0 |
+| `idx_ontime_realtime_header_color` | 0 |
+| `idx_ontime_realtime_content_color` | 0 |
+| `idx_ontime_realtime_edit_access_codes` (GIN) | 0 |
+| `idx_ontime_realtime_changes` (GIN) | 0 |
+| `idx_ontime_realtime_edit_share_links` (GIN) | 0 |
+
+Resultado medido: `powerpoint_realtime` saiu de **0% para 100% de HOT update**;
+`n_dead_tup` caiu de 39 para 4; o banco encolheu de 29,6 MB para 22,9 MB.
+
+O texto abaixo fica como registro do método — **não precisa ser executado de novo**.
 **`CONCURRENTLY` é obrigatório**: sem ele o `DROP INDEX` pega lock exclusivo e pode travar
 as escritas do PowerPoint enquanto espera a fila.
 
@@ -95,7 +112,12 @@ where relname = 'ontime_realtime' order by idx_scan;
 
 ---
 
-### B — `REPLICA IDENTITY` (janela curta, fora de evento)
+### B — `REPLICA IDENTITY` **APLICADO em 04/08/2026** ✅
+
+`relreplident` saiu de `f` (FULL) para `i` (USING INDEX). Metade do WAL na tabela mais
+pesada. Registro do método abaixo.
+
+#### (original)
 
 ```sql
 ALTER TABLE public.ontime_realtime REPLICA IDENTITY USING INDEX ontime_realtime_pkey;
@@ -126,7 +148,13 @@ atualizando normalmente.
 
 ---
 
-### C — `project_code` no PowerPoint (ordem obrigatória)
+### C — `project_code` no PowerPoint **APLICADO em 04/08/2026** ✅
+
+Com uma melhora sobre o plano: um **trigger** preenche a coluna a partir do `id`, então
+isso NÃO depende de atualizar o desktop — a ordem obrigatória descrita abaixo deixou de
+existir. O filtro no site (C.3) também já está no ar.
+
+#### (original)
 
 Mata a amplificação cruzada: hoje todo espectador de qualquer projeto recebe as
 atualizações de PowerPoint de **todos** os projetos, porque
@@ -214,7 +242,7 @@ seção 5. Não é urgente para saúde — é o que destrava escala.
 
 ### F — Segurança
 
-Tudo em [PLANO_SEGURANCA_MULTITENANCY.md](./PLANO_SEGURANCA_MULTITENANCY.md).
+Tudo em [02-seguranca-e-multitenancy.md](02-seguranca-e-multitenancy.md).
 **Nenhum item de lá pode ser feito com gente usando o sistema.** O mais barato e mais
 urgente é confirmar se `JWT_SECRET` está mesmo definido em produção — se não estiver, o
 código cai no literal `'fallback-secret-change-in-production'` e qualquer pessoa que leia

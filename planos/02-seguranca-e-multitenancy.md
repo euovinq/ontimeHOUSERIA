@@ -1,8 +1,11 @@
 # Plano de segurança e multi-tenancy (pré-requisito para escalar)
 
-> Status: **plano, nada aplicado.**
 > Projeto Supabase: `gxcgwhscnroiizjwswqv`.
-> Companion de [PLANO_OTIMIZACAO_EGRESS.md](./PLANO_OTIMIZACAO_EGRESS.md) — os dois se
+>
+> **Status em 04/08/2026 — leia antes de agir.** O item 0.1 está FEITO. O plano de
+> egress companion foi aplicado quase inteiro. E foram criadas tabelas e funções
+> novas que **já nascem corretas** — a §1.8 lista o que NÃO deve ser mexido.
+> Companion de [01-egress-e-saude-do-servidor.md](01-egress-e-saude-do-servidor.md) — os dois se
 > encaixam, e o item §5.3 explica por que fazer os dois juntos sai mais barato que fazer
 > um de cada vez.
 
@@ -50,7 +53,7 @@ RLS desligado = leitura e escrita livres pela API REST.
 ### 1.3 A `anon key` é pública — e é isso que fecha a conta
 
 Ela está, por construção, no bundle do Next.js (`NEXT_PUBLIC_SUPABASE_ANON_KEY`) e
-hardcoded no desktop ([SupabaseAdapter.ts:405](apps/server/src/adapters/SupabaseAdapter.ts)).
+hardcoded no desktop ([SupabaseAdapter.ts:405](../apps/server/src/adapters/SupabaseAdapter.ts)).
 Isso é o uso normal e correto da chave — **desde que o RLS seja real**. Como não é,
 qualquer pessoa que abra o console em qualquer página pública do site consegue hoje:
 
@@ -103,12 +106,44 @@ que tem `SELECT USING (true)`. Uma query lista todos. As páginas "protegidas po
   `is_owner`, `is_member`, `is_session_owner`. `SECURITY DEFINER` roda com os privilégios
   de quem criou — cada uma é uma porta lateral a auditar.
 - **View `metrics_realtime` é `SECURITY DEFINER`** — ignora o RLS de quem consulta.
-- **`JWT_SECRET` tem fallback literal** em `lib/auth.ts:6`:
-  `process.env.JWT_SECRET || 'fallback-secret-change-in-production'`. Se a env não estiver
-  setada em produção, os tokens são forjáveis por qualquer um que leia o repositório.
-  **Verificar isso é a primeira coisa a fazer.**
+- ~~**`JWT_SECRET` tem fallback literal**~~ — **RESOLVIDO em 04/08/2026.** A variável
+  estava definida na Vercel (nunca houve risco ativo) e o fallback foi removido:
+  `lib/auth.ts` agora tem `getJwtSecret()`, que lança se a env faltar. A checagem é no
+  USO e não no carregamento do módulo, para não quebrar builds de ambientes que não
+  assinam token — verificado, `next build` compila sem a variável.
 - Advisor também reporta políticas em `auth.users` / `auth.sessions` (`Allow read users`
   etc.). Schema `auth` é do Supabase — confirmar se foram criadas por engano.
+
+### 1.8 O que já nasceu certo — NÃO mexer
+
+Criado em 04/08/2026, com RLS real desde o primeiro dia. Um `get_advisors` vai listar
+algumas dessas funções; são deliberadas.
+
+| objeto | acesso | por quê |
+|---|---|---|
+| `events`, `event_days` | **fechados** para `anon` e `authenticated` | todo acesso por API route com service role |
+| `app_settings` | **fechada** | idem |
+| `day_executions` | **fechada**; escrita só via `record_day_execution()` | o upsert do PostgREST exigiria SELECT de tabela — a função é o único caminho de entrada |
+| `record_day_execution()` | `SECURITY DEFINER`, execute para `anon` | deliberado e mínimo: grava uma tabela, valida entrada, não devolve nada |
+| `server_health()` | `SECURITY DEFINER`, execute **só** para `service_role` | `pg_replication_slots` não é acessível pelo PostgREST |
+| `link_event_by_parent_code()` | `SECURITY DEFINER` | preenche `event_id` a partir do código do container |
+| `powerpoint_fill_project_code()` | trigger comum | preenche `project_code` a partir do `id` |
+
+**Ponto em aberto:** o painel `/dono` é protegido por `OWNER_USER_ID` (variável de
+ambiente na Vercel, fora do banco de propósito — `users` aceita escrita anônima, então
+qualquer coluna `is_owner` seria autoatribuível). **Enquanto essa variável não for
+configurada, o painel cai no comportamento antigo e as 9 contas `is_admin` enxergam o
+faturamento de todos os clientes.** Valor: `OWNER_USER_ID=6c49e30c-ba02-4e7e-802e-41c2b7169f00`.
+
+### 1.9 O que mudou no egress (contexto para a Fase 4)
+
+Aplicado em 04/08/2026: `ontime_realtime` saiu de `REPLICA IDENTITY FULL` para
+`USING INDEX`; seis índices sem uso foram dropados; `powerpoint_realtime` ganhou
+`project_code` com trigger e a assinatura do site passou a filtrar por projeto no
+servidor. Os dashboards deixaram de assinar `postgres_changes`.
+
+Consequência para este plano: **as 6 páginas de espectador ainda leem
+`ontime_realtime` direto** — a Fase 4 continua valendo integralmente.
 
 ---
 
@@ -250,8 +285,8 @@ Este é o item de maior atrito de todo o plano. Começar por ele.
 
 Ordenada por "risco removido ÷ esforço":
 
-1. **Verificar `JWT_SECRET` em produção.** Se estiver usando o fallback, todo token é
-   forjável. Se estiver, rotacionar imediatamente (invalida sessões — comunicar).
+1. ~~**Verificar `JWT_SECRET` em produção.**~~ **FEITO** (ver §1.7). Sobrou uma tarefa
+   de minuto: configurar `OWNER_USER_ID` na Vercel (§1.8).
 2. **Fechar `users` ao `anon`.** Requer §4.1 primeiro: apontar as 5 páginas para as API
    routes. É o maior risco e tem a maior parte da infra pronta.
 3. **Tirar a troca de senha do navegador.** Rota nova, comparação e hash no servidor.
@@ -315,7 +350,8 @@ Ordenada por "risco removido ÷ esforço":
 
 | # | Ação | Risco | Quebra o quê |
 |---|---|---|---|
-| 0.1 | verificar/rotacionar `JWT_SECRET` | baixo | derruba sessões ativas se rotacionar |
+| 0.1 | ~~`JWT_SECRET`~~ **FEITO** | — | — |
+| 0.1b | configurar `OWNER_USER_ID` na Vercel | nenhum | nada — só fecha o `/dono` para os outros 8 admins |
 | 0.2 | páginas de `users` → API routes | médio | 5 páginas de dashboard, se errar rota |
 | 0.3 | senha só no servidor | baixo | tela de troca de senha |
 | 0.4 | fechar `users`/`sessions`/`sales` ao anon | baixo *após* 0.2 | nada, se 0.2 estiver completo |
@@ -358,7 +394,7 @@ Coisas que não dá para decidir sem informação que não está no código:
 1. **Modo de JWT do projeto Supabase** (HS256 legado × signing keys). Define a Fase 2.
 2. **Quantos desktops em campo** e em que versões. Define a janela de convivência da
    Fase 3.
-3. **`JWT_SECRET` está setado em produção?** Define se a Fase 0.1 é urgência ou rotina.
+3. ~~**`JWT_SECRET` está setado em produção?**~~ **Está.** Resolvido.
 4. **Limites do plano Supabase atual** (conexões simultâneas de Realtime, mensagens/s).
    Não é segurança, mas é o próximo teto ao escalar — e o plano de egress muda de
    prioridade dependendo do número.

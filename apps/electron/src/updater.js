@@ -18,7 +18,7 @@
  */
 
 const { autoUpdater } = require('electron-updater');
-const { dialog, app } = require('electron');
+const { dialog, app, ipcMain } = require('electron');
 
 // Depois do boot, sem disputar com a abertura da janela e o servidor interno.
 const ATRASO_INICIAL_MS = 8000;
@@ -154,6 +154,15 @@ function iniciarUpdater(janelaPrincipal) {
 
   autoUpdater.on('update-available', (info) => {
     log('disponível', info.version);
+    // Abre o modal da interface com as notas; o diálogo nativo pergunta.
+    if (janela && !janela.isDestroyed()) {
+      janela.webContents.send('update-check-result', {
+        hasUpdate: true,
+        version: info.version,
+        release_notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : '',
+        download_url: null,
+      });
+    }
     perguntarEBaixar(info, ultimaFoiManual);
   });
 
@@ -185,7 +194,10 @@ function iniciarUpdater(janelaPrincipal) {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    if (janela && !janela.isDestroyed()) janela.setProgressBar(-1);
+    if (janela && !janela.isDestroyed()) {
+      janela.setProgressBar(-1);
+      janela.webContents.send('update-downloaded', { version: info.version });
+    }
     ofereceInstalar(info);
   });
 
@@ -193,6 +205,15 @@ function iniciarUpdater(janelaPrincipal) {
     emAndamento = false;
     if (janela && !janela.isDestroyed()) janela.setProgressBar(-1);
     log('erro', erro);
+  });
+
+  // O modal tem o próprio botão de reiniciar — o diálogo nativo cobre quem
+  // está com a janela minimizada, este cobre quem está olhando a tela.
+  ipcMain.removeAllListeners('update-install-now');
+  ipcMain.on('update-install-now', () => {
+    if (!jaBaixado) return;
+    autoUpdater.autoInstallOnAppQuit = true;
+    setImmediate(() => autoUpdater.quitAndInstall(false, true));
   });
 
   // Entrada no app: checa uma vez, em silêncio.
