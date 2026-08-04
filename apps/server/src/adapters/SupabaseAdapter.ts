@@ -10,6 +10,7 @@ import { publicDir } from '../setup/index.js';
 import { socket } from './WebsocketAdapter.js';
 import type { OntimeChange } from 'houseriaapp-types';
 import { updateEvent } from '../api-integration/integration.utils.js';
+import { generate as generateReport } from '../api-data/report/report.service.js';
 
 export interface SupabaseConfig {
   url: string;
@@ -71,6 +72,16 @@ export class SupabaseAdapter {
   private readonly DELAY_DEBOUNCE_MS = 2000; // Increased from 500ms to 2s
   
   private isApplyingRealtimeUpdate = false; // Flag to prevent loops when applying updates
+
+  // ── Execução real (relatório cheio) ───────────────────────────────────
+  // O Ontime já registra em memória a que horas cada evento REALMENTE começou
+  // e terminou (report.service.ts, via TimerLifeCycle). Esse registro nunca
+  // saía da máquina: não é salvo no arquivo do projeto e some ao fechar o app.
+  // Aqui ele é espelhado na nuvem, de forma incremental — se o operador fechar
+  // o Ontime no meio do evento, o que já aconteceu está salvo.
+  private executionSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastExecutionHash: string = '';
+  private readonly EXECUTION_DEBOUNCE_MS = 3000;
 
   // Changes listener - INDEPENDENT of toggle, always active when project is loaded
   private changesSupabaseClient: any = null;
@@ -650,7 +661,11 @@ export class SupabaseAdapter {
     // Event changes (when a new event is loaded during playback)
     if (key === 'eventNow' && value) {
       logger.info(LogOrigin.Server, `Supabase: Detectou mudança e subindo para o Supabase - Evento mudou para ${value.title || value.id}`);
-      
+
+      // Trocou de evento = o anterior acabou de ser fechado no relatório de
+      // execução. Espelha na nuvem.
+      this.scheduleExecutionSync();
+
       // Reset play and pause tracking when event changes
       this.lastPlayEventId = null;
       this.lastPauseEventId = null;
@@ -880,6 +895,10 @@ export class SupabaseAdapter {
       const payload = this.buildTimerPayload(updatedData, playback);
       // Caminho QUENTE: emite por broadcast (não toca no Postgres).
       this.broadcastHotState(payload);
+      // Parar/pausar fecha a entrada do evento no relatório de execução.
+      if (playback === 'stop' || playback === 'pause') {
+        this.scheduleExecutionSync();
+      }
       // Mudança de estado (play/pause/stop/startedAt) é snapshot-crítica e
       // infrequente → grava o snapshot no banco imediatamente.
       await this.sendOptimizedData(payload);
@@ -1419,6 +1438,72 @@ export class SupabaseAdapter {
     };
   }
 
+  // ── Execução real ─────────────────────────────────────────────────────
+
+  /**
+   * Agenda o espelhamento da execução real na nuvem.
+   *
+   * Debounce porque as transições vêm em rajada (parar um evento e começar o
+   * próximo dispara duas). Não é o caminho quente: sobe alguns KB, poucas vezes
+   * por evento.
+   */
+  private scheduleExecutionSync() {
+    if (this.executionSyncTimer) return;
+    this.executionSyncTimer = setTimeout(() => {
+      this.executionSyncTimer = null;
+      void this.sendExecutionReport();
+    }, this.EXECUTION_DEBOUNCE_MS);
+  }
+
+  /**
+   * Espelha o relatório de execução (startedAt/endedAt por evento) na tabela
+   * `day_executions`.
+   *
+   * Chave é o projectCode do DIA — cada dia tem a sua linha, e o relatório do
+   * evento inteiro é a união dos dias.
+   */
+  private async sendExecutionReport() {
+    if (!this.isConnected || !this.supabase || !this.config) {
+      return;
+    }
+
+    try {
+      const projectData = getDataProvider().getProjectData();
+      const projectCode = (projectData?.projectCode || '').trim().toUpperCase();
+      if (!projectCode) return;
+
+      const report = generateReport();
+      const entries = Object.keys(report ?? {});
+      if (entries.length === 0) return;
+
+      // Nada mudou desde o último envio → não gasta escrita.
+      const hash = JSON.stringify(report);
+      if (hash === this.lastExecutionHash) return;
+
+      // Escrita por função, não upsert direto: a tabela `day_executions` é
+      // fechada para a anon key (nem leitura nem escrita). A função é o único
+      // caminho de entrada, e o relatório sai por rota de API com service role.
+      const { error } = await this.supabase.rpc('record_day_execution', {
+        p_project_code: projectCode,
+        p_report: report,
+      });
+
+      if (error) {
+        // Falha aqui não pode atrapalhar o show: o relatório é pós-evento.
+        logger.warning(LogOrigin.Server, `Supabase execução: falha ao enviar (${error.message})`);
+        return;
+      }
+
+      this.lastExecutionHash = hash;
+      logger.info(
+        LogOrigin.Server,
+        `Supabase execução: ${entries.length} evento(s) registrados para ${projectCode}`,
+      );
+    } catch (error) {
+      logger.warning(LogOrigin.Server, `Supabase execução: erro inesperado (${error})`);
+    }
+  }
+
   /**
    * Send optimized data to Supabase
    */
@@ -1438,16 +1523,20 @@ export class SupabaseAdapter {
 
       // Buscar edit_access_codes existentes (coluna separada ou dentro de data para compatibilidade)
       let existingEditAccessCodes: Record<string, string> = {};
+      // Só os códigos: puxar `data` inteiro aqui custava a rundown completa
+      // (até ~1,5 MB) do banco a CADA upsert, sem usar nada além deste campo.
+      // `legacyCodes` cobre as linhas antigas, que guardavam os códigos dentro
+      // de `data` em vez da coluna própria.
       const { data: existingRow } = await this.supabase
         .from(this.config.tableName || 'ontime_realtime')
-        .select('data, edit_access_codes')
+        .select('edit_access_codes, legacyCodes:data->edit_access_codes')
         .eq('id', sanitizedProjectCode)
         .maybeSingle();
 
       if (existingRow?.edit_access_codes && typeof existingRow.edit_access_codes === 'object') {
         existingEditAccessCodes = { ...existingRow.edit_access_codes };
-      } else if (existingRow?.data?.edit_access_codes && typeof existingRow.data.edit_access_codes === 'object') {
-        existingEditAccessCodes = { ...existingRow.data.edit_access_codes };
+      } else if (existingRow?.legacyCodes && typeof existingRow.legacyCodes === 'object') {
+        existingEditAccessCodes = { ...existingRow.legacyCodes };
       }
 
       // Gerar códigos para campos customizados que ainda não têm

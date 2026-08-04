@@ -31,6 +31,14 @@ export class PowerPointSupabaseService {
   private projectCode: string | null = null; // Código do projeto atual (usado como id na tabela)
   private lastClientRefresh: number = 0; // Timestamp da última atualização do cliente
   private readonly CLIENT_REFRESH_THROTTLE_MS = 10000; // Throttle de 10 segundos para evitar refresh excessivo
+
+  // Throttle de escrita no Postgres. O relógio do vídeo andando disparava um
+  // upsert por SEGUNDO carregando a linha inteira (título + notas de todos os
+  // slides). Mudanças de rotina agora são coalescidas nesta janela; mudanças
+  // urgentes (ver isUrgentChange) continuam subindo na hora. Nada é descartado:
+  // o último estado sempre sobe, só que adiado.
+  private readonly MIN_WRITE_INTERVAL_MS = 2000;
+  private throttleTimer: ReturnType<typeof setTimeout> | null = null;
   
   // Configuração do Supabase (pode vir do adapter ou ser independente)
   private supabaseUrl: string | null = null;
@@ -238,6 +246,10 @@ export class PowerPointSupabaseService {
     }
     this.isSending = false; // Reseta flag de envio
     this.pendingStatus = null; // Limpa status pendente
+    if (this.throttleTimer) {
+      clearTimeout(this.throttleTimer);
+      this.throttleTimer = null;
+    }
     logger.info(LogOrigin.Server, 'PowerPoint Supabase service parado');
   }
 
@@ -262,9 +274,21 @@ export class PowerPointSupabaseService {
     // ✅ CORREÇÃO: Logs reduzidos - apenas quando há mudança real
     // Verifica se dados realmente mudaram comparando diretamente os valores
     const hasChanged = this.hasStatusChanged(status);
-    
+
     if (!hasChanged) {
       return;
+    }
+
+    // Throttle: mudança de rotina (só o relógio do vídeo andando) espera a
+    // janela fechar em vez de gravar no Postgres a cada segundo. Trocar de
+    // slide, entrar/sair da apresentação e play/pause continuam imediatos.
+    if (!this.isUrgentChange(status)) {
+      const elapsed = Date.now() - this.lastSendTime;
+      if (elapsed < this.MIN_WRITE_INTERVAL_MS) {
+        this.pendingStatus = status;
+        this.scheduleThrottledFlush(this.MIN_WRITE_INTERVAL_MS - elapsed);
+        return;
+      }
     }
 
     // ✅ CORREÇÃO: Garante envio sequencial para evitar slides pulados
@@ -323,6 +347,65 @@ export class PowerPointSupabaseService {
           this.onStatusChange(pending);
         }
       });
+  }
+
+  /**
+   * Agenda a subida do último status pendente para quando a janela de throttle
+   * fechar. Só um flush fica agendado por vez — o pendingStatus vai sendo
+   * sobrescrito, então o que sobe é sempre o estado mais recente.
+   */
+  private scheduleThrottledFlush(delayMs: number): void {
+    if (this.throttleTimer) {
+      return;
+    }
+    this.throttleTimer = setTimeout(() => {
+      this.throttleTimer = null;
+      const pending = this.pendingStatus;
+      if (!pending || !this.isRunning || !this.isEnabled) {
+        return;
+      }
+      this.pendingStatus = null;
+      this.onStatusChange(pending);
+    }, Math.max(0, delayMs));
+  }
+
+  /**
+   * Mudanças que não podem esperar a janela de throttle — são as que o operador
+   * e a plateia veem na tela.
+   *
+   * O relógio do vídeo (currentTime/remainingTime/seconds) NÃO entra aqui de
+   * propósito: ele anda sozinho e é o que gerava um upsert por segundo com a
+   * linha inteira. Ele continua subindo, só que no máximo a cada
+   * MIN_WRITE_INTERVAL_MS.
+   */
+  private isUrgentChange(status: PowerPointStatus): boolean {
+    const last = this.lastSentStatus;
+    if (!last) {
+      return true;
+    }
+    if (status.currentSlide !== last.currentSlide) {
+      return true;
+    }
+    if (status.slideCount !== last.slideCount) {
+      return true;
+    }
+    if (status.isInSlideShow !== last.isInSlideShow) {
+      return true;
+    }
+    // Play/pause do vídeo é transição, não relógio: sobe na hora.
+    if (!!status.video?.hasVideo !== !!last.video?.hasVideo) {
+      return true;
+    }
+    if (!!status.video?.isPlaying !== !!last.video?.isPlaying) {
+      return true;
+    }
+    if (!this.arraysEqual(status.hiddenSlides || [], last.hiddenSlides || [])) {
+      return true;
+    }
+    if (!this.slidesEqual(status.slides || [], last.slides || [])) {
+      return true;
+    }
+    return false;
   }
 
   /**
