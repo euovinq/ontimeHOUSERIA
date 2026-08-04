@@ -41,6 +41,7 @@ const path = require('path');
 
 const { getApplicationMenu } = require('./menu/applicationMenu.js');
 const { getTrayMenu } = require('./menu/trayMenu.js');
+const { iniciarUpdater } = require('./updater.js');
 
 const electronConfig = require('./electron.config.js');
 const {
@@ -498,57 +499,17 @@ function startApplication() {
     console.log('Client URL:', clientUrl);
     console.log('Server URL:', serverUrl);
 
-    const checkForUpdates = async () => {
-      if (!win) return;
-      const platform = process.platform;
-      const currentVersion = app.getVersion();
-      const url = `${serverUrlForApi}/data/software/latest?platform=${platform}`;
-      try {
-        const res = await fetch(url);
-        if (!res.ok) {
-          const errText = await res.text();
-          if (!isProduction) {
-            console.log('Update check API error:', res.status, errText);
-          }
-          win.webContents.send('update-check-result', {
-            hasUpdate: false,
-            error: 'Não foi possível verificar atualizações.',
-          });
-          return;
-        }
-        const data = await res.json();
-        const semver = require('semver');
-        // semver.coerce trata "v1.0.2", "1.0.2 ", etc.
-        const latest = semver.coerce(String(data.version || ''));
-        const current = semver.coerce(String(currentVersion || ''));
-        const hasUpdate = latest && current && semver.gt(latest, current);
-
-        if (!isProduction) {
-          console.log('Update check:', {
-            latestFromApi: data.version,
-            currentVersion,
-            hasUpdate,
-          });
-        }
-
-        if (hasUpdate) {
-          win.webContents.send('update-check-result', {
-            hasUpdate: true,
-            version: latest.version,
-            release_notes: data.release_notes || '',
-            download_url: data.download_url || null,
-          });
-        } else {
-          win.webContents.send('update-check-result', { hasUpdate: false });
-        }
-      } catch (err) {
-        console.error('Check for updates error:', err);
-        win.webContents.send('update-check-result', {
-          hasUpdate: false,
-          error: 'Não foi possível verificar atualizações.',
-        });
-      }
-    };
+    // Atualização automática pelo R2 (ver src/updater.js).
+    //
+    // Aqui existia uma checagem que só CONSULTAVA a API do servidor e mandava
+    // um aviso para a interface — o usuário via "tem versão nova" e tinha que
+    // baixar e instalar à mão. Agora o electron-updater baixa, confere e troca
+    // o app sozinho, sempre perguntando antes.
+    //
+    // O mesmo fluxo atende os dois gatilhos: a checagem silenciosa da entrada
+    // e o item de menu, que responde sempre porque quem clicou está esperando.
+    const updater = iniciarUpdater(win);
+    const checkForUpdates = () => updater.verificarManual();
 
     const menu = getApplicationMenu(
       askToQuit,

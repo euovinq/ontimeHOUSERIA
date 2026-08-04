@@ -13,7 +13,8 @@
   "dependencies": {
     "keytar": "^7.9.0",
     "node-machine-id": "^1.1.12",
-    "semver": "^7.6.2"
+    "semver": "^7.6.2",
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "electron": "36.3.1",
@@ -67,7 +68,8 @@
       "window": {
         "width": 540,
         "height": 380
-      }
+      },
+      "format": "UDZO"
     },
     "mac": {
       "notarize": true,
@@ -75,37 +77,24 @@
       "gatekeeperAssess": false,
       "entitlements": "./entitlements.plist",
       "entitlementsInherit": "./entitlements.plist",
-      "target": {
-        "target": "dmg",
-        "arch": [
-          "x64",
-          "arm64"
-        ]
-      },
-      "category": "public.app-category.productivity",
-      "icon": "icon.icns"
-    },
-    "dmg": {
-      "artifactName": "houseriaapp-macOS-${arch}.dmg",
-      "icon": "icon.icns",
-      "writeUpdateInfo": false,
-      "contents": [
+      "target": [
         {
-          "x": 130,
-          "y": 220
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
-          "x": 410,
-          "y": 220,
-          "type": "link",
-          "path": "/Applications"
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
-      "window": {
-        "width": 540,
-        "height": 380
-      },
-      "format": "UDZO"
+      "category": "public.app-category.productivity",
+      "icon": "icon.icns"
     },
     "win": {
       "target": "nsis"
@@ -181,6 +170,13 @@
       {
         "from": "../../.env",
         "to": "extraResources/server/.env"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://pub-99e0bdf9ed2e4ece80525a5b31e1ed1e.r2.dev/ontime",
+        "channel": "latest"
       }
     ]
   }

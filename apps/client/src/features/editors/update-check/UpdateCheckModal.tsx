@@ -1,7 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import {
   Button,
-  Kbd,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -18,19 +17,9 @@ import { openLink } from '../../../common/utils/linkUtils';
 
 import style from './UpdateCheckModal.module.scss';
 
-const XATTR_COMMAND = 'xattr -cr /Applications/HouseriaAPP.app';
-const isMac = typeof window !== 'undefined' && window.process?.platform === 'darwin';
 
 export default function UpdateCheckModal() {
   const { hasUpdate, version, release_notes, download_url, error, clearUpdateCheck } = useUpdateCheckStore();
-
-  const handleCopyCommand = async () => {
-    try {
-      await navigator.clipboard.writeText(XATTR_COMMAND);
-    } catch (_err) {
-      /** clipboard not available */
-    }
-  };
 
   const handleDownload = () => {
     if (download_url) {
@@ -86,28 +75,6 @@ export default function UpdateCheckModal() {
                 <Button size='sm' variant='ontime-filled' onClick={handleDownload}>
                   Baixar atualização
                 </Button>
-              )}
-              {isMac && download_url && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <p style={{ color: '#e2e2e2', fontSize: 'calc(1rem - 2px)' }}>
-                    Após instalar, execute no Terminal para remover a quarentena:
-                  </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Kbd
-                      flex={1}
-                      padding='0.5rem 0.75rem'
-                      fontSize='calc(1rem - 2px)'
-                      whiteSpace='nowrap'
-                      overflow='hidden'
-                      textOverflow='ellipsis'
-                    >
-                      {XATTR_COMMAND}
-                    </Kbd>
-                    <Button size='sm' variant='ontime-subtle' onClick={handleCopyCommand}>
-                      Copiar
-                    </Button>
-                  </div>
-                </div>
               )}
             </>
           )}

@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { addDialog } from '../stores/dialogStore';
-import type { UpdateCheckPayload } from '../stores/updateCheckStore';
+import type { UpdateCheckPayload, UpdateProgresso } from '../stores/updateCheckStore';
 import { useUpdateCheckStore } from '../stores/updateCheckStore';
 
 const isElectron = window.process?.type === 'renderer';
@@ -37,6 +37,21 @@ export function useElectronListener() {
 
       ipcRenderer.on('update-check-result', (_event: unknown, payload: UpdateCheckPayload) => {
         useUpdateCheckStore.getState().setUpdateCheckResult(payload);
+      });
+
+      // `ipcRenderer` está tipado aqui só com `invoke`; os listeners existentes
+      // já convivem com isso. Uma referência larga evita somar mais erros de
+      // tipo enquanto a declaração não é corrigida de vez.
+      const ipc = ipcRenderer as unknown as {
+        on: (canal: string, ouvinte: (evento: unknown, payload: never) => void) => void;
+      };
+
+      ipc.on('update-download-progress', (_evento: unknown, payload: never) => {
+        useUpdateCheckStore.getState().setProgresso(payload as unknown as UpdateProgresso);
+      });
+
+      ipc.on('update-downloaded', () => {
+        useUpdateCheckStore.getState().setPronto();
       });
     }
 
