@@ -1645,29 +1645,22 @@ export class SupabaseAdapter {
    * Clean up old projects from Supabase
    * Tornado: exposto publicamente para uso em controllers REST
    */
-  public async cleanupOldProjects() {
-    if (!this.isConnected || !this.supabase || !this.config) {
-      return;
-    }
-
-    try {
-      const twoDaysAgo = new Date();
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-
-      const { error } = await this.supabase
-        .from(this.config.tableName || 'ontime_realtime')
-        .delete()
-        .lt('updated_at', twoDaysAgo.toISOString());
-
-      if (error) {
-        logger.error(LogOrigin.Server, `Supabase cleanup error: ${error.message}`);
-      } else {
-        logger.info(LogOrigin.Server, 'Supabase: Cleaned up old projects');
-      }
-    } catch (error) {
-      logger.error(LogOrigin.Server, `Supabase cleanup error: ${error}`);
-    }
-  }
+  /*
+   * `cleanupOldProjects()` foi REMOVIDA em 05/08/2026.
+   *
+   * Ela apagava de `ontime_realtime` todo projeto com `updated_at` de mais de
+   * 2 dias. Medido antes de remover: teria apagado 222 dos 228 projetos, com
+   * registros desde 18/10/2025 — ou seja, nunca rodou de fato, e o limite de 2
+   * dias nunca teve relação com o uso real do sistema.
+   *
+   * Não foi só desagendada: foi apagada, junto com a rota `POST /supabase/cleanup`
+   * que a expunha sem autenticação. Projeto passado é histórico do cliente —
+   * links de leitura continuam sendo abertos depois do evento — e apagar tem
+   * que ser ação explícita de quem é dono do dado, nunca uma rotina de fundo.
+   *
+   * Se um dia existir expurgo, ele nasce como ação do usuário na interface,
+   * com confirmação e escopo visível. Não como um cron.
+   */
 
   /**
    * Get current connection status

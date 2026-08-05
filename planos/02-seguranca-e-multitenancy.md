@@ -106,7 +106,14 @@ que tem `SELECT USING (true)`. Uma query lista todos. As páginas "protegidas po
   `is_owner`, `is_member`, `is_session_owner`. `SECURITY DEFINER` roda com os privilégios
   de quem criou — cada uma é uma porta lateral a auditar.
 - **View `metrics_realtime` é `SECURITY DEFINER`** — ignora o RLS de quem consulta.
-- ~~**`JWT_SECRET` tem fallback literal**~~ — **RESOLVIDO em 04/08/2026.** A variável
+- ~~**`JWT_SECRET` tem fallback literal**~~ — **resolvido pela metade em 04/08/2026,
+  fechado de verdade em 05/08/2026.** A correção de 04/08 mexeu em `lib/auth.ts` e
+  parou ali; havia mais **três** cópias da mesma linha, em `lib/jwt.ts`,
+  `lib/live-auth.ts` e `lib/buildup-auth.ts` — ou seja, os tokens de código de acesso,
+  de live e de montagem continuavam podendo ser assinados com a string do repositório.
+  Agora as quatro chamam `getJwtSecret()` de `lib/jwt-secret.ts`. A lição é a
+  duplicação, não o valor: enquanto cada arquivo tiver sua cópia da regra, corrigir um
+  não corrige os outros. Texto original abaixo. A variável
   estava definida na Vercel (nunca houve risco ativo) e o fallback foi removido:
   `lib/auth.ts` agora tem `getJwtSecret()`, que lança se a env faltar. A checagem é no
   USO e não no carregamento do módulo, para não quebrar builds de ambientes que não
@@ -129,11 +136,13 @@ algumas dessas funções; são deliberadas.
 | `link_event_by_parent_code()` | `SECURITY DEFINER` | preenche `event_id` a partir do código do container |
 | `powerpoint_fill_project_code()` | trigger comum | preenche `project_code` a partir do `id` |
 
-**Ponto em aberto:** o painel `/dono` é protegido por `OWNER_USER_ID` (variável de
-ambiente na Vercel, fora do banco de propósito — `users` aceita escrita anônima, então
-qualquer coluna `is_owner` seria autoatribuível). **Enquanto essa variável não for
-configurada, o painel cai no comportamento antigo e as 9 contas `is_admin` enxergam o
-faturamento de todos os clientes.** Valor: `OWNER_USER_ID=6c49e30c-ba02-4e7e-802e-41c2b7169f00`.
+**~~Ponto em aberto~~ RESOLVIDO em 05/08/2026:** o painel `/dono` é protegido por
+`OWNER_USER_ID` (variável de ambiente na Vercel, fora do banco de propósito — `users`
+aceitava escrita anônima, então qualquer coluna `is_owner` seria autoatribuível). A
+variável foi configurada (`6c49e30c-ba02-4e7e-802e-41c2b7169f00`), então o `/dono`
+deixou de vazar o faturamento para os outros admins. Nota: `users` não aceita mais
+escrita anônima (Fase 0), mas manter a checagem fora do banco continua certo — é defesa
+em profundidade.
 
 ### 1.9 O que mudou no egress (contexto para a Fase 4)
 
@@ -229,8 +238,15 @@ O que exatamente para de funcionar ao fechar cada porta. É este mapa que define
 | `app/dashboard/projects/new/page.tsx:1230,1260,1543` | `select` de cores/nome | incluir no payload do login, ou rota `GET /api/me` |
 | `app/edit/[…]/page.tsx:203,244,380` | `select` de `is_admin`/`nome_empresa` | `GET /api/me` + `GET /api/project/[code]/meta` |
 
-Boa notícia: `app/api/users/route.ts` e `app/api/users/[id]/route.ts` **já existem** e já
-usam service role. Falta apontar as páginas para elas e criar as 2–3 rotas que faltam.
+> **Correção de 05/08/2026 — este parágrafo estava errado.** Dizia que
+> `app/api/users/route.ts` e `app/api/users/[id]/route.ts` já serviam. Não serviam:
+> aquelas rotas mexem no `auth.users` do **Supabase Auth** (o cadastro dos gestores),
+> não em `public.users`, e são guardadas por token do Supabase Auth em vez do JWT
+> próprio. São de outro sistema — quem as usa é só `app/dashboard/users`.
+> As rotas de `public.users` tiveram de ser escritas do zero: `/api/clients`,
+> `/api/clients/[id]`, `/api/clients/[id]/password`, `/api/me`,
+> `/api/auth/change-password`, `/api/sales`, `/api/sales/[id]` e
+> `/api/project/[code]/edit-permission`. **Feito.**
 
 ### 4.2 Tabela `ontime_realtime` — 51 SELECT espalhados
 
@@ -259,11 +275,45 @@ GRANT SELECT (id, project_code, data, updated_at, company_name,
 os `select('*')` em `ontime_realtime` antes. É uma medida ponte, útil enquanto §5.3 não
 está pronta.
 
-### 4.3 As 6 tabelas sem RLS
+### 4.3 As 6 tabelas sem RLS — **de 6 para 4** em 05/08/2026
 
-`live_events`, `event_buildups`, `event_buildup_access`, `buildup_tasks`, `buildup_files`,
-`join_attempts` — ligar RLS **quebra tudo que as toca** enquanto não houver política.
-Tratar módulo a módulo (buildup e live são features separadas), não de uma vez.
+Eram `live_events`, `event_buildups`, `event_buildup_access`, `buildup_tasks`,
+`buildup_files`, `join_attempts`. Duas saíram:
+
+- `event_buildup_access` — **fechada.** Guardava `access_code`, a senha das páginas
+  `/buildup/*`; um `select` listava a senha de todos os eventos de todos os clientes.
+  As três funções que a tocavam do navegador passaram por `/api/buildup/access/code`.
+- `join_attempts` — **apagada** junto com o módulo houseriafile (ver §4.5).
+
+Restam quatro: `live_events`, `event_buildups`, `buildup_tasks`, `buildup_files`. São
+CRUD de feature inteira feito do navegador, inclusive de páginas públicas — fechá-las
+exige a Fase 2. Meia-policy ali seria pior que nenhuma.
+
+### 4.5 O módulo houseriafile foi REMOVIDO (05/08/2026)
+
+Decisão do dono do produto: a feature está aposentada e será refeita fora deste
+banco, sobre Cloudflare R2. Não foi desligada — foi apagada.
+
+Isso importa para este plano mais do que parece, porque o módulo respondia por boa
+parte da superfície anônima que sobrava depois da Fase 0:
+
+| removido | por que contava |
+|---|---|
+| `join_session()` | era a **última** função `SECURITY DEFINER` executável pelo `anon` além da deliberada `record_day_execution()` |
+| `sessions`, `session_members`, `files`, `file_locations`, `session_links`, `join_attempts` | 6 tabelas com grant para `anon`/`authenticated` |
+| `create_session`, `is_member`, `is_session_owner`, `clear_my_file_locations`, `get_my_storage_usage`, `list_session_storage_paths`, `check_user_quota`, `gen_session_code` | 8 funções `SECURITY DEFINER` |
+| bucket `drops` + 3 policies | 2 arquivos de teste, ~40 MB |
+| `app/f/`, `lib/houseriafile/` | 11 arquivos no site |
+
+E destravou o principal: **o login anônimo do Supabase pôde ser desligado.** Ele
+existia só para este módulo, e era a porta pela qual qualquer visitante virava
+`authenticated` numa chamada — o que tornava `TO authenticated` uma barreira de
+mentira em qualquer policy do projeto (foi assim que `software_versions` ficou
+gravável por qualquer um).
+
+Conferido antes de apagar: nenhuma FK de fora apontava para as tabelas, nenhuma
+função ou view externa as citava, o desktop não conhecia o módulo, e a última
+atividade era de 16/05/2026.
 
 ### 4.4 Desktop em campo
 
@@ -281,35 +331,104 @@ Este é o item de maior atrito de todo o plano. Começar por ele.
 
 ## 5. Fases
 
-### Fase 0 — Contenção (dias, antes de qualquer refactor)
+### Fase 0 — Contenção — **TODA FEITA em 05/08/2026** ✅
+
+> Os 7 itens abaixo estão em produção, verificados com a chave anônima real e com um
+> evento de teste ao vivo. Ficam com o texto original para registro do método.
 
 Ordenada por "risco removido ÷ esforço":
 
-1. ~~**Verificar `JWT_SECRET` em produção.**~~ **FEITO** (ver §1.7). Sobrou uma tarefa
-   de minuto: configurar `OWNER_USER_ID` na Vercel (§1.8).
-2. **Fechar `users` ao `anon`.** Requer §4.1 primeiro: apontar as 5 páginas para as API
-   routes. É o maior risco e tem a maior parte da infra pronta.
-3. **Tirar a troca de senha do navegador.** Rota nova, comparação e hash no servidor.
-4. **Fechar `user_sessions`, `user_machine_licenses`, `sales`** — nada no browser precisa
-   delas depois do passo 2.
-5. **Revogar `EXECUTE` de `anon`** nas 11 funções `SECURITY DEFINER`, exceto as que forem
-   comprovadamente de uso público.
-6. **Corrigir a policy `teste` em `realtime.messages`** e as policies anon de
-   `storage.objects` (`buildup_files_anon_delete/update`).
-7. **Assumir os hashes como vazados**: forçar troca de senha na próxima entrada. Fazer
-   *depois* da Fase 1, para a nova senha já nascer com hash decente.
+1. ~~**Verificar `JWT_SECRET` em produção.**~~ **FEITO** (ver §1.7). E o
+   `OWNER_USER_ID` na Vercel — **também feito** (§1.8).
+2. ~~**Fechar `users` ao `anon`.**~~ **FEITO** — as 5 páginas foram apontadas para
+   `/api/clients`, `/api/me`, etc. antes de fechar (§4.1).
+3. ~~**Tirar a troca de senha do navegador.**~~ **FEITO** — `/api/auth/change-password`,
+   comparação e hash no servidor.
+4. ~~**Fechar `user_sessions`, `user_machine_licenses`, `sales`.**~~ **FEITO.**
+5. ~~**Revogar `EXECUTE` de `anon`** nas funções `SECURITY DEFINER`.~~ **FEITO** — e o
+   grupo do houseriafile foi removido por completo depois (§4.5), sobrando só
+   `join_session`? não: **essa também saiu**. Abertas de propósito: `record_day_execution`.
+6. ~~**Corrigir a policy `teste` em `realtime.messages`** e as anon de `storage.objects`.~~
+   **FEITO** (a `teste` removida, verificado que broadcast segue funcionando;
+   `buildup_files_anon_delete/update` removidas, exclusão de arquivo movida para rota).
+7. **Assumir os hashes como vazados**: forçar troca de senha na próxima entrada.
+   **PENDENTE** — é o item 0.7, adiado de propósito para depois da Fase 1 (feita).
+   Decisão de produto de quando (atrito com o cliente).
 
-### Fase 1 — Senhas de verdade
+### Fase 1 — Senhas de verdade — **FEITA em 05/08/2026** ✅
 
-- Trocar SHA-256 sem salt por **bcrypt (cost ≥ 12) ou Argon2id**, só no servidor.
-- Migração transparente: no login, se o hash for do formato antigo e a senha bater,
-  re-hashear e regravar. Sem big bang.
-- Ligar *leaked password protection* se migrarem para o Supabase Auth (advisor aponta que
-  está desligado).
+- ~~Trocar SHA-256 sem salt por bcrypt ou Argon2id, só no servidor.~~ **Argon2id**
+  (m=19 MiB, t=2, p=1), em `lib/password.ts` (`server-only`). Provado em produção.
+- ~~Migração transparente no login.~~ Feito: `verifyAndUpgradePassword` re-hasheia no
+  login bem-sucedido. Conferido em produção — a conta do dono migrou no 1º login.
+- ~~Ligar *leaked password protection*.~~ **Ligado** no painel (protege as senhas de
+  gestor, que vivem no Supabase Auth; as de cliente passam pelo nosso código).
 
 ### Fase 2 — Token que o banco entende
 
+> **Mecanismo PROVADO em 05/08/2026.** O `SUPABASE_JWT_SECRET` foi configurado
+> (local + Vercel) e o `token-aceito.mjs` passou inteiro: token com segredo
+> errado → 401; com segredo certo → aceito como `authenticated` com
+> `user_id`/`is_admin` legíveis; anon segue anon. **O Supabase confia no nosso
+> token e uma policy consegue ler `auth.jwt() ->> 'user_id'`.** Tudo aditivo:
+> `lib/supabase-token.ts` não é importado em lugar nenhum ainda, então nada
+> mudou de comportamento.
+>
+> **O que falta NÃO é mais Fase 2 — é acoplamento.** Toda tabela que resta
+> (`ontime_realtime`, `powerpoint_realtime`, e as 4 de buildup/live) é
+> compartilhada entre o cliente logado, o desktop em campo (Fase 3) e o
+> espectador público (Fase 4). Não dá para trocar a `USING (true)` de nenhuma
+> delas por uma policy real sem migrar as outras pontas junto. Logo: emitir o
+> token no login e ligar o cliente a ele só faz sentido casado com a primeira
+> policy real, que por sua vez exige Fase 3 ou 4. **Próximo alvo natural: Fase
+> 4 (tirar o espectador do banco), cujo primeiro passo — a rota de snapshot —
+> é seguro e é o que destrava fechar `ontime_realtime`.**
+
+**Feito:**
+- `houseriasite/lib/supabase-token.ts` — `mintSupabaseToken()` emite um token
+  assinado com o **segredo do projeto Supabase** (não o nosso `JWT_SECRET`),
+  com `role/aud/sub/exp` + claims `user_id`/`is_admin`. `sub = public.users.id`
+  de propósito, para `auth.uid()` já bater com a coluna de dono.
+- `public.whoami()` — diagnóstico read-only que devolve o que o PostgREST leu
+  do token de quem chama (só o próprio; anônimo vê `role=null`).
+- `scripts/guardas/token-aceito.mjs` — prova de fora: token com segredo errado
+  recusado (401), com segredo certo aceito e claims legíveis, anon segue anon.
+  A parte anônima já passou; as outras duas esperam o segredo.
+
+**BLOQUEIO 1 — o segredo.** `mintSupabaseToken` precisa do **Legacy JWT Secret**
+do projeto (Supabase > Settings > API > JWT Settings). NÃO é a anon key nem a
+service role key — é o segredo com que ELAS foram assinadas. Sem ele o servidor
+não emite token que o Supabase aceite. Vai como env var `SUPABASE_JWT_SECRET`
+(local + Vercel).
+
+**BLOQUEIO 2 — identidade do gestor.** Cliente entra pelo nosso JWT → mintamos
+um token Supabase com `sub = public.users.id`. Gestor entra pelo Supabase Auth →
+já tem token Supabase, mas com `sub = auth.users.id` (id DIFERENTE) e SEM os
+claims `user_id`/`is_admin` que controlamos. Uma policy `user_id = auth.jwt()
+->> 'user_id'` funciona para o cliente e falha para o gestor. Duas saídas:
+  - **(A) Custom Access Token Hook**: uma função que o Supabase chama ao emitir
+    o token do gestor, injetando `user_id` (o `public.users.id` dele) e
+    `is_admin`. Uniformiza os dois tokens. Mais infra, mais limpo.
+  - **(B) Gestor só por API route (service role), nunca direto no Supabase.**
+    Aí a policy só precisa lidar com o token do cliente. Mais simples — e o
+    dashboard já é polling, não Realtime, então o gestor nem precisa de acesso
+    direto.
+
+  **→ ESCOLHIDO em 05/08/2026: opção (B).** Consequências para o desenho das
+  policies:
+  - o token mintado (`mintSupabaseToken`) é só para o CLIENTE, para acesso
+    direto ao Supabase (Realtime) aos dados dele;
+  - toda superfície de gestor (dashboard, edição-como-gestor, todo CRUD admin)
+    passa por API route com service role — várias já passam;
+  - a forma canônica de policy de dono fica **`auth.uid() = user_id`** (o
+    cliente; `sub` = `public.users.id`), sem precisar tratar dois formatos de
+    identidade;
+  - o gestor não aparece nas policies porque não chega por elas — chega pelo
+    service role, que faz bypass de RLS.
+
+**Depois dos dois bloqueios:**
 - Confirmar no painel: segredo HS256 legado ou signing keys assimétricas.
+  (Já confirmado em 05/08: HS256 legado — reconfirmar antes de aplicar.)
 - `generateAuthToken()` passa a emitir token aceito pelo Supabase, com
   `role: 'authenticated'` e claims `user_id` / `is_admin`.
 - Cliente browser passa a mandar esse token; `supabase` deixa de operar como `anon` para
@@ -329,39 +448,62 @@ Ordenada por "risco removido ÷ esforço":
 
 ### Fase 4 — Espectador sem acesso ao banco
 
-- Snapshot pela rota Next.js com cache de CDN (é a **Fase B4 do plano de egress**).
+> **Começada em 05/08/2026:** a rota de snapshot (Fase B4 do egress) está FEITA
+> e PROVADA — ver aquele plano. Ela já resolve o gate de acesso melhor que hoje:
+> para projeto com código, recusa os dados sem o cookie (401). Falta ligar as 6
+> páginas a ela, mover o tempo real para broadcast (B2) e só então o REVOKE.
+
+- Snapshot pela rota Next.js com cache de CDN (é a **Fase B4 do plano de egress**). **Rota feita.**
 - Tempo real por **broadcast privado**, com token curto emitido pelo site quando o
   visitante apresenta o código de acesso.
 - Aí sim: `REVOKE` geral de `anon` em `ontime_realtime` e `powerpoint_realtime`.
 - `access_code` / `edit_access_codes` saem da tabela lida publicamente e viram tabela
   própria, sem GRANT para `anon`, consultada só pelo servidor.
 
-### Fase 5 — Guarda-corpos
+### Fase 5 — Guarda-corpos — **FEITA em 05/08/2026** ✅
 
-1. `get_advisors` de segurança no CI, falhando o build em nível ERROR.
-2. Teste de policy: um script que, com a anon key, tenta ler `users` e escrever
-   `ontime_realtime` — **tem que falhar**. Se passar, o build quebra.
-3. Proibir `NEXT_PUBLIC_` em qualquer coisa que não seja URL e anon key.
-4. Nenhuma policy nova com `USING (true)` sem comentário justificando.
+Implementada em `houseriasite/scripts/guardas/`, ligada ao `npm run build` (via
+`prebuild`) e ao workflow `.github/workflows/guardas.yml` (push, PR e semanal —
+uma regressão de RLS pode entrar por fora do repositório, alguém mexendo no painel).
+
+| item do plano | como ficou |
+|---|---|
+| teste de policy com a anon key | `anon-nao-alcanca.mjs` — tenta ler 7 tabelas e executar 5 funções, e tenta o `PATCH users {is_admin:true}`. Falha o CI se qualquer uma responder. |
+| proibir `NEXT_PUBLIC_` indevido | `padroes-de-codigo.mjs`, allowlist de 2 variáveis |
+| `postgres_changes` sem `filter` | idem, com lista de exceções datadas e justificadas |
+| acesso direto a tabela sensível fora do servidor | idem — lista de exceções **vazia** de propósito |
+
+Duas correções sobre o plano original:
+
+- **`get_advisors` no CI ficou de fora.** Exigiria um token de management API como
+  secret, e o `anon-nao-alcanca` cobre o que importa de forma mais direta: em vez de
+  perguntar ao advisor se está fechado, ele tenta abrir.
+- O `anon-nao-alcanca` também verifica as portas que seguem abertas **de propósito**
+  (`ontime_realtime`, `powerpoint_realtime`, `software_versions`) e avisa se alguma
+  fechar sem querer. Deixar isso implícito era como o silêncio voltaria.
 
 ---
 
 ## 6. Ordem, risco e o que quebra
 
-| # | Ação | Risco | Quebra o quê |
+| # | Ação | Risco | Estado |
 |---|---|---|---|
-| 0.1 | ~~`JWT_SECRET`~~ **FEITO** | — | — |
-| 0.1b | configurar `OWNER_USER_ID` na Vercel | nenhum | nada — só fecha o `/dono` para os outros 8 admins |
-| 0.2 | páginas de `users` → API routes | médio | 5 páginas de dashboard, se errar rota |
-| 0.3 | senha só no servidor | baixo | tela de troca de senha |
-| 0.4 | fechar `users`/`sessions`/`sales` ao anon | baixo *após* 0.2 | nada, se 0.2 estiver completo |
-| 0.5 | revogar EXECUTE das funções | médio | módulo houseriafile (`join_session` etc.) |
-| 0.6 | `realtime.messages` + storage | médio | upload/delete de buildup |
-| 1 | bcrypt/Argon2 | baixo | nada (migração transparente) |
-| 2 | JWT aceito pelo Supabase | **alto** | tudo que fala com o banco pelo browser |
-| 3 | token de projeto no desktop | **alto** | desktops não atualizados |
-| 4 | espectador sem banco | médio | páginas públicas; casa com egress B4 |
-| 5 | guarda-corpos | baixo | nada |
+| 0.1 | `JWT_SECRET` | — | ✅ feito |
+| 0.1b | `OWNER_USER_ID` na Vercel | nenhum | ✅ feito |
+| 0.2 | páginas de `users` → API routes | médio | ✅ feito |
+| 0.3 | senha só no servidor | baixo | ✅ feito |
+| 0.4 | fechar `users`/`sessions`/`sales` ao anon | baixo *após* 0.2 | ✅ feito |
+| 0.5 | revogar EXECUTE das funções | médio | ✅ feito (+ houseriafile removido) |
+| 0.6 | `realtime.messages` + storage | médio | ✅ feito |
+| 1 | Argon2id | baixo | ✅ feito e provado |
+| 5 | guarda-corpos | baixo | ✅ feito (CI + pentests) |
+| 2 | JWT aceito pelo Supabase | **alto** | 🟡 mecanismo provado; falta acoplar |
+| 3 | token de projeto no desktop | **alto** | ⬜ pendente (precisa convivência) |
+| 4 | espectador sem banco | médio | 🟡 rota de snapshot feita; falta ligar |
+
+> A ordem de execução real foi diferente da numérica: a Fase 5 (guardas) foi feita
+> junto da Fase 0, para travar o que estava sendo fechado. As Fases 2, 3 e 4 são a
+> próxima janela — e as três se entrelaçam com a Fase B do egress (ver §7).
 
 ---
 
@@ -391,7 +533,13 @@ Segurança Fase 0  →  Egress Fase A  →  Segurança 1 e 2  →  Egress B + Se
 
 Coisas que não dá para decidir sem informação que não está no código:
 
-1. **Modo de JWT do projeto Supabase** (HS256 legado × signing keys). Define a Fase 2.
+1. ~~**Modo de JWT do projeto Supabase**~~ — **RESPONDIDO em 05/08/2026: HS256 legado.**
+   O JWKS do projeto (`/auth/v1/.well-known/jwts.json`) devolve `{"keys":[]}` e a
+   própria anon key é um JWT `alg: HS256`. Ou seja, a **Opção A da §3 é viável como
+   desenhada**: dá para assinar o token do site com o segredo do projeto e o PostgREST
+   aceita. Ressalva: o Supabase está migrando para chaves assimétricas — se o projeto
+   for rotacionado para signing keys, a Fase 2 precisa ser refeita. Confirme o modo de
+   novo imediatamente antes de implementar.
 2. **Quantos desktops em campo** e em que versões. Define a janela de convivência da
    Fase 3.
 3. ~~**`JWT_SECRET` está setado em produção?**~~ **Está.** Resolvido.

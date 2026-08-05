@@ -1,6 +1,13 @@
 # Plano de otimização de egress e Realtime (Supabase)
 
-> Status: **plano, nada aplicado.** Nenhuma alteração de banco ou de código foi feita.
+> **Status (05/08/2026): Fase A FEITA e em produção; Fase C feita; Fase B pendente.**
+> A Fase A (índices, REPLICA IDENTITY, filtro do PowerPoint, throttle do writer) cortou
+> ~90% do egress e parou a sangria que derrubou o servidor em julho. A Fase C
+> (guarda-corpos, teto de payload) está feita — só o `cleanupOldProjects` foi
+> cancelado de propósito (apagava histórico do cliente). Falta a **Fase B**, a que muda
+> a lei de escala (custo deixa de crescer com a plateia): a rota de snapshot (B4) já
+> está construída e provada; o resto mexe no desktop e vai na próxima janela. Detalhe
+> item a item ao longo do documento.
 > Projeto Supabase: `gxcgwhscnroiizjwswqv`.
 > Repos envolvidos: `ontimeHOUSERIA` (desktop/servidor) e `houseriasite` (Next.js).
 
@@ -299,7 +306,28 @@ Hoje, mudar o título de um evento republica a rundown inteira (`handleRundownCh
 Emitir `event-patch { eventId, fields }` por broadcast e reservar o snapshot completo
 para o carregamento da página e para mudanças estruturais (adicionar/remover/reordenar).
 
-### B4. Snapshot frio atrás do CDN
+### B4. Snapshot frio atrás do CDN — **ROTA FEITA E PROVADA em 05/08/2026** ✅
+
+> A rota `houseriasite/app/api/snapshot/[projectCode]/route.ts` existe, com
+> service role, e foi provada contra o banco real nos quatro caminhos (aberto,
+> com-código-sem-cookie, com-código-com-cookie, inexistente). Ainda NÃO está
+> ligada às páginas — é aditiva, ninguém a importa, o deploy segue inerte. O
+> wiring das 6 páginas de espectador é a próxima passada, a ser feita com um
+> render de teste à vista (é superfície ao vivo).
+>
+> **Achado que mudou o desenho:** 223 dos 228 projetos são abertos, mas 5 têm
+> código e as páginas têm gate real (`AccessCodeForm`). Um cache público cego
+> por projectCode furaria o gate desses 5. Por isso a rota branqueia: aberto →
+> `s-maxage=30` (o ganho de egress, 98% dos casos); com código → exige o cookie
+> `access_token_<code>` e responde `private, no-store`. Para os 5 protegidos a
+> rota é MAIS forte que o SELECT direto de hoje — recusa sem o cookie.
+>
+> Falta para o REVOKE de `anon` (que é o objetivo final): a assinatura de
+> Realtime ainda toca `ontime_realtime` (item B2). O snapshot é só um dos
+> pré-requisitos.
+
+#### (original)
+
 
 O `select('data')` direto no PostgREST cobra egress do Supabase por espectador.
 Trocar por uma rota Next.js:
@@ -326,16 +354,43 @@ essencialmente a zero, e a invalidação vem do `snapshot-changed` (o cliente bu
 
 ## 6. Fase C — guarda-corpos (para não voltar)
 
-1. **Lint/teste que falha** se aparecer `postgres_changes` sem `filter` no `houseriasite`.
-   Um grep em CI resolve — é o defeito 1.1 e 1.4, e os dois foram introduzidos sem querer.
-2. **Teto de payload no writer**: se o JSON do upsert passar de X KB, logar warning alto
-   e truncar o que for truncável. Torna o próximo `PG8389` de 1,5 MB visível na hora.
+> **Estado em 05/08/2026:** C1, C2 e C5-parcial **feitos**; C3 e C4 pendentes por
+> motivos diferentes — ver abaixo, item a item.
+
+1. ~~**Lint/teste que falha**~~ — **FEITO.** `houseriasite/scripts/guardas/padroes-de-codigo.mjs`,
+   ligado ao `prebuild` e ao CI. Não é um grep: casa as chaves do objeto de config para
+   não acusar comentário nem string de tipo. A primeira versão, feita com "as próximas 8
+   linhas", acusou 47 violações das quais quase todas eram falso positivo — um linter
+   assim é desligado no primeiro dia.
+2. ~~**Teto de payload no writer**~~ — **FEITO.** `powerpoint-supabase.service.ts`:
+   aviso alto acima de 64 KB dizendo QUAL parte pesa (`slides=… videoItems=…`), e as
+   notas de slide truncadas em 2.000 caracteres (item B5, que estava solto). O
+   `video.sourceUrl` também deixou de subir — era o caminho do arquivo na máquina do
+   operador, numa tabela de leitura pública. O caminho de fallback
+   (`sendToOntimeRealtime`) recebeu o mesmo teto: deixar os dois diferentes é como o
+   problema volta.
 3. **Telemetria por show**: contar bytes emitidos por projeto/sessão e mostrar no painel
    do Ontime. O `lib/usage-monitor.ts` já existe mas só conta requests no console e não é
    usado em lugar nenhum — ou liga de verdade, ou apaga.
-4. **`cleanupOldProjects()` fora do toggle**: hoje só roda se o Supabase estiver conectado
-   (`if (!this.isConnected) return`). Virar um cron do Supabase (`pg_cron`) para não
-   depender de nenhum desktop estar aberto.
+4. ~~**`cleanupOldProjects()` fora do toggle**~~ — **ITEM CANCELADO em 05/08/2026.**
+   Não virou cron: a função foi **removida**, junto com a rota `POST /supabase/cleanup`
+   que a expunha (e que era a única rota daquele arquivo sem `ensureSupabaseAuth` —
+   qualquer um na mesma rede podia chamar).
+
+   O plano errou a pergunta. Ele tratou a limpeza como higiene de infraestrutura e só
+   discutiu *como* agendá-la. Os números mostraram o que estava em jogo: a regra de 2
+   dias apagaria 222 dos 228 projetos, com registros desde 18/10/2025. Nunca rodou de
+   fato — e ainda bem.
+
+   A decisão do dono do produto: **projeto é histórico do cliente e não se apaga
+   sozinho.** Links de leitura continuam sendo abertos depois do evento, e excluir tem
+   que ser ação explícita de quem é dono do dado. Se um dia existir expurgo, nasce como
+   ação na interface, com confirmação e escopo visível — não como rotina de fundo.
+
+   Consequência para o resto do plano: linha morta em `ontime_realtime` continua
+   entrando na publication e no WAL. Se o objetivo é saúde do servidor, o alvo certo
+   é o **item B1** (tirar as tabelas gordas da publication), não apagar dado.
+
 5. **Alerta de billing** no painel do Supabase, em ~50% da cota, para o próximo evento
    avisar antes de estourar.
 

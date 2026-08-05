@@ -116,22 +116,6 @@ export async function getActiveProjects(req: Request, res: Response) {
   }
 }
 
-export async function cleanupOldProjects(_req: Request, res: Response) {
-  try {
-    // Force cleanup of old projects
-    await supabaseAdapter.cleanupOldProjects();
-    
-    res.status(200).json({ 
-      message: 'Cleanup completed successfully'
-    });
-  } catch (error) {
-    logger.error(LogOrigin.Server, `Error during cleanup: ${error}`);
-    res.status(500).json({ 
-      error: 'Cleanup failed'
-    });
-  }
-}
-
 export async function getProjectData(req: Request, res: Response) {
   try {
     const { projectCode } = req.params;

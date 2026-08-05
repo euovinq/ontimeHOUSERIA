@@ -7,10 +7,14 @@
 
 ---
 
-## Já feito (código, aguardando deploy)
+## Já feito
 
-Nada em produção foi alterado. As mudanças abaixo estão nos repositórios e só passam a
-valer quando o desktop for atualizado / o site for publicado.
+> **05/08/2026: o site foi publicado e o banco foi alterado.** A tabela abaixo
+> (mudanças de 04/08 do caminho do Ontime) está EM PRODUÇÃO, junto com todo o trabalho
+> de segurança do dia. Verificado com um evento de teste ao vivo — pipeline
+> desktop → nuvem → espectador intacto. **O desktop novo ainda NÃO foi distribuído** às
+> máquinas em campo (ver "Distribuir o desktop" no README): os ganhos do writer só valem
+> onde a versão nova roda.
 
 | # | mudança | arquivo |
 |---|---|---|
@@ -208,11 +212,20 @@ Tem que dar `sem_codigo = 0`.
 
 ---
 
-### D — Coluna gerada para o contador de pendências (opcional)
+### D — Coluna gerada para o contador de pendências ~~(opcional)~~ **FEITA em 05/08/2026** ✅
 
-O refetch do dashboard principal ainda pesa ~395 KB, e 86% disso é a coluna `changes`
-(339 KB no total, uma linha com 180 KB), que a lista carrega só para exibir o **contador**
-de alterações pendentes.
+Refetch do dashboard **395.790 → 50.845 bytes** (−87%), medido contra produção.
+
+**Correção importante sobre o SQL abaixo:** a expressão original (que ficou registrada
+aqui) contava `jsonb_array_length` do array inteiro — o que estava **errado**. O contador
+da tela filtra `'field' in c && 'after' in c && !('type' in c)`, ignorando as
+notificações de projeto que moram no mesmo array. Na base de hoje: 898 itens nos arrays,
+**0 pendências de verdade** — a expressão original mostraria "898 pendentes". O que foi
+aplicado é uma função `count_pending_changes(jsonb)` que replica o filtro real, conferida
+228/228 linhas. `app/dashboard/page.tsx` lê a coluna e busca o array só quando o diálogo
+abre.
+
+#### (SQL original — NÃO use, conta demais)
 
 ```sql
 ALTER TABLE public.ontime_realtime
@@ -222,45 +235,40 @@ ALTER TABLE public.ontime_realtime
   ) STORED;
 ```
 
-Depois, no `select` de `app/dashboard/page.tsx`, trocar `changes` por
-`pending_changes_count` e buscar o array completo só quando o diálogo abrir. O refetch cai
-para ~45 KB.
-
-> Atenção: o contador atual (`countPendingChanges`) filtra por `'field' in c && !('type' in c)`,
-> ou seja, ignora as notificações de projeto. A coluna gerada acima conta **todos** os
-> itens. Se a distinção importa na UI, a expressão precisa filtrar também.
-
 ---
 
-### E — Fase B do plano de egress
+### E — Fase B do plano de egress — **começada, ver o plano 01**
 
-Broadcast para o PowerPoint, snapshot atrás de CDN, patch por evento. É o que muda a
-ordem de grandeza (de ~15 para ~50–60 eventos simultâneos). Detalhado no plano de egress,
-seção 5. Não é urgente para saúde — é o que destrava escala.
+Broadcast para o PowerPoint (B2), snapshot atrás de CDN (B4), patch por evento (B3),
+tirar as tabelas da publicação (B1). É o que muda a ordem de grandeza (de ~15 para
+~50–60 eventos simultâneos) e o que fecha `ontime_realtime` ao anônimo (= Fase 4 da
+segurança). **A rota de snapshot (B4) já está construída e provada**; falta ligar as
+páginas + o que mexe no desktop. Detalhado no plano 01, seção 5. Próxima sessão, em
+janela própria com convivência de desktop.
 
 ---
 
 ### F — Segurança
 
-Tudo em [02-seguranca-e-multitenancy.md](02-seguranca-e-multitenancy.md).
-**Nenhum item de lá pode ser feito com gente usando o sistema.** O mais barato e mais
-urgente é confirmar se `JWT_SECRET` está mesmo definido em produção — se não estiver, o
-código cai no literal `'fallback-secret-change-in-production'` e qualquer pessoa que leia
-o repositório forja um token válido.
+Tudo em [02-seguranca-e-multitenancy.md](02-seguranca-e-multitenancy.md). Fases 0, 1 e 5
+**feitas**; Fase 2 **provada**; 3 e 4 pendentes (casam com a Fase B acima).
+**Nenhum item que fecha porta pode ser feito com gente usando o sistema.**
+O `JWT_SECRET` sem fallback já foi resolvido (e as 3 cópias remanescentes,
+centralizadas em `lib/jwt-secret.ts`).
 
 ---
 
 ## Ordem sugerida
 
 ```
-1. publicar site (itens 3 e 4)  →  smoke test dos dashboards
-2. A.1 e A.2  (dropar índices, CONCURRENTLY, pode ser em horário normal)
-3. B          (replica identity, janela curta, depois do passo 1)
-4. atualizar desktop (itens 1 e 2)  →  observar um evento real
-5. C.1 → C.2 → C.3  (nesta ordem, com a verificação entre C.2 e C.3)
-6. D (opcional)
-7. F (segurança) — janela combinada, sem ninguém usando
-8. E (Fase B) — quando escala virar prioridade
+FEITO até 05/08/2026:
+  1–7. site publicado, índices, replica identity, C.1–C.3, D, e todo o plano 02
+       Fases 0/1/5. Verificado com evento de teste ao vivo.
+
+PRÓXIMA JANELA (fora de evento, com convivência de desktop):
+  8. Fase 3 (desktop com identidade) + Fase B/4 (espectador sem banco), coordenados
+     — é a jogada que destrava escala E fecha ontime_realtime.
+  9. Distribuir o desktop novo.
 ```
 
 ## Os três números para acompanhar a saúde

@@ -37,31 +37,36 @@ export type LoginResult =
       message: string;
     };
 
+/**
+ * ATENÇÃO — este caminho de login NÃO é o que o app usa, e não funciona mais.
+ *
+ * O login do HouseriaAPP é feito pelo processo Electron
+ * (`apps/electron/src/services/AuthService.js`), que chama
+ * `POST https://www.houseria.art.br/api/auth/desktop/login` no site. Lá a
+ * verificação roda com service role, a senha é conferida com Argon2id e o
+ * app recebe um JWT. Nada disso passa por aqui.
+ *
+ * Esta função é a implementação antiga, exposta pelo servidor Express local em
+ * `POST /auth/login` (anunciada em `PublicRoutesList.tsx` como rota pública).
+ * Ela lê `users` e `sales` com a anon key — e essas duas tabelas foram
+ * fechadas ao `anon` em 05/08/2026, junto com a troca do hash de senha.
+ * Portanto:
+ *
+ *   1. qualquer chamada a `/auth/login` do servidor local agora falha;
+ *   2. mesmo que não falhasse, o SHA-256 abaixo não confere mais senha
+ *      nenhuma que já tenha sido migrada para Argon2id.
+ *
+ * Está mantida em vez de removida porque a rota é anunciada como pública e
+ * pode haver integração de terceiro (Companion, automação) apontada para ela.
+ * O erro abaixo é explícito de propósito: quem estiver usando descobre o que
+ * fazer em vez de receber uma falha obscura de Postgres.
+ */
 export async function authenticateUser(
   email: string,
   password: string
 ): Promise<LoginResult> {
   // Importante: usar o MESMO formato salvo no Supabase (SHA-256 + base64url, sem "=" no final)
   const passwordHash = hashPassword(password);
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/cad92a88-f000-48bd-b9dd-48d41852b469', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId: 'H1',
-      location: 'auth.service.ts:authenticateUser:entry',
-      message: 'authenticateUser entry',
-      data: {
-        hasEmail: !!email,
-        hasPassword: !!password,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   const {
     data: users,
@@ -73,34 +78,18 @@ export async function authenticateUser(
     .limit(1);
 
   if (userError) {
+    // 42501 = permission denied; 401/403 vêm do PostgREST sem grant.
     throw new Error(
-      `Erro ao consultar tabela users no Supabase: ${userError.message}`
+      'Este endpoint de login foi desativado. A tabela `users` não é mais ' +
+        'legível pela chave anônima. O login do app passa pelo Electron, em ' +
+        'POST https://www.houseria.art.br/api/auth/desktop/login. ' +
+        `(erro original: ${userError.message})`
     );
   }
 
   const user = users?.[0] as
     | { id: string | number; email: string; is_admin: boolean; password_hash: string }
     | undefined;
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/cad92a88-f000-48bd-b9dd-48d41852b469', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId: 'H2',
-      location: 'auth.service.ts:authenticateUser:userLookup',
-      message: 'Result of users lookup',
-      data: {
-        foundUser: !!user,
-        isAdmin: user?.is_admin ?? null,
-        userIdType: user ? typeof user.id : null,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   if (!user || user.password_hash !== passwordHash) {
     return {
@@ -111,24 +100,6 @@ export async function authenticateUser(
   }
 
   if (user.is_admin) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/cad92a88-f000-48bd-b9dd-48d41852b469', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'H3',
-        location: 'auth.service.ts:authenticateUser:adminBypass',
-        message: 'Admin user bypassing sales check',
-        data: {
-          userId: user.id,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     return {
       success: true,
       isAdmin: true,
@@ -185,27 +156,6 @@ export async function authenticateUser(
       return false;
     }
   }) : [];
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/cad92a88-f000-48bd-b9dd-48d41852b469', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId: 'H1',
-      location: 'auth.service.ts:authenticateUser:salesCheck',
-      message: 'Result of sales date window check',
-      data: {
-        startOfToday: null,
-        startOfTomorrow: null,
-        salesCount: sales?.length ?? 0,
-        userId: user.id,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   if (!sales || sales.length === 0) {
     return {
