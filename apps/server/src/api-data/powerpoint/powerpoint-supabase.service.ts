@@ -13,6 +13,60 @@ interface IPowerPointService extends EventEmitter {
   isServiceConnected(): boolean;
 }
 
+/**
+ * Teto por nota de slide. Ninguém lê 10 KB de nota numa TV, e o array de
+ * slides inteiro sobe a cada escrita — uma nota gigante multiplica por todos
+ * os espectadores. Item B5 do plano de egress.
+ */
+const LIMITE_NOTAS_CHARS = 2000;
+
+/**
+ * A partir daqui o payload vira assunto. Não é um limite rígido: é o ponto em
+ * que queremos que o operador VEJA no log que aquela apresentação está pesada,
+ * antes de descobrir pelo custo. Os maiores casos medidos em jul/2026 foram de
+ * 52 KB (526 slides) e 41 KB (436 slides).
+ */
+const LIMITE_PAYLOAD_AVISO_BYTES = 64 * 1024;
+
+function truncarNotas(notas: string | undefined | null): string {
+  if (!notas) return '';
+  if (notas.length <= LIMITE_NOTAS_CHARS) return notas;
+  return `${notas.slice(0, LIMITE_NOTAS_CHARS)}… [nota truncada: ${notas.length} caracteres]`;
+}
+
+/**
+ * Loga alto quando o upsert passa do teto, dizendo QUAL parte pesa. Sem isso,
+ * "o egress subiu" é um número sem endereço — foi assim que 1,5 MB numa linha
+ * passou despercebido até o servidor cair.
+ */
+function avisarSePayloadGrande(payload: unknown, projectCode: string): void {
+  let bytes: number;
+  try {
+    bytes = Buffer.byteLength(JSON.stringify(payload), 'utf8');
+  } catch {
+    return;
+  }
+  if (bytes <= LIMITE_PAYLOAD_AVISO_BYTES) return;
+
+  const dados = (payload as { data?: Record<string, unknown> })?.data ?? {};
+  const pedaco = (chave: string) => {
+    try {
+      return Buffer.byteLength(JSON.stringify(dados[chave] ?? null), 'utf8');
+    } catch {
+      return 0;
+    }
+  };
+
+  const kb = (n: number) => `${(n / 1024).toFixed(1)} KB`;
+  logger.warning(
+    LogOrigin.Server,
+    `⚠️  PowerPoint Supabase - payload de ${kb(bytes)} em "${projectCode}" ` +
+      `(teto de aviso: ${kb(LIMITE_PAYLOAD_AVISO_BYTES)}). ` +
+      `slides=${kb(pedaco('slides'))} videoItems=${kb(pedaco('videoItems'))}. ` +
+      'Cada escrita desta sai multiplicada pelo número de espectadores.',
+  );
+}
+
 export class PowerPointSupabaseService {
   private windowsService: PowerPointWindowsService | null;
   private websocketService: PowerPointWebSocketService | null;
@@ -251,6 +305,22 @@ export class PowerPointSupabaseService {
       this.throttleTimer = null;
     }
     logger.info(LogOrigin.Server, 'PowerPoint Supabase service parado');
+  }
+
+  /**
+   * Para o serviço E apaga a linha do banco.
+   *
+   * Use ao DESLIGAR a nuvem de um grupo. O `stop()` sozinho só para de
+   * enviar — deixa a última linha "presa" no Supabase, e o espectador
+   * continua vendo o slide para sempre. Era esse o comportamento do botão PPT
+   * no modelo antigo (single-instance): desligar apagava a linha. No redesenho
+   * multi-instância, o `syncCloud` passou a chamar só `stop()`, e a limpeza se
+   * perdeu. `deleteFromSupabase()` usa o `projectCode` já setado (a chave
+   * composta `projectCode:groupId`), então apaga a linha certa.
+   */
+  public async stopAndClear(): Promise<void> {
+    await this.deleteFromSupabase();
+    this.stop();
   }
 
   /**
@@ -627,13 +697,14 @@ export class PowerPointSupabaseService {
           isInSlideShow: status.isInSlideShow,
           slidesRemaining: status.slidesRemaining,
           hiddenSlides: status.hiddenSlides.map(idx => idx + 1), // Converte índices ocultos para 1-based
-          // Lista completa de slides com notes (convertido para 1-based)
+          // Lista completa de slides com notes (convertido para 1-based).
+          // As notas passam por um teto — ver LIMITE_NOTAS_CHARS.
           slides: status.slides ? status.slides.map(slide => ({
             index: slide.index + 1, // Converte para 1-based
             title: slide.title,
             hidden: slide.hidden,
             hasVideo: slide.hasVideo,
-            notes: slide.notes,
+            notes: truncarNotas(slide.notes),
           })) : [],
           videoItems: status.videoItems ? status.videoItems.map(item => ({
             ...item,
@@ -648,7 +719,10 @@ export class PowerPointSupabaseService {
             volume: status.video.volume,
             muted: status.video.muted,
             fileName: status.video.fileName,
-            sourceUrl: status.video.sourceUrl,
+            // `sourceUrl` NÃO sobe: é o caminho do arquivo na máquina do
+            // operador. Não serve para nada na nuvem e expõe a estrutura de
+            // pastas dele para qualquer espectador (a tabela é de leitura
+            // pública). Item B5 do plano de egress.
             time: status.video.time,
             hours: status.video.hours,
             minutes: status.video.minutes,
@@ -661,10 +735,17 @@ export class PowerPointSupabaseService {
 
       // Tenta usar tabela específica, senão usa ontime_realtime
       const tableName = this.TABLE_NAME;
-      
+
+      // Teto de payload — item C3 do plano de egress. A tabela chegou a ter
+      // linhas de 52 KB com 526 slides, subindo ~1×/s durante vídeo. O
+      // objetivo aqui não é impedir: é tornar VISÍVEL na hora, no log do
+      // operador, quando uma apresentação começa a pesar. O próximo caso de
+      // 1,5 MB não pode ser descoberto só na fatura.
+      avisarSePayloadGrande(data, this.projectCode);
+
       logger.info(LogOrigin.Server, `🔄 PowerPoint Supabase - Tentando upsert na tabela ${tableName}...`);
       logger.info(LogOrigin.Server, `📋 PowerPoint Supabase - Dados: ${JSON.stringify(data).substring(0, 200)}...`);
-      
+
       const { error } = await supabase
         .from(tableName)
         .upsert(data, {
@@ -717,13 +798,15 @@ export class PowerPointSupabaseService {
             visibleSlideCount: status.visibleSlideCount,
             isInSlideShow: status.isInSlideShow,
             slidesRemaining: status.slidesRemaining,
-            // Lista completa de slides com notes (convertido para 1-based)
+            // Mesmo teto de notas do caminho principal — este fallback só
+            // dispara se `powerpoint_realtime` sumir, mas deixar os dois
+            // diferentes é exatamente como o problema volta.
             slides: status.slides ? status.slides.map(slide => ({
               index: slide.index + 1, // Converte para 1-based
               title: slide.title,
               hidden: slide.hidden,
               hasVideo: slide.hasVideo,
-              notes: slide.notes,
+              notes: truncarNotas(slide.notes),
             })) : [],
             videoItems: status.videoItems ? status.videoItems.map(item => ({
               ...item,

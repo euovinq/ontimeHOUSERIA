@@ -1,115 +1,104 @@
-name: Ontime build
+name: Release do desktop — Windows (build e publica no R2)
+
+# Dispara ao empurrar uma tag de versão (ex.: v1.0.6) ou manualmente.
+#
+# Este workflow cuida SÓ do Windows. O macOS é publicado localmente pelo
+# `apps/electron/release-mac.sh`, que reaproveita o certificado do chaveiro e as
+# chaves de R2 que já assinam o vexy — ver apps/electron/RELEASE.md. (O mac
+# precisa ser assinado+notarizado por um cert Apple; fazer isso no CI exigiria
+# exportar o cert como .p12, coisa que o fluxo local já resolve sem exportar.)
+#
+# O que este job faz:
+#   1. builda o instalador do Windows;
+#   2. confere que o manifesto `latest.yml` saiu;
+#   3. sobe os artefatos de auto-update para o R2 — é ISTO que faz o "Buscar
+#      atualização" funcionar. O `updater.js` lê de
+#      https://pub-99e0bdf9ed2e4ece80525a5b31e1ed1e.r2.dev/ontime/latest.yml.
+#      (O CI antigo publicava só no GitHub Releases, com nomes errados herdados
+#      do Ontime original, e nada populava o R2.)
+#   4. cria um GitHub Release com o .exe, para download manual.
+#
+# POR QUE "generic + aws s3 sync" e não o provider `s3` do electron-builder:
+#   o R2 tem DOIS endpoints — o público de download (`pub-<hash>.r2.dev`) e o
+#   privado de upload (`<accountid>.r2.cloudflarestorage.com`). O provider `s3`
+#   usaria o mesmo para os dois, e o de download precisa ser o público. Por isso
+#   mantemos `publish: generic` (a URL pública, o lado do cliente) e subimos os
+#   arquivos por fora, com o aws CLI falando S3 com o R2.
+#
+# SECRETS NECESSÁRIOS (Settings > Secrets and variables > Actions):
+#   R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+#   (o Windows NÃO é assinado — não precisa de cert. SENTRY_AUTH_TOKEN é opcional.)
+#
+# ANTES de disparar: suba a versão em apps/electron/package.json E na raiz
+# (devem casar), commit, tag `vX.Y.Z`, push da tag. O auto-update só dispara
+# para quem está numa versão MENOR que a publicada.
 
 on:
   push:
-    tags: [ "*" ]
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
-  build_macos:
-    runs-on: macOS-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build project packages
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: pnpm build
-
-      - name: Electron - Build app
-        env: 
-          APPLE_ID: ${{ secrets.APPLEID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLEIDPASS }}
-          APPLE_TEAM_ID: ${{ secrets.TEAMID }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-        run: pnpm dist-mac --env-mode=loose
-        timeout-minutes: 60
-
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            ./apps/electron/dist/ontime-macOS-x64.dmg
-            ./apps/electron/dist/ontime-macOS-arm64.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build_windows:
+  windows:
     runs-on: windows-latest
-
+    env:
+      R2_PREFIX: ontime
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v3
         with:
           version: 10
 
-      - name: Install dependencies
+      - name: Instalar dependências
         run: pnpm install --frozen-lockfile
 
-      - name: Build project packages
+      - name: Buildar os pacotes
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: pnpm build
 
-      - name: Electron - Build app
-        run: pnpm dist-win
+      # Windows NÃO está assinado (não há cert configurado). O instalador roda,
+      # mas o SmartScreen avisa na primeira execução. O auto-update do Windows
+      # funciona sem assinatura (diferente do mac).
+      - name: Buildar o app
+        run: pnpm --filter houseriaapp-electron dist-win
 
-      - name: Release
+      - name: Conferir que o manifesto de update foi gerado
+        shell: bash
+        run: |
+          if [ ! -f apps/electron/dist/latest.yml ]; then
+            echo "::error::latest.yml não foi gerado — o auto-update do Windows não teria manifesto."
+            ls -la apps/electron/dist/
+            exit 1
+          fi
+          echo "latest.yml OK:"; cat apps/electron/dist/latest.yml
+
+      - name: Publicar os artefatos de update no R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # As versões novas do aws-cli mandam checksums que o R2 às vezes
+          # recusa, quebrando o sync. Estas duas desligam isso.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          aws s3 sync apps/electron/dist/ "s3://${BUCKET}/${R2_PREFIX}/" \
+            --endpoint-url "$ENDPOINT" \
+            --exclude "*" \
+            --include "latest.yml" \
+            --include "houseriaapp-win64.exe" \
+            --include "houseriaapp-win64.exe.blockmap"
+
+      - name: GitHub Release (download manual)
         uses: softprops/action-gh-release@v1
         with:
-          files: './apps/electron/dist/ontime-win64.exe'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build_ubuntu:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build project packages
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: pnpm build
-
-      - name: Electron - Build app
-        run: pnpm dist-linux
-
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: './apps/electron/dist/ontime-linux.AppImage'
+          files: apps/electron/dist/houseriaapp-win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

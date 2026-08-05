@@ -1,10 +1,16 @@
-// Serviço de descoberta UDP para encontrar servidores PowerPoint na rede local
+// Serviço de descoberta para encontrar servidores PowerPoint na rede local.
+// Dois modos: BROADCAST (UDP 7899, push) e SCAN UNICAST (TCP 7800, pull).
+// O scan existe porque o macOS (Sequoia+) barra broadcast/multicast sem o
+// entitlement da Apple, mas libera unicast com o prompt de Rede Local — então
+// o scan varre o /24 e conecta direto, mantendo a auto-descoberta no Mac.
 import * as dgram from 'node:dgram';
+import * as net from 'node:net';
+import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { logger } from '../../classes/Logger.js';
 import { LogOrigin } from 'houseriaapp-types';
 import { getNetworkInterfaces } from '../../utils/network.js';
-import { hostname } from 'os';
+import { hostname, networkInterfaces } from 'os';
 
 export interface DiscoveredServer {
   service: string;
@@ -37,6 +43,18 @@ export class PowerPointDiscoveryService extends EventEmitter {
   private serverHost: string = '';
   private discoveredServers: Map<string, DiscoveredServer> = new Map();
   private onServerFoundCallback: ((server: DiscoveredServer) => void) | null = null;
+
+  // --- Scan unicast (alternativa ao broadcast, obrigatória no macOS) ---
+  private readonly SCAN_PORT = 7800; // porta TCP/WS do PPT (o mesmo do stream de dados)
+  private readonly SCAN_INTERVAL = 4000; // varre o /24 a cada 4s
+  private readonly TCP_TIMEOUT = 500; // timeout do probe TCP por host
+  private readonly WS_PROBE_TIMEOUT = 2500; // timeout pra colher a identidade via WS
+  private readonly SCAN_CONCURRENCY = 32; // hosts sondados em paralelo
+  private scanInterval: NodeJS.Timeout | null = null;
+  private isScanning = false;
+  private scanInFlight = false; // impede ciclos sobrepostos
+  private identityCache = new Map<string, DiscoveredServer>(); // ip -> identidade já colhida
+  private probing = new Set<string>(); // ips com WS-probe em andamento
 
   /**
    * Inicia o serviço de descoberta como CLIENTE (escuta broadcasts)
@@ -372,6 +390,191 @@ export class PowerPointDiscoveryService extends EventEmitter {
     }
   }
 
+  // ==========================================================================
+  // SCAN UNICAST — varre o /24 e conecta direto na 7800 (sem broadcast).
+  // Funciona no macOS (unicast passa pelo prompt de Rede Local; broadcast não).
+  // Emite o MESMO evento 'serverFound' do broadcast, então grupos/failover no
+  // multisource funcionam sem mudança.
+  // ==========================================================================
+
+  /** Inicia a varredura periódica do /24 local. */
+  startScanning(): void {
+    if (this.isScanning) return;
+    this.isScanning = true;
+    void this.runScanCycle();
+    this.scanInterval = setInterval(() => void this.runScanCycle(), this.SCAN_INTERVAL);
+    logger.info(LogOrigin.Server, `🔎 PowerPoint Discovery - scan unicast iniciado (/24 na porta ${this.SCAN_PORT})`);
+  }
+
+  /** Para a varredura. */
+  stopScanning(): void {
+    if (this.scanInterval) {
+      clearInterval(this.scanInterval);
+      this.scanInterval = null;
+    }
+    this.isScanning = false;
+    this.probing.clear();
+  }
+
+  /** Hosts do(s) /24 das interfaces LAN privadas (cap em /24 por segurança). */
+  private subnetHosts(): string[] {
+    const nets = networkInterfaces();
+    const hosts: string[] = [];
+    const seenBase = new Set<string>();
+    for (const name of Object.keys(nets)) {
+      for (const ni of nets[name] || []) {
+        if (ni.family !== 'IPv4' || ni.internal) continue;
+        // só ranges privados (LAN de evento), nunca varre IP público
+        if (!/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ni.address)) continue;
+        const base = ni.address.split('.').slice(0, 3).join('.'); // força /24
+        if (seenBase.has(base)) continue;
+        seenBase.add(base);
+        for (let i = 1; i <= 254; i++) hosts.push(`${base}.${i}`);
+      }
+    }
+    return hosts;
+  }
+
+  /** Um ciclo: TCP-probe em todos os hosts, depois colhe/atualiza identidade. */
+  private async runScanCycle(): Promise<void> {
+    if (this.scanInFlight) return;
+    this.scanInFlight = true;
+    try {
+      const hosts = this.subnetHosts();
+      const open: string[] = [];
+      let idx = 0;
+      const worker = async () => {
+        while (idx < hosts.length) {
+          const ip = hosts[idx++];
+          if (await this.tcpOpen(ip, this.SCAN_PORT)) open.push(ip);
+        }
+      };
+      await Promise.all(Array.from({ length: this.SCAN_CONCURRENCY }, () => worker()));
+
+      const openSet = new Set(open);
+      // Solta do cache identidades de IPs que sumiram (reprobar se voltarem).
+      for (const ip of [...this.identityCache.keys()]) {
+        if (!openSet.has(ip)) this.identityCache.delete(ip);
+      }
+      for (const ip of open) {
+        const cached = this.identityCache.get(ip);
+        if (cached) {
+          cached.timestamp = Date.now(); // mantém vivo (refresh lastSeen no multisource)
+          this.emitFound(cached);
+        } else if (!this.probing.has(ip)) {
+          this.wsProbe(ip); // novo host: colhe identidade via WS (assíncrono)
+        }
+      }
+    } catch (error) {
+      logger.error(
+        LogOrigin.Server,
+        `PowerPoint Discovery - erro no scan: ${error instanceof Error ? error.message : 'desconhecido'}`,
+      );
+    } finally {
+      this.scanInFlight = false;
+    }
+  }
+
+  /** true se a porta TCP abre dentro do timeout. */
+  private tcpOpen(ip: string, port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const sock = new net.Socket();
+      let done = false;
+      const finish = (v: boolean) => {
+        if (done) return;
+        done = true;
+        try { sock.destroy(); } catch { /* */ }
+        resolve(v);
+      };
+      sock.setTimeout(this.TCP_TIMEOUT);
+      sock.once('connect', () => finish(true));
+      sock.once('timeout', () => finish(false));
+      sock.once('error', () => finish(false));
+      try { sock.connect(port, ip); } catch { finish(false); }
+    });
+  }
+
+  /**
+   * Abre um WS curto pra colher a identidade (grupo/prioridade/instance/nome),
+   * que a máquina do PPT põe em todo pacote. Confirma que é um PPT antes de
+   * registrar (evita casar com outro serviço qualquer na 7800).
+   */
+  private wsProbe(ip: string): void {
+    this.probing.add(ip);
+    let ws: WebSocket | null = null;
+    let done = false;
+    let timer: NodeJS.Timeout;
+
+    const finish = (server: DiscoveredServer | null): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      this.probing.delete(ip);
+      try {
+        ws?.removeAllListeners();
+        ws?.close();
+      } catch { /* */ }
+      if (server) {
+        this.identityCache.set(ip, server);
+        this.emitFound(server);
+      }
+    };
+
+    timer = setTimeout(() => finish(null), this.WS_PROBE_TIMEOUT);
+    if (typeof timer.unref === 'function') timer.unref();
+
+    try {
+      ws = new WebSocket(`ws://${ip}:${this.SCAN_PORT}`);
+      ws.on('error', () => finish(null));
+      ws.on('close', () => finish(null));
+      ws.on('message', (data: WebSocket.Data) => {
+        try {
+          const msg = JSON.parse(data.toString());
+          const knownType =
+            msg && typeof msg.type === 'string' &&
+            ['connected', 'slides_info', 'current_slide', 'video_status', 'pong'].includes(msg.type);
+          const hasIdentity = msg && (msg.instance_id || msg.group_id || msg.group_name);
+          if (!knownType && !hasIdentity) return; // não parece PPT ainda; espera a próxima
+          const server: DiscoveredServer = {
+            service: this.SERVICE_NAME,
+            version: this.SERVICE_VERSION,
+            ip,
+            port: this.SCAN_PORT,
+            device_name: msg.machine_name || msg.device_name || ip,
+            timestamp: Date.now(),
+            instance_id: msg.instance_id || `${ip}:${this.SCAN_PORT}`,
+            machine_name: msg.machine_name || '',
+            group_id: msg.group_id || '',
+            group_name: msg.group_name || '',
+            priority: typeof msg.priority === 'number' ? msg.priority : Number(msg.priority) || 1,
+          };
+          logger.info(
+            LogOrigin.Server,
+            `🔎 PowerPoint Discovery - scan achou PPT em ${ip}:${this.SCAN_PORT} ` +
+              `(grupo "${server.group_name || server.group_id || 'solo'}", P${server.priority})`,
+          );
+          console.log(
+            `🔎 [SCAN] PPT em ${ip}:${this.SCAN_PORT} grupo="${server.group_name || server.group_id || 'solo'}" P${server.priority} instance=${server.instance_id}`,
+          );
+          finish(server);
+        } catch { /* ignora pacote inválido; espera o próximo */ }
+      });
+    } catch {
+      finish(null);
+    }
+  }
+
+  /** Registra um servidor achado (broadcast OU scan) e notifica os ouvintes. */
+  private emitFound(server: DiscoveredServer): void {
+    const key = server.instance_id || `${server.ip}:${server.port}`;
+    const isNew = !this.discoveredServers.has(key);
+    this.discoveredServers.set(key, server);
+    this.emit('serverFound', server);
+    if (this.onServerFoundCallback && isNew) {
+      this.onServerFoundCallback(server);
+    }
+  }
+
   /**
    * Para todos os serviços
    */
@@ -379,6 +582,7 @@ export class PowerPointDiscoveryService extends EventEmitter {
     this.stopListening();
     this.stopBroadcasting();
     this.stopPeriodicSearch();
+    this.stopScanning();
   }
 
   /**

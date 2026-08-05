@@ -71,7 +71,8 @@ export class PowerPointMultiSourceService {
     this.started = true;
 
     const discovery = getDiscoveryService();
-    discovery.startListening();
+    discovery.startListening(); // broadcast: instantâneo onde funciona (Windows)
+    discovery.startScanning(); // scan unicast: única via no macOS (broadcast é barrado lá)
     discovery.on('serverFound', (s: DiscoveredServer) => this.onServerFound(s));
 
     this.tickTimer = setInterval(() => this.tick(), TICK_MS);
@@ -104,8 +105,14 @@ export class PowerPointMultiSourceService {
   private handleServerFound(s: DiscoveredServer): void {
     if (!s.ip || !s.port) return;
     const instanceId = s.instance_id || `${s.ip}:${s.port}`;
-    // Sem group_id (app antigo ou sem grupo definido): vira um feed avulso próprio
-    const groupId = s.group_id || `solo:${instanceId}`;
+    // Sem group_id (app antigo ou sem grupo definido): vira um feed avulso próprio.
+    // A chave do grupo (e, portanto, da linha na nuvem `projectCode:groupId`) tem
+    // que ser ESTÁVEL entre reaberturas do PPT. O `instance_id` muda a cada vez
+    // que a máquina do PowerPoint reabre, o que criava uma linha órfã por
+    // reconexão (o espectador via o slide velho congelado embaixo do novo).
+    // Usa o nome da máquina (estável) e cai pra ip:port se não vier nome.
+    const soloKey = s.machine_name || s.device_name || `${s.ip}:${s.port}`;
+    const groupId = s.group_id || `solo:${soloKey}`;
     const groupName = s.group_name || s.machine_name || s.device_name || 'PowerPoint';
     let priority = Number(s.priority);
     if (!Number.isFinite(priority) || priority < 1) priority = 1;
@@ -282,19 +289,24 @@ export class PowerPointMultiSourceService {
         );
       }
     } else if (!wantCloud && group.supabase) {
-      try {
-        group.supabase.stop();
-      } catch {
-        // ignora
-      }
+      // Desligar a nuvem tem que APAGAR a linha do banco, não só parar de
+      // enviar — senão o espectador fica preso no último slide. `stopAndClear`
+      // apaga pela chave composta (projectCode:groupId) e depois para.
+      const supa = group.supabase;
       group.supabase = null;
-      logger.info(LogOrigin.Server, `☁️  PowerPoint MultiSource - nuvem DESLIGADA p/ grupo "${group.groupName}"`);
+      Promise.resolve(supa.stopAndClear()).catch(() => undefined);
+      logger.info(LogOrigin.Server, `☁️  PowerPoint MultiSource - nuvem DESLIGADA p/ grupo "${group.groupName}" (linha removida)`);
     }
   }
 
   private teardownGroup(group: Group): void {
     try {
-      group.supabase?.stop();
+      // Grupo saindo de vez (shutdown, não-consumido, ou sumiu da rede) →
+      // apaga a linha da nuvem, não só para. Failover NÃO passa por aqui
+      // (reconcile mantém o grupo e troca a instância), então isto não pisca
+      // o slide numa troca de máquina — só some quando o grupo realmente vai.
+      const supa = group.supabase;
+      if (supa) Promise.resolve(supa.stopAndClear()).catch(() => undefined);
     } catch {
       // ignora
     }

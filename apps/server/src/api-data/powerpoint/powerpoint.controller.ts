@@ -12,7 +12,6 @@ import { getMultiSourceService } from './powerpoint-multisource.service.js';
 import { supabaseAdapter } from '../../adapters/SupabaseAdapter.js';
 import { getDataProvider } from '../../classes/data-provider/DataProvider.js';
 import { socket } from '../../adapters/WebsocketAdapter.js';
-import { dispatchFromAdapter } from '../../api-integration/integration.controller.js';
 
 // Helper para obter __dirname que funciona tanto em ES modules quanto CommonJS
 function getDirname(): string {
@@ -1046,46 +1045,40 @@ export async function togglePowerPointController(
   res: Response
 ): Promise<void> {
   try {
-    logger.info(LogOrigin.Server, '🔄 PowerPoint toggle REST - Chamando handler de integração');
-    
-    // Usa o mesmo handler que o botão PPT usa (via WebSocket)
-    // Isso garante que ambos usam exatamente a mesma lógica
-    const result = dispatchFromAdapter('togglepowerpoint', undefined, 'http');
-    
-    // O handler pode retornar uma Promise ou um objeto direto
-    const resolvedResult = result instanceof Promise ? await result : result;
-    
-    if (resolvedResult && resolvedResult.payload) {
-      const payload = resolvedResult.payload as { enabled?: boolean; error?: string; currentSlide?: number; slideCount?: number };
-      
-      if (payload.error) {
-        logger.warning(LogOrigin.Server, `⚠️  PowerPoint toggle REST - Erro: ${payload.error}`);
-        res.status(503).json({
-          success: false,
-          enabled: false,
-          error: payload.error,
-        });
-        return;
-      }
-      
-      const enabled = Boolean(payload.enabled);
-      logger.info(LogOrigin.Server, `✅ PowerPoint toggle REST: ${enabled ? 'Habilitado (verde)' : 'Desabilitado (vermelho)'}`);
-      
+    // O botão de PPT do Stream Deck agora alterna a NUVEM (o toggle "nuvem" do
+    // modelo multi-grupo), que é o que o antigo botão-PPT fazia na prática.
+    // Como é um botão único, alterna todos os grupos de uma vez: se algum está
+    // publicando, desliga todos; senão, liga todos.
+    const multi = getMultiSourceService();
+    const groups = multi.getSnapshot();
+
+    if (groups.length === 0) {
+      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle REST - nenhuma fonte de PowerPoint na rede ainda');
       res.status(200).json({
         success: true,
-        enabled,
-        message: enabled ? 'PowerPoint habilitado' : 'PowerPoint desabilitado',
-        currentSlide: payload.currentSlide,
-        slideCount: payload.slideCount,
-      });
-    } else {
-      logger.warning(LogOrigin.Server, '⚠️  PowerPoint toggle REST - Resposta inválida do handler');
-      res.status(500).json({
-        success: false,
         enabled: false,
-        error: 'Resposta inválida do servidor',
+        message: 'Nenhuma fonte de PowerPoint na rede ainda',
       });
+      return;
     }
+
+    const algumLigado = groups.some((g) => g.cloud);
+    const novoEstado = !algumLigado;
+    for (const g of groups) multi.setCloud(g.groupId, novoEstado);
+
+    logger.info(
+      LogOrigin.Server,
+      `☁️  PowerPoint toggle REST → nuvem ${novoEstado ? 'LIGADA (verde)' : 'DESLIGADA (vermelho)'} em ${groups.length} grupo(s)`,
+    );
+
+    const primeiro = groups[0];
+    res.status(200).json({
+      success: true,
+      enabled: novoEstado,
+      message: novoEstado ? 'PowerPoint publicado na nuvem' : 'PowerPoint removido da nuvem',
+      currentSlide: primeiro?.currentSlide ?? undefined,
+      slideCount: primeiro?.slideCount ?? undefined,
+    });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
     logger.error(LogOrigin.Server, `❌ PowerPoint toggle REST - Erro: ${errorMsg}`);
@@ -1105,23 +1098,14 @@ export async function getPowerPointStatusRESTController(
   res: Response
 ): Promise<void> {
   try {
-    await initializeSupabaseService();
-    
-    if (!supabaseService) {
-      res.status(503).json({
-        success: false,
-        enabled: false,
-        error: 'Serviço PowerPoint não disponível',
-      });
-      return;
-    }
-    
-    const enabled = supabaseService.getEnabled();
-    
+    // Estado do botão = a NUVEM está ligada em algum grupo? (mesmo critério do toggle)
+    const groups = getMultiSourceService().getSnapshot();
+    const enabled = groups.some((g) => g.cloud);
+
     res.status(200).json({
       success: true,
       enabled,
-      message: enabled ? 'PowerPoint está habilitado' : 'PowerPoint está desabilitado',
+      message: enabled ? 'PowerPoint está publicado na nuvem' : 'PowerPoint não está na nuvem',
     });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
@@ -1144,10 +1128,11 @@ export async function getPowerPointCompleteStatusController(
 ): Promise<void> {
   try {
     await initializeSupabaseService();
-    
-    // Obtém status enabled (se está enviando para Supabase)
-    const enabled = supabaseService ? supabaseService.getEnabled() : false;
-    
+
+    // Estado "publicando" = a nuvem está ligada em algum grupo (mesmo critério
+    // do /toggle e /toggle/status). Antes vinha do supabaseService legado.
+    const enabled = getMultiSourceService().getSnapshot().some((g) => g.cloud);
+
     // Obtém status do PowerPoint (slide, vídeo, etc)
     let powerpointStatus: PowerPointStatus | null = null;
     

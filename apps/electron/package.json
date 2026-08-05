@@ -1,6 +1,6 @@
 {
   "name": "houseriaapp-electron",
-  "version": "1.0.5",
+  "version": "1.0.7",
   "author": "Vinicius Queiroz",
   "description": "Time keeping for live events",
   "keywords": [
@@ -17,7 +17,7 @@
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {
-    "electron": "36.3.1",
+    "electron": "43.3.0",
     "electron-builder": "26.0.12",
     "electron-rebuild": "^3.2.9",
     "eslint": "catalog:",
@@ -26,8 +26,6 @@
     "wait-on": "^7.2.0"
   },
   "scripts": {
-    "postinstall": "electron-rebuild -f -w keytar --version=36.3.1",
-    "rebuild": "electron-rebuild -f -w keytar --version=36.3.1",
     "lint": "eslint . --quiet",
     "dev": "cross-env NODE_ENV=development electron .",
     "dev:remote": "cross-env NODE_ENV=development REMOTE_API_URL=https://seu-servidor.vercel.app electron .",
@@ -47,7 +45,7 @@
     "appId": "no.lightdev.houseriaapp",
     "asar": true,
     "generateUpdatesFilesForAllChannels": false,
-    "electronVersion": "36.3.1",
+    "electronVersion": "43.3.0",
     "compression": "normal",
     "dmg": {
       "artifactName": "houseriaapp-macOS-${arch}.dmg",
@@ -81,20 +79,21 @@
         {
           "target": "dmg",
           "arch": [
-            "x64",
-            "arm64"
+            "universal"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "x64",
-            "arm64"
+            "universal"
           ]
         }
       ],
       "category": "public.app-category.productivity",
-      "icon": "icon.icns"
+      "icon": "icon.icns",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "O HouseriaAPP procura o PowerPoint na sua rede local para sincronizar os slides ao vivo durante o evento."
+      }
     },
     "win": {
       "target": "nsis"
