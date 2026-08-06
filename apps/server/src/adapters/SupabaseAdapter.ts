@@ -265,11 +265,20 @@ export class SupabaseAdapter {
           LogOrigin.Server,
           `Supabase: Auto-aplicadas ${applied} edição(ões) da web (removidas ${removed} da fila)`,
         );
-        // Se o toggle está ligado, o forceUpdate do handler genérico já
-        // republica o `data`. Se está desligado, empurra uma vez (conecta,
-        // envia, desconecta) pra edição chegar à nuvem e às telas web.
-        if (applied > 0 && !this.isConnected) {
-          await this.syncDataToSupabase();
+        // Republica o `data` nos DOIS casos. O comentário antigo dizia que, com
+        // o toggle ligado, "o forceUpdate do handler genérico" cobria — mas esse
+        // handler só dispara para ações vindas do WebSocket
+        // (integration.controller). O auto-apply chama `updateEvent` direto, sem
+        // passar por lá, então com o toggle LIGADO — o estado normal em evento ao
+        // vivo — a edição era aplicada no projeto local e nunca subia.
+        if (applied > 0) {
+          if (this.isConnected) {
+            // Debounced lá dentro: coalesce um lote de edições numa subida só.
+            void this.forceProjectUpdate();
+          } else {
+            // Desligado: empurra uma vez (conecta, envia, desconecta).
+            await this.syncDataToSupabase();
+          }
         }
       })
       .catch((err) => {
@@ -391,16 +400,28 @@ export class SupabaseAdapter {
 
   /**
    * Sinaliza por broadcast que o dado FRIO (rundown/projeto) mudou, pra que a
-   * Fase 3 (site broadcast-only) saiba rebaixar o snapshot do banco. Aditivo:
-   * ninguém escuta hoje — deixa o desktop pronto pra Fase 3 sem nova distribuição.
+   * Fase 3 (site broadcast-only) rebaixe o snapshot do banco.
+   *
+   * SÓ PODE SER CHAMADO DEPOIS QUE O UPSERT VOLTOU. O site larga o
+   * `postgres_changes` assim que o primeiro broadcast chega, e a partir daí este
+   * aviso é o único gatilho de dado frio que ele tem — ele responde relendo a
+   * linha. Avisar antes de gravar fazia o site reler o snapshot ANTIGO e ficar
+   * uma edição atrás, sem nenhuma segunda chance a não ser o F5.
+   *
+   * `updatedAt` é o carimbo que acabou de ser gravado: o site reconsulta até a
+   * linha vir com carimbo >= este, o que também cobre réplica de leitura atrasada.
    */
-  private broadcastSnapshotChanged(projectCode: string) {
+  private broadcastSnapshotChanged(projectCode: string, updatedAt: string | null) {
     try {
       const code = (projectCode || '').trim().toLowerCase();
       if (!code) return;
       const channel = this.ensureBroadcastChannel(code);
       if (!channel || !this.broadcastReady) return;
-      channel.send({ type: 'broadcast', event: 'snapshot-changed', payload: { ts: Date.now() } });
+      channel.send({
+        type: 'broadcast',
+        event: 'snapshot-changed',
+        payload: { ts: Date.now(), updatedAt },
+      });
     } catch (error) {
       logger.warning(LogOrigin.Server, `Supabase broadcast: erro snapshot-changed: ${error}`);
     }
@@ -915,8 +936,11 @@ export class SupabaseAdapter {
     
     const payload = this.buildProjectPayload(currentData);
     this.broadcastHotState(payload);
-    this.broadcastSnapshotChanged(payload.projectCode);
-    await this.sendOptimizedData(payload);
+    // Grava PRIMEIRO, avisa depois — ver broadcastSnapshotChanged.
+    const updatedAt = await this.sendOptimizedData(payload);
+    if (updatedAt) {
+      this.broadcastSnapshotChanged(payload.projectCode, updatedAt);
+    }
   }
 
   /**
@@ -927,8 +951,11 @@ export class SupabaseAdapter {
     
     const payload = this.buildRundownPayload(currentData);
     this.broadcastHotState(payload);
-    this.broadcastSnapshotChanged(payload.projectCode);
-    await this.sendOptimizedData(payload);
+    // Grava PRIMEIRO, avisa depois — ver broadcastSnapshotChanged.
+    const updatedAt = await this.sendOptimizedData(payload);
+    if (updatedAt) {
+      this.broadcastSnapshotChanged(payload.projectCode, updatedAt);
+    }
   }
 
   /**
@@ -1111,21 +1138,45 @@ export class SupabaseAdapter {
   }
 
   /**
-   * Calculate hash for rundown to detect changes
+   * Calculate hash for rundown to detect changes.
+   *
+   * Esta é a REDE DE SEGURANÇA: pega mudança de rundown que não passou pelas
+   * rotas REST (que já chamam forceProjectUpdate). Por isso precisa cobrir todo
+   * campo que a web mostra — `custom` (a "informação física" do cuesheet) e
+   * `note` ficavam de fora, e uma edição nesses campos passava despercebida.
+   *
+   * Concatena numa string em vez de JSON.stringify(map(...)): mesmo poder de
+   * detecção sem alocar um objeto por evento — importa porque isto roda 1x/s
+   * (RUNDOWN_HASH_THROTTLE_MS) com rundown de centenas de linhas.
    */
   private calculateRundownHash(rundown: readonly any[]): string {
     if (!rundown || rundown.length === 0) return '';
-    
-    const hashData = rundown.map(event => ({
-      id: event.id,
-      title: event.title,
-      timeStart: event.timeStart,
-      timeEnd: event.timeEnd,
-      duration: event.duration,
-      colour: event.colour
-    }));
-    
-    return JSON.stringify(hashData);
+
+    const parts: any[] = [];
+    for (const event of rundown) {
+      parts.push(
+        event.id,
+        event.type,
+        event.title,
+        event.cue,
+        event.note,
+        event.timeStart,
+        event.timeEnd,
+        event.duration,
+        event.colour,
+        event.skip ? 1 : 0,
+      );
+      const custom = event.custom;
+      if (custom && typeof custom === 'object') {
+        for (const key of Object.keys(custom)) {
+          parts.push(key, custom[key]);
+        }
+      }
+    }
+
+    // U+0001 como separador: não aparece em texto digitado, então não existe
+    // combinação de valores que produza a mesma string por acidente.
+    return parts.join('\u0001');
   }
 
   /**
@@ -1505,11 +1556,16 @@ export class SupabaseAdapter {
   }
 
   /**
-   * Send optimized data to Supabase
+   * Send optimized data to Supabase.
+   *
+   * @returns o `updated_at` gravado quando o upsert deu certo, `null` quando não
+   * gravou. Quem chama usa isso pra só avisar o site (snapshot-changed) depois
+   * que o dado está no banco — avisar sobre uma escrita que falhou fazia o site
+   * reler a linha antiga e acreditar que estava em dia.
    */
-  private async sendOptimizedData(payload: any) {
+  private async sendOptimizedData(payload: any): Promise<string | null> {
     if (!this.isConnected || !this.supabase || !this.config) {
-      return;
+      return null;
     }
 
     try {
@@ -1518,7 +1574,7 @@ export class SupabaseAdapter {
 
       if (!sanitizedProjectCode) {
         logger.warning(LogOrigin.Server, 'sendOptimizedData: projectCode vazio, não é possível salvar');
-        return;
+        return null;
       }
 
       // Buscar edit_access_codes existentes (coluna separada ou dentro de data para compatibilidade)
@@ -1559,6 +1615,8 @@ export class SupabaseAdapter {
       };
       delete (sanitizedPayload as any).edit_access_codes;
 
+      const updatedAt = new Date().toISOString();
+
       const { error } = await this.supabase
         .from(this.config.tableName || 'ontime_realtime')
         .upsert({
@@ -1566,7 +1624,7 @@ export class SupabaseAdapter {
           data: sanitizedPayload,
           project_code: sanitizedProjectCode,
           edit_access_codes: existingEditAccessCodes,
-          updated_at: new Date().toISOString()
+          updated_at: updatedAt
         }, {
           onConflict: 'id'  // Usa id como chave primária (id = project_code)
         });
@@ -1574,14 +1632,17 @@ export class SupabaseAdapter {
       if (error) {
         logger.error(LogOrigin.Server, `Supabase upsert error: ${error.message} (code: ${error.code})`);
         console.error(`Supabase upsert error: ${error.message}`);
-      } else {
-        logger.info(LogOrigin.Server, `Dados salvos no Supabase para projeto: ${sanitizedProjectCode}`);
-        this.lastSendTime = Date.now();
+        return null;
       }
+
+      logger.info(LogOrigin.Server, `Dados salvos no Supabase para projeto: ${sanitizedProjectCode}`);
+      this.lastSendTime = Date.now();
+      return updatedAt;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
       logger.error(LogOrigin.Server, `Supabase send error: ${errorMsg}`);
       console.error(`Supabase send error: ${error}`);
+      return null;
     }
   }
 
