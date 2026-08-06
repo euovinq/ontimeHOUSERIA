@@ -185,11 +185,19 @@ E anon) + corte com data anunciada. **Começar por ela** quando a Fase B for enc
 
 ### Distribuir o desktop — RESOLVIDO e PROVADO em 05/08/2026 ✅
 
-> A esteira foi provada de ponta a ponta: a 1.0.12 se instalou sozinha a partir da 1.0.11,
-> no macOS, com log registrando o `nativeUpdater.update-downloaded`. O `release-mac.sh`
-> assina, notariza, publica no R2 e arquiva as versões antigas; o `.env` da raiz já tem as
-> chaves de R2 e Apple. **Falta só o Windows**, cujo job de CI dispara na tag (`v1.0.12`
-> foi a primeira) e ainda não foi verificado numa máquina real.
+> **Provado nas DUAS plataformas, com instalação real:**
+> - **macOS** — a 1.0.12 se instalou sozinha a partir da 1.0.11, com log registrando o
+>   `nativeUpdater.update-downloaded`. Publica pelo `release-mac.sh` (assina, notariza,
+>   sobe pro R2 e arquiva as versões antigas), com as credenciais em `~/.houseria/release.env`.
+> - **Windows** — o job de CI publica no R2 (`latest.yml` + `.exe` + blockmap), e uma
+>   máquina Windows com um instalador de teste em 1.0.11 encontrou, baixou e aplicou a
+>   1.0.12 sozinha. O Actions do repositório estava **desligado** até 05/08/2026 — por isso
+>   nenhuma tag anterior chegou a rodar, e o R2 nunca teve manifesto de Windows.
+>
+> O workflow tem um modo **build de teste**: `workflow_dispatch` com o input
+> `versao_de_teste` gera um instalador com número rebaixado, **sem tocar no R2**, e o
+> entrega como artefato do run. Foi assim que o Windows foi verificado, já que nunca houve
+> versão anterior publicada para ele — e serve para repetir o teste a qualquer momento.
 >
 > Além da esteira, dois defeitos NO APP tiveram que ser corrigidos para a troca acontecer
 > — ver "05/08/2026 (noite)" acima, e a consequência para a Fase 3 registrada lá.
@@ -232,9 +240,10 @@ faltava a esteira que sobe os artefatos.
 escopo do token R2 alcança o bucket `houseria` — provado, publicamos cinco versões — e a
 notarização passa com o perfil `vexy-notary` do chaveiro.
 
-**Só sobrou o Windows:** os 4 secrets de R2 no GitHub e a verificação de que o job da tag
-publica de verdade e de que uma máquina Windows se atualiza. A `v1.0.12` é a primeira tag
-depois do conserto; ninguém conferiu o resultado dela ainda.
+**O Windows também está fechado:** os 4 secrets de R2 estão no GitHub, o job publica, e a
+atualização foi verificada numa máquina real. Fica um detalhe do CI registrado: o passo de
+criar o GitHub Release só roda em disparo por tag — num `workflow_dispatch` ele falharia
+por falta de ref de tag, pintando de vermelho um job cuja parte essencial já deu certo.
 
 **Consequência para o roadmap:** a premissa original ("a esteira é o pré-requisito da Fase
 3") estava certa, mas incompleta — faltava contar o app. Ver o bloco de 05/08/2026 (noite):

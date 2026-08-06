@@ -278,8 +278,24 @@ PRÓXIMA JANELA (fora de evento, com convivência de desktop):
  11. Fase 3 (desktop com identidade) + Fase B/4 (espectador sem banco),
      coordenados — a jogada que destrava escala E fecha ontime_realtime.
      ATENÇÃO: o corte por versão não acontece sozinho (item 9).
- 12. Windows: conferir que a tag v1.0.12 publicou e que uma máquina atualiza.
 ```
+
+FEITO ainda em 05/08/2026, depois do item 9:
+  - Windows fechado: Actions estava DESLIGADO no repo (por isso nenhuma tag
+    rodava); ligado, secrets de R2 configurados, job publica no R2 e uma
+    máquina Windows se atualizou de verdade (1.0.11 de teste → 1.0.12).
+  - Credenciais de release saíram de dentro do app. O `.env` da raiz era
+    empacotado via `extraResources`, então as versões 1.0.8–1.0.12 saíram com
+    as chaves de R2 e Apple em texto puro. Chaves ROTACIONADAS; credenciais
+    agora em `~/.houseria/release.env` e o bundle leva só
+    `apps/electron/runtime.env`, sem segredo.
+
+AINDA PENDENTE:
+ 12. macOS 1.0.13 — a 1.0.12 do mac publicada ainda carrega as chaves antigas
+     embutidas (mortas após a rotação). É higiene, não risco: a próxima versão
+     publicada deve ser a primeira limpa nas duas plataformas (o .exe do
+     Windows 1.0.12 já saiu limpo, por ter sido buildado após a correção).
+ 13. Avisar os clientes sobre a instalação manual única (ver item 9).
 
 ## Os três números para acompanhar a saúde
 
