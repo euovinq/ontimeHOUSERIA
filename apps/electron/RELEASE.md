@@ -87,9 +87,10 @@ auto-update do Windows funciona mesmo assim.)
 ./apps/electron/release-mac.sh
 
 # 3. Windows (CI): commit, tag e push
-git commit -am "release: v1.0.6"
-git tag v1.0.6
-git push origin main --tags
+#    (a branch deste repo é `master` — `main` só existe no houseriasite)
+git commit -am "release: v1.0.8"
+git tag v1.0.8
+git push origin master --tags
 ```
 
 > O auto-update só dispara para quem está numa versão **menor** que a publicada.
