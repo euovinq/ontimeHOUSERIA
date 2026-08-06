@@ -218,6 +218,51 @@ for key in $ROOT_KEYS; do
   esac
 done
 
+# ── Retenção do arquivo ─────────────────────────────────────────────────
+# Mantém só as RETENCAO versões anteriores em versoes-antigas/. O resto some.
+#
+# É seguro apagar: o updater NUNCA lê de versoes-antigas/ — ele segue o
+# latest-mac.yml, que aponta para a raiz. Quem está na 1.0.5 vai direto para a
+# atual, sem passar pelas intermediárias. O arquivo existe só para download
+# manual e para voltar atrás, e três versões é uma janela de rollback razoável
+# contra ~220 MB por versão guardada.
+RETENCAO=3
+log "Retenção: mantendo as $RETENCAO versões anteriores em versoes-antigas/..."
+
+# `sort -V` e não `sort`: em ordem alfabética 1.0.9 vem DEPOIS de 1.0.10, e a
+# poda apagaria a versão errada.
+VERSOES_ARQUIVADAS="$(arch_aws s3api list-objects-v2 --bucket "$R2_BUCKET" \
+  --prefix "${R2_PREFIX}/versoes-antigas/" --delimiter "/" \
+  --query 'CommonPrefixes[].Prefix' --output text 2>/dev/null \
+  | tr '\t' '\n' | sed -E 's#.*/versoes-antigas/([^/]+)/#\1#' \
+  | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V || true)"
+
+if [ -z "$VERSOES_ARQUIVADAS" ]; then
+  ok "nada arquivado ainda"
+else
+  TOTAL_ARQ="$(printf '%s\n' "$VERSOES_ARQUIVADAS" | wc -l | tr -d ' ')"
+  if [ "$TOTAL_ARQ" -le "$RETENCAO" ]; then
+    ok "$TOTAL_ARQ versão(ões) arquivada(s) — dentro do limite, nada a apagar"
+  else
+    A_APAGAR="$(printf '%s\n' "$VERSOES_ARQUIVADAS" | head -n "$((TOTAL_ARQ - RETENCAO))")"
+    MANTIDAS="$(printf '%s\n' "$VERSOES_ARQUIVADAS" | tail -n "$RETENCAO" | tr '\n' ' ')"
+    echo "     mantendo: $MANTIDAS"
+    while IFS= read -r v; do
+      [ -z "$v" ] && continue
+      # Trava de segurança: a versão sendo publicada nunca pode ser apagada.
+      # Ela vive na raiz, não aqui — mas se um dia isso mudar, o erro seria
+      # apagar o que acabou de subir.
+      [ "$v" = "$VERSAO" ] && { warn "pulando $v — é a versão desta publicação"; continue; }
+      if arch_aws s3 rm "s3://${R2_BUCKET}/${R2_PREFIX}/versoes-antigas/${v}/" \
+           --recursive >/dev/null 2>&1; then
+        ok "apagada do arquivo: $v"
+      else
+        warn "não consegui apagar $v (segue no bucket, sem problema)"
+      fi
+    done <<< "$A_APAGAR"
+  fi
+fi
+
 ok "Publicado. O manifesto está no ar:"
 echo "     ${PUBLIC_BASE}/latest-mac.yml"
 
