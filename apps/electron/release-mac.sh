@@ -68,10 +68,39 @@ if [ ! -f "$ENV_FILE" ]; then
   fail "falta $ENV_FILE (ver o cabeçalho deste script)"
 fi
 set -a; source "$ENV_FILE"; set +a
-for v in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+for v in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
   [ -n "${!v:-}" ] || fail "$v não está em $ENV_FILE"
 done
 command -v aws >/dev/null || fail "aws CLI não encontrado (R2 fala S3): brew install awscli"
+
+# ── Credencial da Apple: só o chaveiro ──────────────────────────────────
+# As DUAS notarizações (o .app pelo electron-builder, a casca do .dmg pelo
+# notarytool aqui embaixo) passam a usar o MESMO perfil do chaveiro.
+#
+# Antes, a senha de app vivia também em texto puro no release.env — duas cópias
+# do mesmo segredo, que precisavam ser trocadas juntas a cada rotação. Em
+# 05/08/2026 uma delas foi colada com um caractere a mais: o electron-builder
+# tomou 401 DEPOIS de dez minutos de build, enquanto o perfil do chaveiro seguia
+# válido. Uma fonte só, guardada pelo sistema, elimina a classe inteira do erro.
+NOTARY_PROFILE="${APPLE_NOTARY_PROFILE:-vexy-notary}"
+
+# O electron-builder tenta Apple ID/senha ANTES do chaveiro. Se sobrarem no
+# ambiente (do release.env antigo, por exemplo), ele usa as antigas e ignora o
+# perfil — exatamente o modo de falha que estamos fechando.
+unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_ID_PASSWORD APPLEID APPLEIDPASS
+export APPLE_KEYCHAIN_PROFILE="$NOTARY_PROFILE"
+
+# Pré-voo: a credencial é conferida em segundos, antes de gastar o build. A
+# falha de 05/08 custou dez minutos para dizer o que esta linha diz na hora.
+log "Conferindo a credencial de notarização ($NOTARY_PROFILE)..."
+if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+  fail "o perfil '$NOTARY_PROFILE' não autentica na Apple.
+   Recadastre (ele pergunta a senha, sem deixar rastro no histórico):
+     xcrun notarytool store-credentials \"$NOTARY_PROFILE\" \\
+       --apple-id SEU_APPLE_ID --team-id ${APPLE_TEAM_ID:-38N7F4DRZ4}
+   A senha de app se gera em appleid.apple.com > Sign-In and Security."
+fi
+ok "credencial de notarização válida"
 
 # ── Certificado no chaveiro ─────────────────────────────────────────────
 if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then
@@ -133,7 +162,7 @@ ok "latest-mac.yml gerado"
 # assinatura faz o `spctl` recusar a casca. Ordem obrigatória: assina →
 # notariza → grampeia (assinar muda o hash e invalida um staple anterior).
 DMG="$DIST/houseriaapp-macOS-universal.dmg"
-NOTARY_PROFILE="${APPLE_NOTARY_PROFILE:-vexy-notary}"
+# NOTARY_PROFILE já foi definido e VALIDADO lá em cima, no pré-voo.
 if [ -f "$DMG" ]; then
   log "Assinando + notarizando + grampeando o DMG..."
   SIGN_ID="Developer ID Application: $(security find-identity -v -p codesigning | grep 'Developer ID Application' | head -1 | sed -E 's/.*"Developer ID Application: (.*)".*/\1/')"

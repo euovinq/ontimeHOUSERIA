@@ -25,19 +25,32 @@ que nem batiam com os que o build gera (`houseriaapp-*`). Confirmado na época: 
 ### Pré-requisitos (uma vez)
 
 1. **Cert "Developer ID Application" no chaveiro** — você já tem (foi o que assinou o vexy).
-2. **`~/.houseria/release.env`** — **fora do repositório**, com estas linhas:
+2. **`~/.houseria/release.env`** — **fora do repositório**, só com as chaves do R2:
 
    ```sh
    # R2: as MESMAS chaves do ~/.vexy/release.env (mesma conta Cloudflare,
    # account fde731…ced2). O bucket/URL já estão fixos no script.
    R2_ACCESS_KEY_ID=...
    R2_SECRET_ACCESS_KEY=...
-
-   # Apple: o electron-builder notariza com estes três.
-   APPLE_ID=seu@email
-   APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
-   APPLE_TEAM_ID=38N7F4DRZ4
    ```
+
+3. **A credencial da Apple no chaveiro**, uma vez só:
+
+   ```sh
+   xcrun notarytool store-credentials "vexy-notary" \
+     --apple-id SEU_APPLE_ID --team-id 38N7F4DRZ4
+   ```
+
+   Ele pergunta a senha de app (gerada em appleid.apple.com → Sign-In and
+   Security → App-Specific Passwords) sem deixá-la no histórico do shell.
+
+> **Por que a senha da Apple NÃO fica no `release.env`.** As duas notarizações —
+> o `.app` pelo electron-builder e a casca do `.dmg` pelo `notarytool` — usam o mesmo
+> perfil do chaveiro. Antes a senha vivia nos dois lugares e precisava ser trocada nos
+> dois a cada rotação; em 05/08/2026 uma das cópias foi colada com um caractere a mais e
+> o build tomou 401 **depois de dez minutos**, enquanto a outra seguia válida. Uma fonte
+> só, guardada pelo sistema, elimina a classe inteira do erro — e o script confere a
+> credencial em segundos, antes de buildar.
 
    ```sh
    mkdir -p ~/.houseria && chmod 700 ~/.houseria
