@@ -265,10 +265,20 @@ FEITO até 05/08/2026:
   1–7. site publicado, índices, replica identity, C.1–C.3, D, e todo o plano 02
        Fases 0/1/5. Verificado com evento de teste ao vivo.
 
+FEITO em 05/08/2026 (noite):
+  8. corrida do snapshot corrigida (a web voltou a refletir edição na hora);
+  9. auto-update PROVADO no macOS — mas com uma pegadinha: as versões em campo
+     (1.0.5–1.0.8) não conseguem se atualizar sozinhas, precisam de UMA
+     instalação manual da 1.0.9+. Ver o README.
+
 PRÓXIMA JANELA (fora de evento, com convivência de desktop):
-  8. Fase 3 (desktop com identidade) + Fase B/4 (espectador sem banco), coordenados
-     — é a jogada que destrava escala E fecha ontime_realtime.
-  9. Distribuir o desktop novo.
+ 10. B4 — ligar as 5 telas de espectador à rota de snapshot. Ficou barato: elas
+     já leem por uma função só (`houseriasite/lib/snapshot.ts`), então é trocar
+     a origem em um lugar. Não depende de redistribuir desktop.
+ 11. Fase 3 (desktop com identidade) + Fase B/4 (espectador sem banco),
+     coordenados — a jogada que destrava escala E fecha ontime_realtime.
+     ATENÇÃO: o corte por versão não acontece sozinho (item 9).
+ 12. Windows: conferir que a tag v1.0.12 publicou e que uma máquina atualiza.
 ```
 
 ## Os três números para acompanhar a saúde

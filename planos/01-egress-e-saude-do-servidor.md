@@ -325,6 +325,13 @@ para o carregamento da página e para mudanças estruturais (adicionar/remover/r
 > Falta para o REVOKE de `anon` (que é o objetivo final): a assinatura de
 > Realtime ainda toca `ontime_realtime` (item B2). O snapshot é só um dos
 > pré-requisitos.
+>
+> **Atualização de 05/08/2026 (noite): o wiring ficou mais barato do que este
+> plano previa.** Ao corrigir a corrida do snapshot, as 5 telas de espectador
+> passaram a ler o dado frio por uma função só — `houseriasite/lib/snapshot.ts`,
+> que hoje bate no PostgREST. Ligar o B4 virou trocar a origem **em um lugar**,
+> não repetir o `select` em cinco páginas. O fluxo 401 → `AccessCodeForm` dos 5
+> projetos com código continua sendo o ponto de atenção, e ele é por página.
 
 #### (original)
 

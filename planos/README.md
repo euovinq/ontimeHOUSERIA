@@ -11,7 +11,7 @@ perder a visão do conjunto — vários itens tocam os dois ao mesmo tempo.
 |---|---|---|
 | 01 | [Egress e saúde do servidor](01-egress-e-saude-do-servidor.md) | Fase A **feita**; Fase B pendente (rota de snapshot já construída) |
 | 02 | [Segurança e multi-tenancy](02-seguranca-e-multitenancy.md) | Fases 0, 1 e 5 **feitas**; Fase 2 **provada** (falta acoplar); 3 e 4 pendentes |
-| 03 | [Eventos e painel do dono](03-eventos-e-painel-do-dono.md) | etapas 1–7 **feitas** e no ar |
+| 03 | [Eventos e painel do dono](03-eventos-e-painel-do-dono.md) | etapas 1–8 **feitas** e no ar (o bloco de saúde entrou depois de o plano ser escrito) |
 | 04 | [Runbook de pendências](04-runbook-de-pendencias.md) | o que sobrou, com comando e reversão |
 
 ## Se você está começando agora
@@ -100,6 +100,48 @@ obter). Rodam no build e semanalmente.
 **Contador de pendências** virou coluna gerada: refetch do dashboard **395.790 → 50.845
 bytes** (−87%).
 
+### 05/08/2026 (noite) — a web voltou a atualizar na hora, e o auto-update passou a existir
+
+**A corrida do snapshot.** Um cliente relatou que edição no cuesheet do desktop só
+aparecia na web depois de recarregar. A causa era estrutural, não intermitência: desde a
+Fase 3 as telas largam o `postgres_changes` no primeiro broadcast, e o único gatilho de
+dado frio vira o `snapshot-changed` — que manda a página reler a linha. O desktop emitia
+esse aviso **antes** de gravar. A leitura da página (um round-trip) sempre ganhava do
+upsert (dois round-trips, até 1,5 MB pelo uplink do local), então a web relia o snapshot
+antigo e ficava **uma edição atrás**, sem segunda chance a não ser o F5.
+
+Agora grava primeiro, avisa depois, e só avisa se o upsert deu certo — com o `updated_at`
+no payload, para o site esperar a linha ficar pelo menos tão nova quanto ela
+(`houseriasite/lib/snapshot.ts`). Dois defeitos vizinhos saíram junto: o auto-apply de
+edição vinda da web tinha a condição invertida (só republicava com o toggle DESligado, ou
+seja, nunca em evento ao vivo), e o hash de detecção de rundown era cego para `custom` e
+`note` — justamente a "informação física" da queixa.
+
+**Efeito colateral bom:** as 5 telas de espectador passaram a ler o snapshot por uma
+função só. Ligar a Fase B4 virou trocar a origem em um lugar, não em cinco.
+
+**O auto-update: dois defeitos em série, e ele nunca funcionou.** Não era a esteira do R2
+(essa estava certa) — era o app. `MacUpdater` só manda o Squirrel preparar a troca se
+`autoInstallOnAppQuit` já for `true` no download; ligávamos a flag só na hora de instalar,
+o que **também** desarma o gatilho de recuperação do `quitAndInstall`. As duas portas
+fechadas ao mesmo tempo. Vencido isso, batia no segundo: `quitAndInstall` no macOS fecha
+as janelas **antes** de emitir `before-quit`, e o "esconder ao fechar" do `main.js` só
+liberava com `isQuitting` — que chegava tarde. O app escondia a janela e seguia vivo.
+
+Consertar só um deixava o sintoma idêntico. É por isso que atravessaram da 1.0.5 à 1.0.8.
+
+**Provado ponta a ponta:** a 1.0.11 em `/Applications` se atualizou sozinha para a 1.0.12.
+Também foi corrigida a cegueira que escondeu tudo isso: o updater não logava nada em
+produção. Agora escreve em `~/Library/Logs/houseriaapp-electron/updater.log`, e falha
+vira diálogo em vez de silêncio.
+
+> **Consequência para a Fase 3, e não é pequena.** A correção não alcança o que já está em
+> campo — o updater roda dentro do app instalado. Toda máquina em 1.0.5–1.0.8 continua
+> incapaz de se atualizar sozinha e precisa de **uma instalação manual** da 1.0.9+ para o
+> auto-update passar a valer. O corte por versão da Fase 3 **não acontece sozinho**: ou se
+> organiza um mutirão de instalação, ou a convivência precisa durar até a última máquina
+> ser tocada à mão.
+
 ### Configuração de painel (feita por você)
 
 - `OWNER_USER_ID` na Vercel (o painel `/dono` deixou de vazar faturamento para os 8 admins);
@@ -141,7 +183,26 @@ O maior atrito: o desktop em campo escreve com a anon key. Qualquer aperto no RL
 `ontime_realtime` derruba as versões antigas. Precisa de convivência (aceita token novo
 E anon) + corte com data anunciada. **Começar por ela** quando a Fase B for encarada.
 
-### Distribuir o desktop — o auto-update estava QUEBRADO, agora corrigido no código
+### Distribuir o desktop — RESOLVIDO e PROVADO em 05/08/2026 ✅
+
+> A esteira foi provada de ponta a ponta: a 1.0.12 se instalou sozinha a partir da 1.0.11,
+> no macOS, com log registrando o `nativeUpdater.update-downloaded`. O `release-mac.sh`
+> assina, notariza, publica no R2 e arquiva as versões antigas; o `.env` da raiz já tem as
+> chaves de R2 e Apple. **Falta só o Windows**, cujo job de CI dispara na tag (`v1.0.12`
+> foi a primeira) e ainda não foi verificado numa máquina real.
+>
+> Além da esteira, dois defeitos NO APP tiveram que ser corrigidos para a troca acontecer
+> — ver "05/08/2026 (noite)" acima, e a consequência para a Fase 3 registrada lá.
+>
+> **Duas lições de método que custaram caro:**
+> - **nunca rodar o app a partir de `apps/electron/dist/`.** O bundle é reescrito pelo
+>   build: testar de lá invalida o teste (a versão muda sozinha e parece atualização) e
+>   quebra o build (o macOS bloqueia reescrever um `.app` em uso — App Management). O app
+>   de teste vive em `/Applications`.
+> - **o número de versão na tela não é evidência.** Ele diz qual bundle está rodando, não
+>   como chegou lá. A evidência é `/Applications` mudar de versão sem ninguém instalar.
+
+#### (registro do diagnóstico original — a esteira que faltava)
 
 Descoberto em 05/08/2026: **o auto-update nunca funcionou.** O `updater.js` lê de um
 bucket R2 (`pub-99e0…r2.dev/ontime/`), mas nada populava esse caminho — o CI antigo
@@ -166,10 +227,19 @@ faltava a esteira que sobe os artefatos.
 - **conferir o escopo do token R2**: as chaves do vexy só escrevem no `houseria` se o
   token não estiver escopado só ao `vexystage`.
 
-**Consequência para o roadmap:** a Fase 3 (corte do desktop antigo) assume auto-update
-funcionando para a janela de convivência. **Consertar e TESTAR essa esteira é
-pré-requisito da Fase 3** — o `updater.js` em si é bom (barra de progresso, pergunta
-antes, nunca reinicia no meio de evento); faltava a esteira que popula o R2, agora pronta.
+**O que era "falta plugar" e hoje está resolvido:** as credenciais de R2 e Apple vivem no
+`.env` da **raiz do repo** (não em `~/.houseria/release.env`, como o texto acima dizia), o
+escopo do token R2 alcança o bucket `houseria` — provado, publicamos cinco versões — e a
+notarização passa com o perfil `vexy-notary` do chaveiro.
+
+**Só sobrou o Windows:** os 4 secrets de R2 no GitHub e a verificação de que o job da tag
+publica de verdade e de que uma máquina Windows se atualiza. A `v1.0.12` é a primeira tag
+depois do conserto; ninguém conferiu o resultado dela ainda.
+
+**Consequência para o roadmap:** a premissa original ("a esteira é o pré-requisito da Fase
+3") estava certa, mas incompleta — faltava contar o app. Ver o bloco de 05/08/2026 (noite):
+o auto-update também estava quebrado DENTRO do app, e a correção não alcança quem já está
+em campo.
 
 ### Item 0.7 — hashes vazados
 
