@@ -96,7 +96,14 @@ jobs:
             --include "houseriaapp-win64.exe" \
             --include "houseriaapp-win64.exe.blockmap"
 
+      # Só faz sentido quando o disparo veio de uma tag: a action exige um ref de
+      # tag para criar o release. Num `workflow_dispatch` (que roda num branch)
+      # ela falha com "GitHub Releases requires a tag" DEPOIS de o R2 já ter sido
+      # publicado com sucesso — ou seja, pintava o job de vermelho por um passo
+      # opcional, com a parte que importa já feita. Job vermelho que "é normal"
+      # ensina a ignorar vermelho.
       - name: GitHub Release (download manual)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: apps/electron/dist/houseriaapp-win64.exe
