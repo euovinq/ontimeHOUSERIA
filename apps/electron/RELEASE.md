@@ -95,22 +95,37 @@ auto-update do Windows funciona mesmo assim.)
 ## Cortar uma release (as duas plataformas)
 
 ```sh
-# 1. Suba a versão nos DOIS package.json (têm que casar):
+# 1. Suba a versão nos DOIS package.json (têm que casar) e COMMITE:
 #    apps/electron/package.json  →  "version"
 #    package.json (raiz)         →  "version"
+git commit -am "release: v1.0.13"
 
-# 2. macOS (local):
+# 2. Um comando só — publica o macOS E dispara o Windows:
 ./apps/electron/release-mac.sh
-
-# 3. Windows (CI): commit, tag e push
-#    (a branch deste repo é `master` — `main` só existe no houseriasite)
-git commit -am "release: v1.0.8"
-git tag v1.0.8
-git push origin master --tags
 ```
+
+O script faz, nesta ordem: confere as guardas → builda, assina e notariza o macOS →
+publica no R2 → **cria e empurra a tag `vX.Y.Z`**, que dispara o CI do Windows.
+Acompanhe em [Actions](https://github.com/euovinq/ontimeHOUSERIA/actions/workflows/build.yml);
+o Windows leva ~8 min a mais.
+
+**As guardas, e por que existem:**
+
+| guarda | motivo |
+|---|---|
+| versões dos dois `package.json` casam | o app usa a do electron, o CI usa a da raiz |
+| árvore de trabalho limpa | este script builda o SEU DIRETÓRIO; o CI builda o COMMIT da tag. Com mudança não commitada, as duas plataformas saem com **código diferente sob o mesmo número** — aconteceu nas 1.0.8–1.0.11 |
+| tag `vX.Y.Z` ainda não existe | republicar a mesma versão não atualiza ninguém |
+
+A tag vai **depois** de o macOS publicar: se o release do mac falhar, não faz sentido
+buildar o Windows daquela versão. Se o push da tag falhar (mac já publicado), o script
+avisa e diz o comando para soltar o Windows sozinho.
 
 > O auto-update só dispara para quem está numa versão **menor** que a publicada.
 > Republicar a mesma versão não atualiza ninguém.
+>
+> **E ele não alcança quem está em 1.0.5–1.0.8:** essas versões têm o updater quebrado
+> (ver os planos). Essas máquinas precisam de uma instalação manual, uma única vez.
 
 ## Testar que funcionou
 

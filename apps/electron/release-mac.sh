@@ -80,7 +80,39 @@ fi
 ok "Developer ID Application encontrado no chaveiro"
 
 VERSAO="$(node -p "require('./apps/electron/package.json').version")"
+VERSAO_RAIZ="$(node -p "require('./package.json').version")"
+TAG="v${VERSAO}"
 log "Versão a publicar: $VERSAO"
+
+# ── Guardas: mac e Windows têm que sair do MESMO código ──────────────────
+# Este script builda o SEU DIRETÓRIO DE TRABALHO; o CI do Windows builda o
+# COMMIT da tag. Com mudança não commitada, as duas plataformas saem com código
+# diferente sob o mesmo número de versão — silencioso e horrível de rastrear.
+# Aconteceu de fato nas 1.0.8–1.0.11 (a alteração do PowerPoint ainda não estava
+# commitada); na época o Windows nem rodava, então passou batido.
+
+[ "$VERSAO" = "$VERSAO_RAIZ" ] || fail "versões não casam: apps/electron=$VERSAO, raiz=$VERSAO_RAIZ.
+   O app usa a do electron e o CI usa a da raiz — as duas TÊM que ser iguais."
+
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo ""
+  git status --short | grep -vE '^\?\?' || true
+  fail "há mudança não commitada acima. Commite antes de publicar — senão o mac
+   sai do seu diretório e o Windows sai do commit da tag, com código diferente."
+fi
+
+if [ -n "$(git status --porcelain --untracked-files=normal | grep '^??' || true)" ]; then
+  warn "há arquivos não rastreados (não entram no commit nem no build do CI):"
+  git status --porcelain | grep '^??' | sed 's/^/       /'
+fi
+
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || \
+   git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+  fail "a tag $TAG já existe (local ou no origin). Suba a versão nos dois
+   package.json antes de publicar — republicar a mesma versão não atualiza ninguém."
+fi
+
+ok "árvore limpa, versões casam e $TAG está livre"
 
 # ── Build assinado + notarizado ─────────────────────────────────────────
 # `dist-mac:universal` (SEM o :local) assina de verdade; o electron-builder
@@ -188,6 +220,26 @@ done
 
 ok "Publicado. O manifesto está no ar:"
 echo "     ${PUBLIC_BASE}/latest-mac.yml"
+
+# ── Dispara o Windows ───────────────────────────────────────────────────
+# O CI escuta `push: tags: ['v*']`. A tag vai DEPOIS do macOS publicar: se o
+# release do mac falhar, não faz sentido buildar o Windows daquela versão.
+#
+# É este push que mantém as duas plataformas juntas. Antes, a tag era um quarto
+# passo manual — e esquecê-la deixava o macOS numa versão e o Windows noutra,
+# sem nada avisando.
+log "Criando e empurrando a tag $TAG (dispara o build do Windows)..."
+git tag -a "$TAG" -m "release: $TAG"
+if git push origin "$TAG"; then
+  ok "tag $TAG empurrada — o CI do Windows está buildando"
+  echo "     https://github.com/euovinq/ontimeHOUSERIA/actions/workflows/build.yml"
+else
+  git tag -d "$TAG" >/dev/null 2>&1 || true
+  warn "não consegui empurrar a tag (a tag local foi removida para você tentar de novo)."
+  warn "O macOS JÁ ESTÁ PUBLICADO. Para soltar o Windows: git push origin $TAG"
+fi
+
 echo ""
 echo "  Teste: num app numa versão anterior, menu 'Buscar atualização…' →"
 echo "  tem que achar a $VERSAO, baixar (barra no dock) e CONCLUIR a instalação."
+echo "  O Windows leva ~8 min a mais, até o CI publicar."
