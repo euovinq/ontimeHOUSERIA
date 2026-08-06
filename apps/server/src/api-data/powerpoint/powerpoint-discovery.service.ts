@@ -46,15 +46,19 @@ export class PowerPointDiscoveryService extends EventEmitter {
 
   // --- Scan unicast (alternativa ao broadcast, obrigatória no macOS) ---
   private readonly SCAN_PORT = 7800; // porta TCP/WS do PPT (o mesmo do stream de dados)
-  private readonly SCAN_INTERVAL = 4000; // varre o /24 a cada 4s
+  private readonly SCAN_INTERVAL = 4000; // um ciclo a cada 4s
+  private readonly FULL_SCAN_EVERY = 5; // varre o /24 INTEIRO a cada N ciclos (~20s); nos outros, só keep-alive dos conhecidos
+  private readonly MISS_TOLERANCE = 5; // ciclos de falha (tolera jitter de WiFi) antes de soltar um IP conhecido do cache
   private readonly TCP_TIMEOUT = 500; // timeout do probe TCP por host
   private readonly WS_PROBE_TIMEOUT = 2500; // timeout pra colher a identidade via WS
-  private readonly SCAN_CONCURRENCY = 32; // hosts sondados em paralelo
+  private readonly SCAN_CONCURRENCY = 32; // hosts sondados em paralelo (só no full scan)
   private scanInterval: NodeJS.Timeout | null = null;
   private isScanning = false;
   private scanInFlight = false; // impede ciclos sobrepostos
+  private scanTick = 0; // conta ciclos pra decidir quando fazer full scan
   private identityCache = new Map<string, DiscoveredServer>(); // ip -> identidade já colhida
   private probing = new Set<string>(); // ips com WS-probe em andamento
+  private misses = new Map<string, number>(); // ip conhecido -> ciclos consecutivos sem resposta
 
   /**
    * Inicia o serviço de descoberta como CLIENTE (escuta broadcasts)
@@ -435,35 +439,60 @@ export class PowerPointDiscoveryService extends EventEmitter {
     return hosts;
   }
 
-  /** Um ciclo: TCP-probe em todos os hosts, depois colhe/atualiza identidade. */
+  /**
+   * Um ciclo do scan. Duas cadências, pra ser gentil com o WiFi do operador e
+   * NÃO mexer no que já está conectado:
+   *  - FULL SCAN (a cada FULL_SCAN_EVERY ciclos, ou enquanto nada foi achado):
+   *    varre o /24 inteiro pra DESCOBRIR máquinas novas.
+   *  - KEEP-ALIVE (demais ciclos): sonda só os IPs já conhecidos, pra mantê-los
+   *    vivos no multisource — barato e sem tocar a rede inteira.
+   * Máquina conhecida NUNCA é re-sondada por WS (a identidade é estável, e o
+   * re-probe derrubava o pipe ativo); e um IP conhecido só sai do cache após
+   * MISS_TOLERANCE faltas SEGUIDAS — tolera o jitter do WiFi que antes fazia o
+   * slide "voltar pra 1".
+   */
   private async runScanCycle(): Promise<void> {
     if (this.scanInFlight) return;
     this.scanInFlight = true;
     try {
-      const hosts = this.subnetHosts();
+      this.scanTick++;
+      const fullScan = this.identityCache.size === 0 || this.scanTick % this.FULL_SCAN_EVERY === 0;
+      const targets = fullScan ? this.subnetHosts() : [...this.identityCache.keys()];
+      if (targets.length === 0) return;
+
       const open: string[] = [];
       let idx = 0;
       const worker = async () => {
-        while (idx < hosts.length) {
-          const ip = hosts[idx++];
+        while (idx < targets.length) {
+          const ip = targets[idx++];
           if (await this.tcpOpen(ip, this.SCAN_PORT)) open.push(ip);
         }
       };
-      await Promise.all(Array.from({ length: this.SCAN_CONCURRENCY }, () => worker()));
-
+      const conc = Math.min(this.SCAN_CONCURRENCY, Math.max(1, targets.length));
+      await Promise.all(Array.from({ length: conc }, () => worker()));
       const openSet = new Set(open);
-      // Solta do cache identidades de IPs que sumiram (reprobar se voltarem).
-      for (const ip of [...this.identityCache.keys()]) {
-        if (!openSet.has(ip)) this.identityCache.delete(ip);
-      }
-      for (const ip of open) {
-        const cached = this.identityCache.get(ip);
-        if (cached) {
-          cached.timestamp = Date.now(); // mantém vivo (refresh lastSeen no multisource)
-          this.emitFound(cached);
-        } else if (!this.probing.has(ip)) {
-          this.wsProbe(ip); // novo host: colhe identidade via WS (assíncrono)
+
+      // Conhecidos: mantém vivos com tolerância a jitter; solta só após N faltas.
+      for (const [ip, cached] of [...this.identityCache.entries()]) {
+        if (openSet.has(ip)) {
+          this.misses.delete(ip);
+        } else {
+          const m = (this.misses.get(ip) ?? 0) + 1;
+          if (m >= this.MISS_TOLERANCE) {
+            this.identityCache.delete(ip);
+            this.misses.delete(ip);
+            continue; // sumiu de vez → para de emitir; multisource expira e faz failover
+          }
+          this.misses.set(ip, m); // dentro da tolerância → segue vivo
         }
+        cached.timestamp = Date.now();
+        this.emitFound(cached);
+      }
+
+      // IPs novos que responderam (só surgem no full scan): 1 WS-probe pra colher a identidade.
+      for (const ip of open) {
+        if (this.identityCache.has(ip) || this.probing.has(ip)) continue;
+        this.wsProbe(ip);
       }
     } catch (error) {
       logger.error(
