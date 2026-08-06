@@ -12,7 +12,8 @@
 #
 # ── Pré-requisitos (uma vez) ─────────────────────────────────────────────
 #   1. O cert "Developer ID Application" no chaveiro (você já tem — assinou o vexy).
-#   2. As credenciais no .env da RAIZ do repo (ontimeHOUSERIA/.env, gitignored):
+#   2. As credenciais em ~/.houseria/release.env (FORA do repo — o .env da raiz
+#      é empacotado dentro do app, ver a seção "Segredos" abaixo):
 #        R2_ACCESS_KEY_ID=...          # as MESMAS chaves do ~/.vexy/release.env
 #        R2_SECRET_ACCESS_KEY=...      #   (mesma conta Cloudflare)
 #        APPLE_ID=seu@email            # o electron-builder notariza com estes três
@@ -42,10 +43,30 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO"
 
 # ── Segredos ────────────────────────────────────────────────────────────
-# O .env da raiz do repo (gitignored) — onde ficam R2_ACCESS_KEY_ID/SECRET e
-# APPLE_ID/APP_SPECIFIC_PASSWORD/TEAM_ID.
-ENV_FILE="$REPO/.env"
-[ -f "$ENV_FILE" ] || fail "falta $ENV_FILE (ver o cabeçalho deste script)"
+# FORA do repositório, de propósito.
+#
+# Até 05/08/2026 este script lia o `.env` da RAIZ do repo — que é exatamente o
+# arquivo que o electron-builder empacotava dentro do app (extraResources).
+# Resultado: as versões 1.0.8 a 1.0.12 saíram com a chave de escrita do R2 e a
+# senha de app da Apple em texto puro, legíveis por qualquer um que tivesse o
+# app. A chave de R2 escreve no bucket que alimenta o auto-update e o
+# instalador do Windows não é assinado — dava para publicar um instalador
+# próprio para toda a base.
+#
+# Por isso as credenciais vivem em ~/.houseria/release.env. O que vai dentro do
+# app é apps/electron/runtime.env, que só tem configuração pública.
+ENV_FILE="${HOUSERIA_RELEASE_ENV:-$HOME/.houseria/release.env}"
+if [ ! -f "$ENV_FILE" ]; then
+  if [ -f "$REPO/.env" ] && grep -q '^R2_SECRET_ACCESS_KEY=' "$REPO/.env" 2>/dev/null; then
+    fail "as credenciais ainda estão em $REPO/.env — que É EMPACOTADO NO APP.
+   Mova as linhas R2_* e APPLE_* para $ENV_FILE e apague-as do .env do repo:
+     mkdir -p ~/.houseria && chmod 700 ~/.houseria
+     grep -E '^(R2_|APPLE_)' $REPO/.env > $ENV_FILE && chmod 600 $ENV_FILE
+     # confira o arquivo novo e então remova essas linhas do $REPO/.env
+   E ROTACIONE as chaves: elas já saíram publicadas nas versões 1.0.8 a 1.0.12."
+  fi
+  fail "falta $ENV_FILE (ver o cabeçalho deste script)"
+fi
 set -a; source "$ENV_FILE"; set +a
 for v in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
   [ -n "${!v:-}" ] || fail "$v não está em $ENV_FILE"

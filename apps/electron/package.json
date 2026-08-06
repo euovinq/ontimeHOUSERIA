@@ -167,7 +167,7 @@
         ]
       },
       {
-        "from": "../../.env",
+        "from": "./runtime.env",
         "to": "extraResources/server/.env"
       }
     ],

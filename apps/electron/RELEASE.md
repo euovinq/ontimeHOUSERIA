@@ -25,8 +25,7 @@ que nem batiam com os que o build gera (`houseriaapp-*`). Confirmado na época: 
 ### Pré-requisitos (uma vez)
 
 1. **Cert "Developer ID Application" no chaveiro** — você já tem (foi o que assinou o vexy).
-2. **`ontimeHOUSERIA/.env`** (raiz do repo, gitignored) com estas linhas — já
-   configurado em 05/08/2026:
+2. **`~/.houseria/release.env`** — **fora do repositório**, com estas linhas:
 
    ```sh
    # R2: as MESMAS chaves do ~/.vexy/release.env (mesma conta Cloudflare,
@@ -39,6 +38,23 @@ que nem batiam com os que o build gera (`houseriaapp-*`). Confirmado na época: 
    APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
    APPLE_TEAM_ID=38N7F4DRZ4
    ```
+
+   ```sh
+   mkdir -p ~/.houseria && chmod 700 ~/.houseria
+   # crie o arquivo e depois:
+   chmod 600 ~/.houseria/release.env
+   ```
+
+> **⚠️ Por que NÃO no `.env` da raiz do repo.** Esse arquivo é empacotado dentro do app
+> (`extraResources` → `Contents/Resources/extraResources/server/.env`). Entre 05/08/2026 e
+> a correção, as credenciais moraram lá e **saíram publicadas nas versões 1.0.8 a 1.0.12**,
+> em texto puro, em qualquer máquina com o app. A chave de R2 tem **escrita** no bucket que
+> alimenta o auto-update, e o instalador do Windows não é assinado — dava para publicar um
+> instalador próprio para toda a base. Essas chaves precisam ser **rotacionadas**.
+>
+> O que vai dentro do app agora é **`apps/electron/runtime.env`**, versionado e sem
+> segredo (só a configuração pública do Supabase). Ele é versionado de propósito: sem ele
+> no repositório, o build do Windows no CI não teria o arquivo para empacotar.
 
 > **⚠️ Escopo do token R2.** As chaves do vexy só servem se o R2 API Token tiver acesso ao
 > bucket **`houseria`** — não só ao `vexystage`. Se ele foi criado escopado ao vexystage,
