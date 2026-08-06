@@ -39,7 +39,7 @@ on:
   workflow_dispatch:
     inputs:
       versao_de_teste:
-        description: 'Versão FALSA para gerar um instalador ANTIGO de teste (ex.: 1.0.11). O R2 NÃO é tocado e o .exe sai como artefato. Vazio = build normal, que publica.'
+        description: 'Digite um número de versão (ex.: 1.0.11) para gerar um instalador de TESTE mais antigo que o publicado, e assim conferir se o auto-update o encontra. Nesse modo o R2 não é tocado e o .exe sai como artefato do run. DEIXE VAZIO para o build normal, que publica no R2.'
         required: false
         default: ''
 
