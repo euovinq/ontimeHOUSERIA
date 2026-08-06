@@ -37,6 +37,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      versao_de_teste:
+        description: 'Versão FALSA para gerar um instalador ANTIGO de teste (ex.: 1.0.11). O R2 NÃO é tocado e o .exe sai como artefato. Vazio = build normal, que publica.'
+        required: false
+        default: ''
 
 jobs:
   windows:
@@ -51,6 +56,34 @@ jobs:
       - uses: pnpm/action-setup@v3
         with:
           version: 10
+
+      # Modo "build de teste": rebaixa a versão para gerar um instalador ANTIGO,
+      # com o qual dá para verificar se o auto-update do Windows encontra e
+      # aplica a versão publicada. Roda antes do install para que o
+      # `addversion` do server (postinstall) também pegue o número certo.
+      #
+      # A versão vem por env, não interpolada direto no script: `${{ }}` dentro
+      # de `run:` é injeção de shell esperando acontecer. E é validada com regex
+      # porque ela vai parar dentro de package.json.
+      - name: Forçar versão de teste
+        if: inputs.versao_de_teste != ''
+        shell: bash
+        env:
+          VERSAO: ${{ inputs.versao_de_teste }}
+        run: |
+          if ! printf '%s' "$VERSAO" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::versao_de_teste inválida: '$VERSAO' (esperado X.Y.Z)"
+            exit 1
+          fi
+          node -e '
+            const fs = require("fs");
+            for (const p of ["package.json", "apps/electron/package.json"]) {
+              const j = JSON.parse(fs.readFileSync(p, "utf8"));
+              j.version = process.env.VERSAO;
+              fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
+            }
+          '
+          echo "::warning::BUILD DE TESTE na versão $VERSAO — o R2 NÃO será atualizado."
 
       - name: Instalar dependências
         run: pnpm install --frozen-lockfile
@@ -76,7 +109,11 @@ jobs:
           fi
           echo "latest.yml OK:"; cat apps/electron/dist/latest.yml
 
+      # Build de teste NÃO publica: subir um instalador antigo para o R2
+      # reescreveria o `latest.yml` e a versão nova deixaria de ser a mais
+      # recente — o app de teste não teria para onde atualizar.
       - name: Publicar os artefatos de update no R2
+        if: github.event_name != 'workflow_dispatch' || inputs.versao_de_teste == ''
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -95,6 +132,16 @@ jobs:
             --include "latest.yml" \
             --include "houseriaapp-win64.exe" \
             --include "houseriaapp-win64.exe.blockmap"
+
+      # No build de teste o instalador sai por aqui, não pelo R2. É um .zip que
+      # a GitHub monta com o .exe dentro — descompacte antes de instalar.
+      - name: Instalador de teste como artefato
+        if: inputs.versao_de_teste != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: houseriaapp-win64-teste-${{ inputs.versao_de_teste }}
+          path: apps/electron/dist/houseriaapp-win64.exe
+          retention-days: 7
 
       # Só faz sentido quando o disparo veio de uma tag: a action exige um ref de
       # tag para criar o release. Num `workflow_dispatch` (que roda num branch)
