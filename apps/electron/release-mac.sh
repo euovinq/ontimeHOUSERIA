@@ -186,7 +186,24 @@ if [ -f "$DMG" ]; then
 fi
 
 # ── Publicar no R2 ──────────────────────────────────────────────────────
-log "Subindo pro R2 (bucket $R2_BUCKET, prefixo $R2_PREFIX)..."
+# Sobe SÓ o pacote desta versão. O `--include "*.zip"` de antes pegava tudo que
+# houvesse no dist/ local — que guarda os builds antigos — e reenviava centenas
+# de MB de versões velhas a cada release. O passo seguinte as arquivava e a
+# poda as apagava: trabalho e banda para chegar ao mesmo lugar. (Deu para ver na
+# 1.0.13: a 1.0.5, que tínhamos apagado do bucket, ressuscitou e morreu de novo
+# na mesma execução.)
+#
+# O nome vem do PRÓPRIO manifesto, não de um padrão montado à mão: `latest-mac.yml`
+# é o que o updater vai buscar, então subir exatamente o que ele aponta torna
+# impossível o manifesto e o pacote se desencontrarem se o electron-builder um
+# dia mudar a convenção de nome.
+ARQ_ZIP="$(awk '/^path:/ {print $2; exit}' "$DIST/latest-mac.yml")"
+[ -n "$ARQ_ZIP" ] || fail "não consegui ler o campo 'path:' de $DIST/latest-mac.yml"
+[ -f "$DIST/$ARQ_ZIP" ] || fail "o manifesto aponta para '$ARQ_ZIP', que não existe em $DIST/.
+   Publicar assim deixaria o latest-mac.yml apontando para um arquivo ausente —
+   todo cliente tomaria 404 ao tentar atualizar."
+
+log "Subindo pro R2 (bucket $R2_BUCKET, prefixo $R2_PREFIX): $ARQ_ZIP"
 AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
 AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
 AWS_DEFAULT_REGION="auto" \
@@ -196,8 +213,8 @@ aws s3 sync "$DIST/" "s3://${R2_BUCKET}/${R2_PREFIX}/" \
   --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
   --exclude "*" \
   --include "latest-mac.yml" \
-  --include "*.zip" \
-  --include "*.zip.blockmap" \
+  --include "$ARQ_ZIP" \
+  --include "${ARQ_ZIP}.blockmap" \
   --include "houseriaapp-macOS-universal.dmg"
 
 # ── Conferir que ficou público ──────────────────────────────────────────
