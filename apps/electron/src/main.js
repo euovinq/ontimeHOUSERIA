@@ -508,7 +508,16 @@ function startApplication() {
     //
     // O mesmo fluxo atende os dois gatilhos: a checagem silenciosa da entrada
     // e o item de menu, que responde sempre porque quem clicou está esperando.
-    const updater = iniciarUpdater(win);
+    // `aoTrocarVersao` desarma o "esconder ao fechar" ANTES da troca começar.
+    // Sem isso a atualização não acontece: `autoUpdater.quitAndInstall()` no
+    // macOS fecha todas as janelas PRIMEIRO e só emite `before-quit` depois —
+    // então o handler de `close` ainda via `isQuitting === false`, dava
+    // preventDefault e escondia a janela. "Todas as janelas fecharam" nunca
+    // acontecia, e o app seguia vivo com a atualização preparada e nunca
+    // aplicada. Era o segundo dos dois defeitos que travavam o auto-update.
+    const updater = iniciarUpdater(win, () => {
+      isQuitting = true;
+    });
     const checkForUpdates = () => updater.verificarManual();
 
     const menu = getApplicationMenu(
@@ -821,6 +830,19 @@ app.on('before-quit', () => {
     isQuitting = true;
     console.log(' Usuário solicitou fechamento do app');
   }
+});
+
+/**
+ * Rede de segurança para a troca de versão.
+ *
+ * O Electron emite isto quando o auto-updater nativo vai encerrar o app para
+ * instalar. Redundante com o `aoTrocarVersao` passado ao updater — de
+ * propósito: se a janela for fechada por um caminho que não passe por lá, o
+ * `isQuitting` ainda precisa estar de pé, senão o app se esconde no meio da
+ * atualização e ela nunca é aplicada.
+ */
+app.on('before-quit-for-update', () => {
+  isQuitting = true;
 });
 
 /**
