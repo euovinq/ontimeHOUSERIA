@@ -272,15 +272,27 @@ export class PowerPointWebSocketService extends EventEmitter {
    * Processa mensagens recebidas do WebSocket
    */
   private handleMessage(message: WebSocketMessage): void {
-    // Aprende a identidade de grupo do próprio stream (todo pacote do PPT a carrega)
+    // Aprende a identidade de grupo do próprio stream (todo pacote do PPT a carrega).
+    // Esta é a fonte MAIS FRESCA que existe: se o operador renomeia a máquina ou o
+    // grupo no PPT, chega aqui no pacote seguinte. Quando muda, avisa (evento
+    // 'identity') pra quem guarda cópia da identidade poder se corrigir — senão um
+    // cache velho fica brigando com o nome novo.
     if (message.instance_id || message.group_id || message.group_name) {
-      this.identity = {
+      const next = {
         instanceId: message.instance_id ?? this.identity.instanceId,
         machineName: message.machine_name ?? this.identity.machineName,
         groupId: message.group_id ?? this.identity.groupId,
         groupName: message.group_name ?? this.identity.groupName,
         priority: typeof message.priority === 'number' ? message.priority : this.identity.priority,
       };
+      const changed =
+        next.instanceId !== this.identity.instanceId ||
+        next.machineName !== this.identity.machineName ||
+        next.groupId !== this.identity.groupId ||
+        next.groupName !== this.identity.groupName ||
+        next.priority !== this.identity.priority;
+      this.identity = next;
+      if (changed) this.emit('identity', { ...next });
     }
 
     switch (message.type) {

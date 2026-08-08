@@ -208,6 +208,7 @@ export class PowerPointMultiSourceService {
         this.groups.set(groupId, group);
         pipe.on('connected', () => this.onPipeConnected(group as Group));
         pipe.on('disconnected', () => this.onPipeDisconnected(group as Group));
+        pipe.on('identity', (id) => this.onPipeIdentity(group as Group, id));
       } else {
         group.groupName = groupName;
       }
@@ -246,6 +247,47 @@ export class PowerPointMultiSourceService {
       consumers: 1,
       group_name: group.groupName,
     });
+  }
+
+  /**
+   * O stream do PPT trouxe identidade nova (rename de máquina/grupo, troca de
+   * prioridade). Aplica na instância ativa e corrige o cache do discovery, senão
+   * o keep-alive do scan continua reescrevendo o nome VELHO por cima a cada
+   * ciclo — era isso que fazia o nome piscar entre o antigo e o novo.
+   */
+  private onPipeIdentity(
+    group: Group,
+    identity: {
+      instanceId?: string;
+      machineName?: string;
+      groupId?: string;
+      groupName?: string;
+      priority?: number;
+    },
+  ): void {
+    try {
+      const activeId = group.activeInstanceId;
+      if (!activeId) return;
+      const instance = this.instances.get(activeId);
+      if (!instance) return;
+
+      if (identity.machineName) instance.machineName = identity.machineName;
+      if (identity.groupName) {
+        instance.groupName = identity.groupName;
+        group.groupName = identity.groupName;
+      }
+      if (typeof identity.priority === 'number' && identity.priority >= 1) {
+        instance.priority = identity.priority;
+      }
+
+      getDiscoveryService().updateIdentity(instance.ip, identity);
+      this.pushSnapshot();
+    } catch (error) {
+      logger.error(
+        LogOrigin.Server,
+        `PowerPoint MultiSource - erro ao aplicar identidade: ${error instanceof Error ? error.message : 'desconhecido'}`,
+      );
+    }
   }
 
   private onPipeDisconnected(group: Group): void {

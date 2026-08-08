@@ -128,6 +128,12 @@ export class PowerPointDiscoveryService extends EventEmitter {
             
             this.discoveredServers.set(key, discoveredServer);
 
+            // Broadcast é fonte AO VIVO: corrige o cache do scan, que colhe a
+            // identidade uma vez só e nunca mais re-sonda (ver runScanCycle).
+            // Sem isto, depois de um rename no PPT o keep-alive do scan segue
+            // anunciando o nome velho e o broadcast o novo, alternando os dois.
+            this.refreshCachedIdentity(discoveredServer);
+
             // Servidor encontrado (não loga para evitar spam)
 
             // Emite evento para quem está escutando (sempre, para listeners gerais)
@@ -591,6 +597,61 @@ export class PowerPointDiscoveryService extends EventEmitter {
     } catch {
       finish(null);
     }
+  }
+
+  /**
+   * Corrige a identidade guardada no cache do scan a partir de uma fonte ao vivo
+   * (broadcast UDP ou o próprio stream do pipe). Só ATUALIZA entrada existente —
+   * nunca cria: quem descobre IP é o scan, e é ele que manda no ip/porta da
+   * entrada. Casa por IP e, se não achar, por instance_id (máquina com mais de
+   * uma interface pode se anunciar por um IP diferente do que o scan sondou).
+   */
+  private refreshCachedIdentity(fresh: Partial<DiscoveredServer> & { ip?: string }): void {
+    let entry = fresh.ip ? this.identityCache.get(fresh.ip) : undefined;
+    if (!entry && fresh.instance_id) {
+      for (const cached of this.identityCache.values()) {
+        if (cached.instance_id === fresh.instance_id) {
+          entry = cached;
+          break;
+        }
+      }
+    }
+    if (!entry) return;
+
+    // Só os campos de identidade; ip/porta continuam sendo do scan.
+    if (fresh.instance_id) entry.instance_id = fresh.instance_id;
+    if (fresh.machine_name) {
+      entry.machine_name = fresh.machine_name;
+      entry.device_name = fresh.machine_name;
+    }
+    if (fresh.group_id) entry.group_id = fresh.group_id;
+    if (fresh.group_name) entry.group_name = fresh.group_name;
+    if (typeof fresh.priority === 'number' && fresh.priority > 0) entry.priority = fresh.priority;
+  }
+
+  /**
+   * Identidade aprendida do stream ao vivo do PPT (o pipe conectado a recebe em
+   * todo pacote). Serve de correção pro cache do scan onde o broadcast não passa
+   * — no macOS, por exemplo, o pipe é a única fonte fresca que sobra.
+   */
+  updateIdentity(
+    ip: string,
+    identity: {
+      instanceId?: string;
+      machineName?: string;
+      groupId?: string;
+      groupName?: string;
+      priority?: number;
+    },
+  ): void {
+    this.refreshCachedIdentity({
+      ip,
+      instance_id: identity.instanceId,
+      machine_name: identity.machineName,
+      group_id: identity.groupId,
+      group_name: identity.groupName,
+      priority: identity.priority,
+    });
   }
 
   /** Registra um servidor achado (broadcast OU scan) e notifica os ouvintes. */
