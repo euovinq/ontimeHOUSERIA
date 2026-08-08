@@ -188,7 +188,12 @@ E anon) + corte com data anunciada. **Começar por ela** quando a Fase B for enc
 > **Provado nas DUAS plataformas, com instalação real:**
 > - **macOS** — a 1.0.12 se instalou sozinha a partir da 1.0.11, com log registrando o
 >   `nativeUpdater.update-downloaded`. Publica pelo `release-mac.sh` (assina, notariza,
->   sobe pro R2 e arquiva as versões antigas), com as credenciais em `~/.houseria/release.env`.
+>   sobe pro R2, arquiva as antigas e empurra a tag que dispara o Windows), com as chaves
+>   de R2 em `~/.houseria/release.env` e a senha da Apple só no chaveiro.
+>
+> **Primeira versão limpa: 1.0.13, publicada em 06/08/2026 nas duas plataformas** — é a
+> primeira sem chaves embutidas no bundle. Conferido nos manifestos do R2
+> (`latest-mac.yml` e `latest.yml`, ambos `1.0.13`), não no número da tela.
 > - **Windows** — o job de CI publica no R2 (`latest.yml` + `.exe` + blockmap), e uma
 >   máquina Windows com um instalador de teste em 1.0.11 encontrou, baixou e aplicou a
 >   1.0.12 sozinha. O Actions do repositório estava **desligado** até 05/08/2026 — por isso
@@ -228,22 +233,35 @@ faltava a esteira que sobe os artefatos.
   Windows não é assinado (funciona assim).
 - `apps/electron/RELEASE.md` documenta os dois caminhos e o `~/.houseria/release.env`.
 
-**Falta você plugar:**
-- `~/.houseria/release.env` com as chaves de R2 (copiadas do vexy) + Apple
-  (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`);
-- 4 secrets de R2 no GitHub (só para o job do Windows);
-- **conferir o escopo do token R2**: as chaves do vexy só escrevem no `houseria` se o
-  token não estiver escopado só ao `vexystage`.
+**Onde as credenciais vivem hoje** (o "falta você plugar" original está todo resolvido):
+- **chaves de R2**: o `release-mac.sh` as exige de `~/.houseria/release.env`, **fora do
+  repo** — o `.env` da raiz é empacotado no app, e foi exatamente assim que as versões
+  1.0.8–1.0.12 saíram com segredo dentro (o script recusa rodar se achar
+  `R2_SECRET_ACCESS_KEY` lá). **Atenção, verificado em 06/08/2026:** o arquivo hoje tem
+  só as três variáveis `APPLE_*` — nenhum `R2_*`. A 1.0.13 subiu porque as chaves
+  estavam exportadas no shell daquela sessão; a guarda da linha 71 só olha o ambiente,
+  não o arquivo. Num terminal limpo, **a próxima publicação falha** em
+  "R2_ACCESS_KEY_ID não está em ~/.houseria/release.env". Ver a pendência 14 no runbook;
+- **Apple**: nada em arquivo é usado. A senha de app vive no perfil `vexy-notary` do
+  chaveiro, o script confere o perfil **antes** de buildar (falhar depois de 220 MB de
+  build era o erro caro) e faz `unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD …`, porque o
+  electron-builder tenta Apple ID/senha ANTES do chaveiro e uma cópia velha no ambiente
+  ganharia do perfil. A senha ainda está no `release.env` por decisão — nada a lê, mas é
+  uma segunda cópia do segredo em disco;
+- 4 secrets de R2 no GitHub, para o job do Windows — configurados;
+- escopo do token R2 alcança o bucket `houseria` — provado, já publicamos seis versões.
 
-**O que era "falta plugar" e hoje está resolvido:** as credenciais de R2 e Apple vivem no
-`.env` da **raiz do repo** (não em `~/.houseria/release.env`, como o texto acima dizia), o
-escopo do token R2 alcança o bucket `houseria` — provado, publicamos cinco versões — e a
-notarização passa com o perfil `vexy-notary` do chaveiro.
+**Publicar é um comando.** O `release-mac.sh` publica o macOS e, só depois de dar certo,
+empurra a tag `vX.Y.Z` que dispara o Windows — antes isso era um quarto passo manual, e
+esquecê-lo deixava as duas plataformas em versões diferentes sem nada avisando. Ele exige
+árvore de trabalho limpa e as duas versões de `package.json` casando, e poda o
+`versoes-antigas/` mantendo as 3 anteriores.
 
 **O Windows também está fechado:** os 4 secrets de R2 estão no GitHub, o job publica, e a
-atualização foi verificada numa máquina real. Fica um detalhe do CI registrado: o passo de
-criar o GitHub Release só roda em disparo por tag — num `workflow_dispatch` ele falharia
-por falta de ref de tag, pintando de vermelho um job cuja parte essencial já deu certo.
+atualização foi verificada numa máquina real. O passo de criar o GitHub Release é gated em
+`startsWith(github.ref, 'refs/tags/')`: num `workflow_dispatch` ele é **pulado**, não
+falha — antes do gate ele pintava de vermelho um job cuja parte essencial já tinha dado
+certo.
 
 **Consequência para o roadmap:** a premissa original ("a esteira é o pré-requisito da Fase
 3") estava certa, mas incompleta — faltava contar o app. Ver o bloco de 05/08/2026 (noite):

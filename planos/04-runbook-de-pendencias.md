@@ -286,16 +286,41 @@ FEITO ainda em 05/08/2026, depois do item 9:
     máquina Windows se atualizou de verdade (1.0.11 de teste → 1.0.12).
   - Credenciais de release saíram de dentro do app. O `.env` da raiz era
     empacotado via `extraResources`, então as versões 1.0.8–1.0.12 saíram com
-    as chaves de R2 e Apple em texto puro. Chaves ROTACIONADAS; credenciais
-    agora em `~/.houseria/release.env` e o bundle leva só
-    `apps/electron/runtime.env`, sem segredo.
+    as chaves de R2 e Apple em texto puro. Chaves ROTACIONADAS; as de R2 agora
+    em `~/.houseria/release.env` (fora do repo), a senha da Apple só no perfil
+    do chaveiro, e o bundle leva só `apps/electron/runtime.env`, sem segredo.
+
+FEITO em 06/08/2026:
+ 12. 1.0.13 publicada e limpa nas DUAS plataformas — é a primeira versão sem as
+     chaves de R2/Apple embutidas (as da 1.0.12 do mac estavam mortas depois da
+     rotação, então era higiene, não risco). Conferido nos manifestos públicos
+     do R2, e não no número da tela:
+       latest-mac.yml → 1.0.13, releaseDate 2026-08-06T02:41Z
+       latest.yml     → 1.0.13, releaseDate 2026-08-06T02:50Z
 
 AINDA PENDENTE:
- 12. macOS 1.0.13 — a 1.0.12 do mac publicada ainda carrega as chaves antigas
-     embutidas (mortas após a rotação). É higiene, não risco: a próxima versão
-     publicada deve ser a primeira limpa nas duas plataformas (o .exe do
-     Windows 1.0.12 já saiu limpo, por ter sido buildado após a correção).
- 13. Avisar os clientes sobre a instalação manual única (ver item 9).
+ 13. Avisar os clientes sobre a instalação manual única (ver item 9). É o único
+     item que não é técnico, e é ele que destrava o item 11: enquanto houver
+     máquina em 1.0.5–1.0.8, o corte por versão da Fase 3 não pode ter data.
+ 14. Chaves de R2 fora do lugar documentado — a próxima publicação falha num
+     terminal limpo. Verificado em 06/08/2026: `~/.houseria/release.env` tem só
+     `APPLE_ID`, `APPLE_TEAM_ID` e `APPLE_APP_SPECIFIC_PASSWORD`; nenhum `R2_*`.
+     Não estão no chaveiro (procurado em houseria, houseria-r2, r2, vexy-r2),
+     `~/.vexy/release.env` hoje só tem variáveis de Supabase e não existe
+     `~/.aws/credentials`. A 1.0.13 publicou porque as chaves estavam exportadas
+     no shell daquela sessão — a guarda do `release-mac.sh` (linha 71) confere o
+     ambiente, então ela passa sem que o arquivo tenha nada.
+
+     Antes da próxima release: acrescentar as duas linhas `R2_ACCESS_KEY_ID` e
+     `R2_SECRET_ACCESS_KEY` ao `~/.houseria/release.env` (chmod 600), ou
+     exportá-las na sessão. Decisão de 06/08/2026: por ora só registrar — a
+     ideia de mover o R2 para o chaveiro, como já foi feito com a notarização,
+     fica em aberto.
+
+     Item relacionado, deixado como está por decisão: a
+     `APPLE_APP_SPECIFIC_PASSWORD` no `release.env` não é lida por ninguém (o
+     script a descarta com `unset` de propósito). Não quebra nada; é a segunda
+     cópia do segredo que a mudança de 05/08 queria eliminar.
 
 ## Os três números para acompanhar a saúde
 
